@@ -50,6 +50,10 @@ spec:
             - name: KRAVN_CLIENT_URL
               value: {{ .Values.clientUrl | quote }}
             {{- end }}
+            {{- if .Values.database.schema }}
+            - name: KRAVN_DB_SCHEMA
+              value: {{ .Values.database.schema | quote }}
+            {{- end }}
             {{- if .Values.database.enabled }}
             - name: DATABASE_URL
               {{- if .Values.database.existingSecret }}

@@ -33,6 +33,8 @@ const envSchema = z.object({
   KRAVN_ROLE: z.enum(['all', 'gateway', 'chat']).default('all'),
   /** Base URL of the separate end-user client SPA, used as an SSO return target (e.g. https://chat.example.com). */
   KRAVN_CLIENT_URL: z.string().default(''),
+  /** Build all tables inside this DB schema (PostgreSQL / SQL Server). Empty -> the default schema. */
+  KRAVN_DB_SCHEMA: z.string().default(''),
 });
 
 export type RawEnv = z.infer<typeof envSchema>;
@@ -49,6 +51,8 @@ export interface DbConfig {
   connection: unknown;
   /** sqlite only: absolute file path, used to ensure the parent dir exists. */
   file?: string;
+  /** Build/use all tables inside this schema (pg/mssql); undefined -> default schema. */
+  schema?: string;
 }
 
 export interface Env {
@@ -139,16 +143,26 @@ function absoluteUrlOrEmpty(name: string, value: string): string {
   return t;
 }
 
+function resolveSchema(value: string): string | undefined {
+  const t = value.trim();
+  if (!t) return undefined;
+  if (!/^[A-Za-z_][A-Za-z0-9_]*$/.test(t)) {
+    throw new Error(`KRAVN_DB_SCHEMA must be a simple identifier [A-Za-z0-9_] (got: "${value}")`);
+  }
+  return t;
+}
+
 export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
   const raw = envSchema.parse(source);
   const dataDir = path.resolve(raw.KRAVN_DATA_DIR);
+  const schema = resolveSchema(raw.KRAVN_DB_SCHEMA);
   return {
     nodeEnv: raw.NODE_ENV,
     isProd: raw.NODE_ENV === 'production',
     port: raw.PORT,
     host: raw.HOST,
     dataDir,
-    db: resolveDb(raw.DATABASE_URL, dataDir),
+    db: { ...resolveDb(raw.DATABASE_URL, dataDir), schema },
     secret: raw.KRAVN_SECRET,
     rawSecret: raw.KRAVN_SECRET,
     publicUrl: raw.KRAVN_PUBLIC_URL.replace(/\/$/, ''),

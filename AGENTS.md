@@ -31,10 +31,16 @@ Chat conversations, projects, documents and attachments are per-user. Every repo
 scoped by `user_id` (and conversation/project ownership). Never pair a stored secret with a
 caller-supplied URL; never derive a token-redirect origin from request headers.
 
-### 3. Cross-dialect SQL only (Knex)
+### 3. Cross-dialect SQL only (Knex), schema-aware
 Schema changes go through versioned migrations in `db/migrations.ts` (append, never edit a shipped one).
 PK/unique/indexed columns are `varchar(n)`; large/JSON columns are `text` (no DB default — MySQL forbids
 it); booleans are `integer` 0/1. Use `longtext` for big payloads so they fit on MySQL.
+
+**Always reference tables UNQUALIFIED** (`users`, never `public.users` / `dbo.users` / `<schema>.users`).
+The DB schema is operator-configured via `KRAVN_DB_SCHEMA` and applied centrally: Knex `searchPath` +
+`migrations.schemaName` (db/knex.ts) and a `CREATE SCHEMA IF NOT EXISTS` in `runMigrations` (db/migrations.ts).
+So any new migration / repo SQL is schema-correct automatically — never hardcode a schema name, never assume
+`public`/`dbo`, and don't qualify identifiers. (MySQL: schema == database, set in `DATABASE_URL`; SQLite: N/A.)
 
 ### 4. Config lives in the app, secrets are fail-closed
 Only true infra is env (DB, secret, port, public URL, role). Everything else is runtime DB-backed

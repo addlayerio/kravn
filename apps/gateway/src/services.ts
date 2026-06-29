@@ -56,7 +56,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const secret = resolveSecret(env);
 
   const knex = createKnex(env.db);
-  await runMigrations(knex);
+  await runMigrations(knex, env.db);
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);
 

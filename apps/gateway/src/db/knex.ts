@@ -16,11 +16,14 @@ export function createKnex(db: DbConfig): Knex {
     fs.mkdirSync(path.dirname(db.file), { recursive: true });
   }
 
+  const useSchema = db.schema && (db.client === 'pg' || db.client === 'mssql');
+
   const config: Knex.Config = {
     client: db.client,
     connection: db.connection as Knex.Config['connection'],
     // SQLite needs this so schema-builder columns without an explicit default don't throw.
     useNullAsDefault: db.client === 'better-sqlite3',
+    ...(useSchema ? { searchPath: [db.schema as string], migrations: { schemaName: db.schema as string } } : {}),
     pool: {
       min: 0,
       max: 10,
