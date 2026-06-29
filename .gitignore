@@ -14,3 +14,6 @@ coverage/
 apps/gateway/public/
 apps/operator/dist/
 apps/client/dist/
+
+# TS incremental build info (never commit — breaks fresh CI emit)
+*.tsbuildinfo
