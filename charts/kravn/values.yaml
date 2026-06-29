@@ -53,8 +53,10 @@ database:
   url: ""
   existingSecret: ""      # secret containing key DATABASE_URL
   existingSecretKey: DATABASE_URL
-  # Build all tables inside this schema (PostgreSQL only); auto-created if missing. Empty -> public.
-  # Ignored on SQL Server/SQLite; on MySQL the schema is the database (set it in the url).
+  # Build all tables inside this schema (PostgreSQL + SQL Server); auto-created if missing. Empty -> default.
+  # PostgreSQL: applied via searchPath. SQL Server: applied by repointing the login DEFAULT_SCHEMA — use a
+  # NON-sysadmin login (a sysadmin like "sa" maps to dbo and the schema is ignored with a warning).
+  # Not applicable to SQLite; on MySQL the schema is the database (set it in the url).
   schema: ""
 
 # Deprecated alias for `database` (Postgres-only). Prefer `database` above.

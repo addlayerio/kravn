@@ -328,10 +328,49 @@ const migrationSource: Knex.MigrationSource<Migration> = {
   },
 };
 
-/** Run all pending migrations. Safe to call on every boot. */
-export async function runMigrations(knex: Knex, db?: DbConfig): Promise<void> {
-  if (db?.schema && db.client === 'pg') {
-    await knex.raw(`create schema if not exists "${db.schema}"`);
+/** Outcome of preparing a non-default DB schema, so the caller can warn when it could not be applied. */
+export interface SchemaSetupResult {
+  requested: boolean;
+  schema?: string;
+  applied: boolean;
+  effective?: string;
+}
+
+/**
+ * Make unqualified table names land in the requested schema on SQL Server.
+ *
+ * SQL Server has no per-session search_path: unqualified objects resolve through the connecting
+ * principal's DEFAULT_SCHEMA. So Kravn creates the schema and repoints the login's default schema
+ * at it. Best-effort — a sysadmin login (e.g. sa) always maps to dbo and cannot be repointed, and a
+ * least-privilege login may lack ALTER permission; in both cases tables fall back to the effective
+ * default (dbo) and the caller warns. The schema name is a validated identifier (env.resolveSchema),
+ * so it is safe to inline; the principal name is escaped with quotename().
+ */
+async function applyMssqlSchema(knex: Knex, schema: string): Promise<SchemaSetupResult> {
+  await knex.raw(`if schema_id(?) is null exec('create schema [${schema}]')`, [schema]);
+  try {
+    await knex.raw(
+      `declare @u sysname = quotename(user_name()); exec('alter user ' + @u + ' with default_schema = [${schema}]')`,
+    );
+  } catch {
+    /* sysadmin or insufficient permission — fall back to the effective default below */
+  }
+  const raw = (await knex.raw(`select schema_name() as s`)) as unknown;
+  const rows = (Array.isArray(raw) ? raw : (raw as { recordset?: unknown[] })?.recordset) ?? [];
+  const effective = (rows as Array<{ s?: string }>)[0]?.s;
+  return { requested: true, schema, applied: effective === schema, effective };
+}
+
+/** Run all pending migrations. Safe to call on every boot. Returns how the requested schema was applied. */
+export async function runMigrations(knex: Knex, db?: DbConfig): Promise<SchemaSetupResult> {
+  const schema = db?.schema;
+  let result: SchemaSetupResult = { requested: !!schema, schema, applied: false };
+  if (schema && db?.client === 'pg') {
+    await knex.raw(`create schema if not exists "${schema}"`);
+    result = { requested: true, schema, applied: true, effective: schema };
+  } else if (schema && db?.client === 'mssql') {
+    result = await applyMssqlSchema(knex, schema);
   }
   await knex.migrate.latest({ migrationSource });
+  return result;
 }

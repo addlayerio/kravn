@@ -33,7 +33,7 @@ const envSchema = z.object({
   KRAVN_ROLE: z.enum(['all', 'gateway', 'chat']).default('all'),
   /** Base URL of the separate end-user client SPA, used as an SSO return target (e.g. https://chat.example.com). */
   KRAVN_CLIENT_URL: z.string().default(''),
-  /** Build all tables inside this DB schema (PostgreSQL only). Empty -> the default schema. */
+  /** Build all tables inside this DB schema (PostgreSQL + SQL Server). Empty -> the default schema. */
   KRAVN_DB_SCHEMA: z.string().default(''),
 });
 
@@ -51,7 +51,7 @@ export interface DbConfig {
   connection: unknown;
   /** sqlite only: absolute file path, used to ensure the parent dir exists. */
   file?: string;
-  /** Build/use all tables inside this schema (pg/mssql); undefined -> default schema. */
+  /** Build/use all tables inside this schema (PostgreSQL via searchPath; SQL Server via the login DEFAULT_SCHEMA); undefined -> default schema. */
   schema?: string;
 }
 

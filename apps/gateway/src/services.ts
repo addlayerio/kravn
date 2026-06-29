@@ -56,10 +56,21 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const secret = resolveSecret(env);
 
   const knex = createKnex(env.db);
-  if (env.db.schema && env.db.client !== 'pg') {
-    log.warn({ client: env.db.client }, 'KRAVN_DB_SCHEMA is only applied on PostgreSQL; ignored for this dialect');
+  if (env.db.schema && (env.db.client === 'better-sqlite3' || env.db.client === 'mysql2')) {
+    log.warn(
+      { client: env.db.client },
+      'KRAVN_DB_SCHEMA is not applicable to this dialect (SQLite: N/A; MySQL: the schema is the database — set it in DATABASE_URL); ignored',
+    );
   }
-  await runMigrations(knex, env.db);
+  const schemaResult = await runMigrations(knex, env.db);
+  if (schemaResult.requested && !schemaResult.applied) {
+    log.warn(
+      { requested: schemaResult.schema, effective: schemaResult.effective, client: env.db.client },
+      'KRAVN_DB_SCHEMA could not be applied — tables were created in the effective default schema. On SQL Server connect with a non-sysadmin login (Kravn repoints its DEFAULT_SCHEMA) or pre-set the login DEFAULT_SCHEMA to the target',
+    );
+  } else if (schemaResult.requested && schemaResult.applied) {
+    log.info({ schema: schemaResult.schema, client: env.db.client }, 'KRAVN_DB_SCHEMA applied — tables built inside schema');
+  }
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);
 
