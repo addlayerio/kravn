@@ -1,0 +1,539 @@
+# Kravn — Build Progress (durable resume anchor)
+
+> This file is the source of truth for the autonomous end-to-end build.
+> If session context is lost, RE-READ this file and continue from the first unchecked item.
+> Update the checkboxes as files are completed.
+
+## Product
+**Kravn**: a seamless, self-configuring MCP gateway / registry / proxy. A simpler, Node+Vue
+reimplementation inspired by IBM/mcp-context-forge. Core principles:
+- **Boots first try** (`helm install` with zero values; SQLite + auto-generated key; first-run setup wizard).
+- **Config lives in the app** (runtime, DB-backed, hot-reloaded, edited in the admin UI). Only true infra
+  (DB, secret, port, public URL) is deploy-time env.
+- **Flexibility kept, delivered in phases** (registry, virtual servers, multi-transport, federation, RBAC).
+
+## Stack (decided)
+- Monorepo: **npm workspaces** (no pnpm available). TypeScript ESM. Node >=22 (env has v25).
+- Backend: **Fastify 5** (not NestJS — simpler/seamless), `@modelcontextprotocol/sdk`, **Drizzle ORM**
+  (better-sqlite3 default, pg optional), **zod**, **jose** (JWT), **node:crypto scrypt** (passwords, no native dep),
+  **undici** (custom SSRF dispatcher), **pino**, **prom-client**, **@casl/ability**.
+- Frontend: **Vue 3 + Vite + Pinia + vue-router + @tanstack/vue-query + @casl/vue + vee-validate + zod**.
+  Built static, served by Fastify (@fastify/static) → single container.
+- Names/namespaces: app = `kravn`; packages = `@kravn/contracts`, `@kravn/server`, `@kravn/admin`.
+
+## File checklist
+
+### Root
+- [x] package.json (workspaces)
+- [x] tsconfig.base.json
+- [x] .gitignore
+- [x] .env.example
+- [x] BUILD_PROGRESS.md (this file)
+- [ ] README.md
+
+### packages/contracts (@kravn/contracts)
+- [x] package.json
+- [x] tsconfig.json
+- [x] src/index.ts
+- [x] src/permissions.ts
+- [x] src/settings.ts  (two-tier settings zod schema + defaults + UI metadata)
+- [x] src/entities.ts  (servers/gateways, tools, resources, prompts, virtual servers, users, roles)
+- [x] src/dtos.ts      (auth/setup/login + create/update DTOs + API envelopes)
+
+### apps/server (@kravn/server)
+- [ ] package.json
+- [ ] tsconfig.json
+- [ ] src/config/env.ts          (tier-1 bootstrap config via zod)
+- [ ] src/config/secret.ts       (load-or-generate KRAVN_SECRET)
+- [ ] src/logger.ts              (pino)
+- [ ] src/db/schema.ts           (drizzle tables)
+- [ ] src/db/index.ts            (driver selection sqlite/pg + bootstrap/migrate)
+- [ ] src/db/migrate.ts          (idempotent schema create)
+- [ ] src/crypto.ts              (scrypt password hash + AES-256-GCM credential encryption, fail-closed)
+- [ ] src/settings/settings.service.ts  (tier-2, DB-backed, hot-reload via EventEmitter)
+- [ ] src/auth/jwt.ts            (jose sign/verify, JTI)
+- [ ] src/auth/auth.service.ts   (users, setup wizard, login)
+- [ ] src/auth/rbac.ts           (casl ability from role+permissions)
+- [ ] src/auth/plugin.ts         (fastify auth decorator + guards + CSRF)
+- [ ] src/http/ssrf.ts           (DNS-pinning undici dispatcher + IP classification)
+- [ ] src/http/client.ts         (outbound fetch wrapper using ssrf dispatcher)
+- [ ] src/mcp/upstream.ts        (upstream MCP client manager: connect/import/call)
+- [ ] src/mcp/registry.service.ts(tools/resources/prompts/servers/virtual servers CRUD + sync)
+- [ ] src/mcp/downstream.ts      (expose Kravn as MCP server: streamable-HTTP + SSE)
+- [ ] src/logstore.ts            (in-memory ring buffer + SSE fan-out for log viewer)
+- [ ] src/metrics.ts             (prom-client registry)
+- [ ] src/routes/auth.routes.ts
+- [ ] src/routes/setup.routes.ts
+- [ ] src/routes/settings.routes.ts
+- [ ] src/routes/servers.routes.ts
+- [ ] src/routes/registry.routes.ts (tools/resources/prompts/virtual servers)
+- [ ] src/routes/logs.routes.ts   (SSE)
+- [ ] src/routes/system.routes.ts (health, version, /metrics, bootstrap state)
+- [ ] src/routes/mcp.routes.ts    (downstream MCP endpoints)
+- [ ] src/app.ts                 (build Fastify app, register plugins/routes/static)
+- [ ] src/main.ts                (entrypoint)
+- [ ] drizzle.config.ts
+
+### apps/admin (@kravn/admin)
+- [ ] package.json
+- [ ] tsconfig.json / tsconfig.node.json
+- [ ] vite.config.ts
+- [ ] index.html
+- [ ] src/main.ts
+- [ ] src/App.vue
+- [ ] src/router.ts
+- [ ] src/api/client.ts          (fetch wrapper w/ auth + CSRF)
+- [ ] src/stores/auth.ts
+- [ ] src/stores/bootstrap.ts    (setup-needed? / instance info)
+- [ ] src/lib/ability.ts         (casl/vue)
+- [ ] src/components/* (AppShell, DataTable, Field, etc.)
+- [ ] src/views/SetupView.vue
+- [ ] src/views/LoginView.vue
+- [ ] src/views/DashboardView.vue
+- [ ] src/views/ServersView.vue
+- [ ] src/views/ToolsView.vue
+- [ ] src/views/ResourcesView.vue
+- [ ] src/views/PromptsView.vue
+- [ ] src/views/VirtualServersView.vue
+- [ ] src/views/SettingsView.vue  (driven by settings UI metadata)
+- [ ] src/views/LogsView.vue      (EventSource)
+- [ ] src/style.css
+
+### deploy
+- [ ] Dockerfile (multi-stage, single container)
+- [ ] .dockerignore
+- [ ] docker-compose.yml
+- [ ] charts/kravn/Chart.yaml
+- [ ] charts/kravn/values.yaml  (boots with ZERO overrides)
+- [ ] charts/kravn/templates/* (deployment, service, pvc, secret, configmap, ingress-optional, servicemonitor-optional, _helpers)
+- [ ] charts/kravn/README.md
+
+### finalize
+- [ ] README.md (run instructions)
+- [ ] npm install + typecheck (best-effort; network may be unavailable)
+- [ ] update memory notes
+
+## Notes / decisions log
+- 2026-06-27: Fastify chosen over NestJS for the hand-built MVP (simplicity/seamless boot). Memory updated.
+- SSRF default: allow private networks (in-cluster MCP servers) but always block cloud metadata IPs.
+- CSRF: double-submit cookie, on by default, works with the SPA (no need to disable).
+- Passwords: node:crypto scrypt (no native dep). Credentials at rest: AES-256-GCM, fail-closed.
+- DB: portable SQL store over better-sqlite3 (default) + pg (optional), NOT Drizzle (dual-dialect was too fragile to hand-generate; fewer deps = more seamless).
+- Frontend deps kept minimal: Vue + Pinia + vue-router only (no PrimeVue/Tailwind/TanStack/casl), plain CSS.
+
+## ✅ BUILD COMPLETE & VALIDATED (2026-06-27)
+All checklist items implemented. Validation run:
+- `npm install` ✓ (282 pkgs)
+- `npm run build` ✓ (contracts → admin SPA into apps/server/public → server tsc)
+- `npm run typecheck -w @kravn/server` ✓ clean
+- `npm run typecheck -w @kravn/admin` (vue-tsc) ✓ clean
+- Live smoke test (SQLite, zero config): boot ✓ · /healthz ✓ · /api/bootstrap setupRequired:true ✓ ·
+  setup wizard creates admin + returns JWT ✓ · auth/me ✓ · 401 without token ✓ · settings GET/PUT (runtime) ✓ ·
+  registered a real stdio upstream (@modelcontextprotocol/server-everything) → status online, **synced 13 tools** ✓ ·
+  downstream `POST /mcp` tools/list ✓ · **tools/call echo round-tripped through the gateway** ✓ · /metrics ✓
+
+### To run
+- Local: `npm install && npm run build && npm start` → http://localhost:8080 (setup wizard)
+- Dev: `npm run build -w @kravn/contracts` then `npm run dev` (8080) + `npm run dev:admin` (5173)
+- Docker: `docker compose up --build`
+- K8s: `helm install kravn ./charts/kravn` + `kubectl port-forward svc/kravn 8080:80`
+
+## ✅ POST-MVP PASS 2 (2026-06-28)
+- Fixed "Copy URL" on virtual servers: robust `copyText()` (navigator.clipboard + textarea/execCommand
+  fallback for non-secure contexts) + visual feedback. Root cause: no feedback + clipboard undefined off-localhost.
+- Added a global **toast** system (`stores/toast.ts` + `ToastHost.vue` in App.vue) and wired feedback into
+  server sync/save/delete, tool toggle, virtual-server save/delete/copy.
+- Added **User management**: `routes/users.routes.ts` (GET/POST/DELETE /api/users, self-delete guard) +
+  `UsersView.vue` + nav/route. RBAC verified live: editor gets 403 on /api/users.
+- Note: resources & prompts are intentionally read-only catalogs (discovered from upstream via MCP; composed
+  via virtual servers) — not a missing feature.
+- Re-validated: server+admin typecheck clean, full build clean, live smoke test (login, users CRUD,
+  vserver create, self-delete 400, editor 403) all pass.
+
+## ✅ PASS 3 — Kravn-native prompts (2026-06-28, ContextForge-style)
+Authored prompt templates (not just discovered): Jinja2-compatible via **nunjucks**, arguments,
+version counter, preview, exposed over MCP and composable into virtual servers.
+- contracts: `localPromptSchema` + `localPromptArgumentSchema` + `upsertLocalPromptSchema` + `previewLocalPromptSchema`.
+- DB: `local_prompts` table + `LocalPromptsRepo` (version bumped on update).
+- `src/prompts/render.ts` (nunjucks, autoescape off) + `missingRequiredArgs`.
+- `routes/local-prompts.routes.ts`: GET/POST/PATCH/DELETE `/api/local-prompts` + POST `/api/local-prompts/preview`.
+- downstream MCP: local prompts merged into `prompts/list`; `prompts/get` renders the template (required-arg validation → -32602).
+- UI: PromptsView now has a "Kravn prompts" CRUD section (template editor + args + live preview) above the read-only discovered list; VirtualServers prompt selector includes local prompts.
+- Smoke-tested live: preview ✓, create ✓, MCP prompts/list shows local+discovered ✓, prompts/get renders ✓, missing-required → -32602 ✓. Server+admin typecheck + full build clean.
+
+## ✅ PASS 4 — SSO (global) + per-VirtualServer access policy (2026-06-28)
+Architecture correction applied: identity/login is GLOBAL; per-VS is ACCESS CONTROL (not a second login);
+upstream service auth stays at the server level.
+- **Global SSO** (Settings → Authentication): OAuth2/**OIDC** via `openid-client` (discovery URL; Entra/Okta/Google/
+  Keycloak/Auth0) and **SAML** via `@node-saml/node-saml`. Config stored in `auth_config` (settings row id='auth'),
+  secrets (clientSecret, idpCert) AES-GCM encrypted, never returned (set-flags only). Auto-provision + default role.
+  Flows: `/api/auth/sso/oauth/:id/start|callback`, `/api/auth/sso/saml/start` + ACS `/saml/callback` → find-or-create
+  user → Kravn JWT → redirect SPA `/login?token=`. Login page renders SSO buttons from `/api/bootstrap`.
+- **Per-VirtualServer access policy**: `access` = public | authenticated | restricted(+allowedRoles), enforced on
+  `POST /servers/:slug/mcp` (manual bearer verify; global `/mcp` still requires mcp.invoke). Columns added via
+  idempotent ALTER migration.
+- Files: contracts (oauth/saml/updateAuthConfig schemas, AuthConfigView, SsoMethod, vsAccess); server
+  `auth/sso.service.ts`, `routes/sso.routes.ts`, `http/baseurl.ts`, `auth/plugin.ts` (authenticateToken/bearerToken),
+  `AuthConfigRepo`, mcp.routes per-VS gate; admin `AuthenticationView.vue` + nav/route, LoginView SSO buttons + token
+  capture, VirtualServers access fields.
+- Validated live: config save (secret-safe) ✓, bootstrap ssoMethods ✓, **OIDC start → 302 to Google w/ PKCE+state** ✓,
+  per-VS: no-token→401, editor→403, admin→200, public→200 ✓, ALTER migration on existing DB ✓. typecheck+build clean.
+- SAML caveat: implemented + wired + typechecked, but the assertion-validation path needs a REAL IdP to validate
+  end-to-end (no SAMLResponse to test here). OIDC is fully proven.
+- Roadmap (still deferred): per-user on-behalf-of OAuth to upstreams (e.g. each user links their own GitHub) — the
+  user-linked external-identity token vault. Distinct from login SSO.
+
+## ✅ PASS 5 — Brand & design system (2026-06-28)
+Ported the visual identity from the user's original Kravn project (/home/mpanichella/TeamProjects/addlayer/kravn).
+- Design tokens (light default + `html.dark`): warm off-white page, white surfaces, warm sidebar; **brand = raven
+  black #0F1115**, **accent = amber #C9892C**; full radius/spacing/semantic scales. Ported into admin `style.css`,
+  with every existing component class (.btn/.card/table/.badge→pill/.alert/.modal/inputs/.toast/.log-line) re-skinned
+  to the tokens so all views inherit the look without per-view edits.
+- **RavenLogo.vue** (two-path raven silhouette, currentColor) copied from the brand; favicons + webmanifest copied to
+  admin/public; index.html updated (title "Kravn", favicon/theme-color).
+- Fonts: **Inter** + **JetBrains Mono** via @fontsource (bundled/offline-friendly, 65 font files in build).
+- **Theme store** (light/dark + sidebar collapse, persisted to localStorage `kravn.theme`, prefers-color-scheme
+  default); dark class applied pre-mount.
+- **AppShell** rewritten to the Kravn sidebar: raven logo + name, lucide-vue-next icons, Workspace section, footer with
+  light/dark toggle + sign out + collapse. Login/Setup screens use the branded login-card + logo.
+- Validated: admin typecheck + full build clean; tokens, fonts, favicons confirmed in build output. (Visual render not
+  screenshot here — run `npm run build && PORT=8098 npm start` to view.)
+
+## ✅ PASS 6 — SAML federation-metadata import (2026-06-28)
+"Import from metadata URL" for SAML (Azure/Entra federation metadata XML), alongside manual config.
+- Parser `auth/saml-metadata.ts` (fast-xml-parser, removeNSPrefix) extracts entityID, SSO redirect entryPoint,
+  and signing X509 cert (PEM-armor + whitespace stripped).
+- Route `POST /api/auth/sso/saml/import-metadata` accepts `{url}` (fetched SSRF-safe via safeFetch, 5MB cap) OR
+  pasted `{xml}`; returns `{entityId, entryPoint, idpCert}`. UI fills the SAML fields for review before Save.
+- Added optional `saml.idpIssuer` (from metadata entityID) → passed to @node-saml as `idpIssuer` to validate the
+  assertion source. New `IdP issuer` field in AuthenticationView.
+- Validated live: pasted XML parsed ✓; **real Azure federation metadata URL fetched + parsed** (entityId, entryPoint
+  .../saml2, 1008-char cert) ✓. typecheck server+admin + build clean.
+
+## ✅ PASS 7 — Plugin system (2026-06-28, ContextForge/Apigee-inspired)
+A standard, documented plugin contract — anyone can build & import one.
+- New workspace **`@kravn/plugin-sdk`** (`packages/plugin-sdk`): the public contract — `pluginManifestSchema`,
+  hook/mcp-server types, `definePlugin`, `textResult`. Plugins are plain ES modules (default export); the SDK is
+  types-only at runtime (examples import nothing → load anywhere incl. Docker).
+- **Two plugin types, one contract:**
+  - `hook` (Apigee-style): `onListTools` (filter/annotate), `onToolCall` (mutate args / `ctx.deny`), `onToolResult`
+    (mutate result). Run in `priority` order; fail-open on unexpected throw, explicit deny blocks. Wired into the
+    single choke point `RegistryService.invokeTool` (so downstream `/mcp` AND the UI playground get hooks) + `onListTools`
+    in downstream `tools/list`.
+  - `mcp-server`: in-process MCP server (`server.listTools/callTool/...`). Enabling one auto-registers a
+    `transport:'plugin'` server (id `plg_<id>`) via `RegistryService.syncPluginServers`; UpstreamManager delegates the
+    `plugin` transport to the PluginManager shim → flows through the normal registry/virtual-server/downstream code.
+- **PluginManager** (`plugins/manager.ts`): discovers `.mjs`/folder plugins in `KRAVN_PLUGINS_DIR` (default
+  `<dataDir>/plugins`), validates manifest, enable/disable + per-plugin config persisted (`plugins` table + PluginsRepo),
+  cache-busted dynamic import (reload on rescan), seeds 2 example plugins (disabled) into an empty dir.
+- Routes `plugins.routes.ts`: GET list (+loadErrors), rescan, import (paste source → file → scan), PATCH enable/config,
+  DELETE. Admin **PluginsView** (list/type/enable/config JSON/import/rescan/delete + trust-model banner) + nav/route.
+- Trust model documented (in-process, full privileges). **PLUGINS.md** = full developer guide; `examples/plugins/`
+  (tool-guard hook + hello-server mcp-server).
+- Validated live: seeded plugins discovered ✓; enable mcp-server plugin → server online + `say_hello` tool synced ✓;
+  `tools/call` through `/mcp` returns plugin output ✓; config hot-applied (greeting) ✓; hook denies + hides a tool ✓;
+  import-by-paste registers a new plugin ✓. typecheck (sdk/contracts/server/admin) + build clean.
+- **Persistence (PASS 7b):** plugin source is stored IN THE DB (`plugins.code`); loaded at runtime via an
+  in-process `data:` URL import — nothing written to the pod filesystem. Survives pod restarts and is shared across
+  replicas (Postgres). The plugins dir is only an optional dev "inbox" (single-file → ingested to DB on scan).
+  Constraint: plugins must be self-contained (node: builtins OK, external npm not resolvable). Proven live: imported
+  + enabled a plugin, **wiped the plugins dir, restarted** → plugin still loaded from DB and callable (`pong-from-db`).
+- **Config UX (PASS 7c):** the plugin Config modal now renders a **form generated from the plugin's `configSchema`**
+  (string/number/boolean/enum/array/object), instead of a raw `{}` JSON box; raw-JSON fallback remains (+ "Edit as JSON"
+  toggle) and a hint shows when a plugin declares no schema. Added the **`x-kravn-source`** schema extension
+  (`tools`/`resources`/`prompts`/`servers`): array fields → live multi-select picker, string fields → single-select,
+  populated from the registry. tool-guard example updated to use it; documented in PLUGINS.md. Verified backend serves
+  the hint; admin typecheck + build clean.
+- **Expanded hook points (PASS 7d) — ContextForge parity:** hooks now cover the full MCP flow, not just tools.
+  SDK `HOOK_POINTS` + contexts for: `onListTools`/`onToolCall`/`onToolResult`, `onListResources`/`onResourceRead`
+  (pre-fetch, deny)/`onResourceResult` (post-fetch), `onListPrompts`/`onPromptGet` (pre-fetch, deny)/`onPromptResult`
+  (post-fetch), and `onResolveUser` (post-auth, mutate/deny). Wired: tool hooks in `invokeTool`; resource hooks in
+  `readResourceFrom`; prompt hooks in `getPromptFrom` + local prompt rendering; list hooks in downstream
+  list methods; `onResolveUser` in the auth `authenticate` decorator (gated by `hasResolveUser()`).
+  Admin Plugins page now shows each plugin's implemented hook points (badges) + a "Hook points" summary card.
+  Example refresh: seeded example plugins now re-ingest on scan so their manifests stay current (without resurrecting
+  deleted ones) — fixes stale schemas. Validated live: prompt pre-fetch deny (-32000) ✓, resources/list ✓,
+  hookPoints labels ✓, tool-guard schema refreshed to include `x-kravn-source` ✓.
+- **Config UX picker (PASS 7e):** plugin config fields can declare `x-kravn-source: 'tools'|'resources'|'prompts'|'servers'`
+  to render a live picker (array→multi-select, string→single-select) instead of free text. tool-guard updated to use it.
+- Roadmap: sandboxed/WASM plugin isolation; a marketplace catalog feeding the Import flow.
+
+## ✅ PASS 8 — LLM Models (providers / models / test) (2026-06-28)
+The ContextForge-style "Model Configs" screen.
+- `llm_providers` table + `LlmProvidersRepo`; contracts `LlmProvider` + create/update/test DTOs + `LlmTestResult`.
+- `llm/llm.service.ts`: CRUD + a real connectivity **test** that runs a 1-token completion against the provider.
+  Types: openai, anthropic, azure-openai, ollama, openai-compatible (per-type URL/auth: Bearer / `api-key` / `x-api-key`).
+  API key AES-GCM encrypted at rest, never returned (apiKeySet flag only). Calls go through the SSRF-safe dispatcher.
+  Status (ok/error/lastError/lastTestedAt) persisted from tests.
+- `routes/llm.routes.ts` (GET/POST/PATCH/DELETE `/api/llm/providers` + `/:id/test`) + app wiring.
+- Admin **LlmModelsView** (providers + models list + Test button + add/edit modal) + nav "LLM Models" + route.
+- Validated live: create (secret-safe) ✓; list never returns the key ✓; **test → real OpenAI call → "HTTP 401 Incorrect
+  API key"** ✓; ollama localhost test → "fetch failed" (SSRF allows private) ✓; update default model + delete ✓.
+- Note: this is the config/registry + connectivity test surface (parity with ContextForge Model Configs). Wiring it to a
+  runtime consumer (MCP `sampling/createMessage`, or A2A agents) is a natural follow-up.
+
+## ✅ PASS 9 — Teams (2026-06-28, ContextForge-style)
+- `teams` + `team_members` tables + `TeamsRepo` (CRUD + membership + `teamIdsForUser`). Contracts: `Team`,
+  `TeamMember`, team DTOs, `teams.read`/`teams.write` perms.
+- `AuthUser.teams` now populated (authenticate + authenticateToken + login/register responses + /me).
+- Virtual servers gain `allowedTeams`; per-VS access `restricted` now allows by **role OR team membership**,
+  enforced on `POST /servers/:slug/mcp`.
+- Routes `teams.routes.ts` (CRUD + members add/remove). Admin **TeamsView** (teams + member management) + nav/route,
+  and a team picker in the Virtual Servers access section.
+- Validated live: create team + add member ✓; VS restricted to team → member 200, non-member 403, no-token 401 ✓;
+  /me returns the user's teams ✓. typecheck + build clean.
+- Note: team-scoping is applied to virtual servers (the user-facing MCP endpoints). Broader per-entity ownership/
+  visibility (every resource scoped to a team like ContextForge) is a future extension.
+
+## ✅ PASS 10 — Monorepo (pnpm + Nx) + multi-app + end-user client (2026-06-28)
+Restructured into a polyglot-ready monorepo with three audiences (decisions: one modular backend; operator =
+admin+gateway; separate client; include client port now).
+- **Tooling:** npm workspaces → **pnpm 9 + Nx 20**. `pnpm-workspace.yaml`, `.npmrc` (node-linker=hoisted), `nx.json`
+  (build dependsOn ^build). Workspace deps now `workspace:*`. Root scripts use `nx run-many`. Dockerfile + ignores
+  updated to pnpm + new paths. Validated: `nx run-many -t build` builds all packages; gateway boots + serves operator.
+- **Layout:** `apps/gateway` (the Fastify control-plane backend, renamed from apps/server), `apps/operator` (operator
+  SPA = admin+gateway sections, renamed from apps/admin, builds into apps/gateway/public), `apps/client` (NEW end-user
+  chat SPA), `packages/{contracts,plugin-sdk,ui}`. `@kravn/ui` shares the design (style.css + raven paths).
+- **Chat runtime (gateway):** `chat_projects`/`chat_conversations`/`chat_messages` tables + `ChatRepo` (per-user) +
+  `ChatService` — LLM completion via the configured providers (OpenAI-compatible w/ a tool-calling loop; Anthropic plain),
+  tools sourced from the conversation's **team-scoped virtual server** (registry.invokeTool → plugin hooks apply),
+  persistence. Routes `/api/chat/{options,projects,conversations,...}`.
+- **Client app (apps/client):** Vue 3 SPA (own port 5174, proxies /api), password login, conversation list, new-chat
+  picker (provider/model/optional virtual-server), chat thread + composer. Reuses `@kravn/ui` + RavenLogo.
+- Validated live: nx build (5 build targets) ✓; chat options/create/send/persist end-to-end (LLM called, graceful
+  error on bogus key, user msg persisted, title set) ✓; gateway + client typecheck clean.
+- Notes: SSO on the client = password for now (SSO callback returns to the gateway/operator); client is a separate
+  deployable (its own Dockerfile/serve TBD); the chat data currently lives in the gateway DB (extract to its own
+  backend when warranted).
+
+## ✅ PASS 11 — Multi-dialect DB + versioned migration framework (2026-06-28)
+Replaced the hand-rolled `CREATE TABLE IF NOT EXISTS` + ad-hoc `ALTER` bootstrap (which only handled
+sqlite+pg and was not a real migration system) with **Knex** as the query/migration layer over four engines.
+- **Engines:** SQLite (default), **PostgreSQL, MySQL/MariaDB, SQL Server** — selected via `DATABASE_URL`
+  (`postgres://`, `mysql://`/`mariadb://`, `sqlserver://`/`mssql://`, `sqlite://`/path, empty→embedded sqlite).
+  `resolveDb()` maps each to a Knex `{client, connection}` (mssql DSN parsed into a tedious config).
+- **Migrations:** `db/migrations.ts` — versioned, in-code Knex `MigrationSource` (ships inside the bundle, no
+  loose .js files). Migration `001_initial_schema` builds the **whole** schema from zero via the schema builder
+  (dialect-correct DDL); `hasTable`/`hasColumn` guards make it idempotent + bridge DBs from the old bootstrap.
+  Future changes = append `002_…`; tracked in `knex_migrations`. Runs automatically on boot (`runMigrations`).
+- **Cross-dialect schema rules** (so it's valid on MySQL/MSSQL too): PK/unique/indexed cols are `varchar(n)`
+  (TEXT can't be a key there); large/JSON cols are `text` with **no** DB default (MySQL forbids TEXT defaults);
+  booleans are `integer` 0/1; timestamps `varchar(40)`. `TABLES` exported for offline DDL validation.
+- **Store:** `db/store.ts` rewritten as a thin Knex wrapper — same `run/get/all(?)` interface, so **all repos are
+  unchanged** (knex.raw translates `?` per dialect); `rowsOf()` normalizes pg/mysql2/sqlite/mssql result shapes.
+  `db/knex.ts` builds the instance (sqlite dir mkdir + WAL/busy_timeout/FK pragmas via pool.afterCreate).
+- Validated: **SQLite live** — migrations build all 16 tables from zero, idempotent re-open, repo round-trips
+  (users/teams/virtual-servers incl. bool+JSON mapping) ✓; full gateway boots on fresh sqlite + HTTP setup-admin →
+  login round-trip ✓. **pg / mysql2 / mssql** — DDL compiled offline for all three, dialect-correct & clean
+  (varchar keys, no TEXT defaults on MySQL, nvarchar/nvarchar(max) + named defaults on MSSQL) ✓. No live pg/mysql/
+  mssql server was available here, so those need a smoke against a real instance to fully certify the runtime path.
+- typecheck clean; `pnpm build` (nx, all projects) green. Deps added: knex, mysql2, tedious (pg/better-sqlite3 kept).
+
+## ✅ PASS 12 — Client SSO + dedicated chat pod (role boot) + Projects with documents (2026-06-28)
+Advanced the three items named after the DB framework. Understand + adversarial-review workflows bracketed the work.
+- **(1) SSO on the end-user client.** The SSO redirect now returns the token to the SPA that *started* login.
+  Added an allowlisted `returnTo` enum ('operator'|'client'): OAuth carries it in the SERVER-stored state map
+  (untamperable); SAML carries it via RelayState (untrusted → allowlisted on return). `resolveReturnTo()` only ever
+  yields operator|client (no raw URLs → no open-redirect); `spaBase()` maps 'client'→`KRAVN_CLIENT_URL` (new env),
+  else the gateway origin. Error paths (OAuth + SAML) thread returnTo too. Client `LoginView.vue` now renders SSO
+  buttons (`?returnTo=client`) and captures `?token=`/`?sso_error=` exactly like the operator. Files: sso.service.ts
+  (PendingOAuth.returnTo, SsoLoginResult.returnTo, oauthStart/samlStart/issue signatures), sso.routes.ts
+  (resolveReturnTo/spaBase/redirectWithToken/ssoError), env.ts (clientUrl), client LoginView.
+- **(2) Dedicated chat backend as a pod (same image).** `KRAVN_ROLE=all|gateway|chat` gates HTTP route
+  registration in app.ts: shared always (auth, sso, setup, bootstrap, health/metrics); gateway = control-plane +
+  MCP + operator SPA; chat = end-user chat API only. A chat pod shares the DB and still reuses registry/LLM/plugins
+  in-process for tool calls. Validated: chat role → /api/chat/*=401(registered) /api/servers=404; gateway role → the
+  inverse; shared routes 200/302 in both.
+- **(3) Projects with documents (Claude-Projects-style, push/upload — not the old kravn's pull/connectors+Qdrant
+  RAG, which has no "project" concept).** New migration **002** (proves evolutionary migrations): adds
+  `chat_projects.instructions` (nullable text, ALTER-safe on populated tables) + `chat_project_documents` table
+  (cross-dialect). ChatRepo: getProject/updateProject + documents CRUD (ownership-scoped). chat.service
+  `buildSystemPrompt` injects project instructions + documents (60k-char budget) as system context when a
+  conversation has a projectId. Routes: project CRUD + `/documents`. Client ChatView: sidebar Projects section,
+  project panel (editable instructions + document add/remove), new-chat-in-project + project picker.
+- Validated: contracts+gateway+client typecheck clean; `pnpm build` (nx, all) green; migration-002 smoke (both
+  migrations apply, new table+column, project/doc CRUD, conversation scoping, cascade-on-delete, idempotent);
+  role-boot smoke (route presence per role).
+- **Adversarial review workflow (4 dimensions → skeptic-verified) found 7 real defects — ALL FIXED + re-tested:**
+  · CHAT-1 (critical) cross-user doc leak: buildSystemPrompt loaded docs for a foreign projectId → now ownership-gated.
+  · CHAT-2 (critical) conversation create didn't verify project ownership → now 404s on foreign projectId (HTTP-tested).
+  · CHAT-3 (high) deleteConversation wiped messages unscoped → now scoped via `WHERE conversation_id IN (SELECT ... AND user_id=?)`.
+  · SSO-1 (high) JWT exfil via Host/X-Forwarded-Host: operator redirect now SAME-ORIGIN RELATIVE (`/login?...`, no header trust); client uses validated absolute KRAVN_CLIENT_URL.
+  · KRAVN-ROLE-1 (medium) chat pod w/o KRAVN_CLIENT_URL silently broke SSO → explicit 500 on the SSO path + startup warn.
+  · ORD-001 (medium) non-deterministic `ORDER BY created_at` (affected doc-context truncation) → added `, id` tiebreaker on all chat list queries.
+  · SSO-2 (low) KRAVN_CLIENT_URL unvalidated → now must be an absolute http(s) URL at boot (refuses '//evil.com'). 2 false positives correctly refuted.
+- Security re-validation: repo smoke (B can't read A's project; B's delete leaves A's messages intact; owner delete works; stable ordering) + HTTP smoke (B binding A's project → 404, own chat → 201) + clientUrl-validation boot refusal.
+- Notes / still-open: SSO token is delivered in the URL (existing mechanism; cross-origin to the client widens
+  Referer/history exposure — a one-time-code exchange is the future hardening); chat pod data still lives in the
+  shared gateway DB; project documents are raw-text context (no embeddings/RAG — that's the KB future).
+
+## ✅ PASS 13 — LLM model discovery (multiselect) + Google Gemini provider (2026-06-29)
+Replaced the free-text "models (one per line)" box with a curated multiselect + live discovery, and added Gemini.
+- **Gemini end-to-end**: new `gemini` provider type (contracts LLM_PROVIDER_TYPES). chat.service `complete()` gains a
+  Google Generative Language `generateContent` branch (systemInstruction + contents with user/model roles; gemini
+  excluded from the OpenAI tool-loop for now). llm.service: gemini connectivity test (`:generateContent`), default
+  base `https://generativelanguage.googleapis.com`.
+- **Model catalog**: `LLM_MODEL_CATALOG` in contracts — curated current model ids per provider (openai/anthropic/
+  gemini/azure/ollama), shown as an offline multiselect so users don't research model codes.
+- **Live discovery**: `POST /api/llm/discover` (settings.write) → `LlmService.discoverModels` calls the provider's
+  list API via SSRF-safe fetch — OpenAI/compatible/Ollama `GET /models`, Anthropic `GET /v1/models`, Gemini
+  `GET /v1beta/models` (strips `models/`, filters generateContent). Resolves the key from a saved provider (by id)
+  or an ad-hoc apiKey used only for the call (never stored). Azure/no-key/no-base/failure → graceful catalog fallback
+  with a message. Returns `{models, source:'live'|'catalog', message}`.
+- **Operator UI**: LlmModelsView now has a checkbox multiselect (catalog ∪ discovered ∪ custom), a "↻ Fetch from
+  provider" button, a custom-model-id add, and a default-model picker constrained to the selected set. Gemini added.
+- Validated: contracts+gateway+operator typecheck clean; `pnpm build` green; HTTP smoke of /api/llm/discover across
+  all types — catalog fallbacks correct, and the **live path provably reached OpenAI** (bad key returned OpenAI's real
+  401, then fell back).
+- **Adversarial review found 4 real defects — ALL FIXED** (1 false positive refuted): LLM-DISCOVER-001 (credential
+  exfiltration — a stored provider key could be sent to a caller-supplied baseUrl; now: with providerId and no caller
+  key, baseUrl+key come ONLY from the saved provider); gemini empty-output (maxOutputTokens 1024→8192 + MAX_TOKENS
+  message for 2.5 thinking models); operator default-model select desync on deselect; save allowed zero models (guard + disabled button).
+- Also fixed this session: client/operator Vite proxies now target `127.0.0.1:8080` (not `localhost`) — on dual-stack
+  hosts `localhost`→`::1` could hit a different process (e.g. a `kubectl port-forward` of the old gateway) instead of
+  Kravn on IPv4, which broke client login.
+
+## ✅ PASS 14 — Chat file attachments → model context (2026-06-29) [Part 1 of the file feature]
+Users can upload files in the client chat; their text is extracted server-side and injected into the model context
+(ChatGPT-style "attach a file and ask about it"). File types: PDF, Word (.docx), Excel/CSV, plain text/code.
+- **Deps**: @fastify/multipart (10MB/file limit) + extractors unpdf (PDF), mammoth (docx), xlsx (SheetJS, xlsx/csv).
+- **Migration 003**: `chat_attachments` (id, conversation_id, message_id nullable, user_id, name, mime, size, kind,
+  extracted_text, data_b64 — both `longtext` so big files fit on MySQL). Original bytes kept (base64) for re-download
+  + the future code-interpreter.
+- **Extract** (chat/extract.ts): PDF→text, docx→raw text, xlsx/csv→per-sheet CSV, text/code→utf-8; 200k-char cap;
+  binary files (NUL byte) skipped. Returns {kind, text}.
+- **Backend**: `POST /api/chat/conversations/:id/attachments` (multipart, ownership-checked) → extract + store →
+  returns metadata only. `postChatMessageSchema` gained `attachmentIds`; `send()` links them to the user message and
+  `buildSystemPrompt` injects all of the conversation's (owner-scoped) attachment text under a 120k budget. Repo
+  methods are user+conversation scoped; deleteConversation cascades attachments.
+- **Client**: composer 📎 button + hidden multi-file input, an upload tray with removable chips, attachments rendered
+  under each message; can send with files (default prompt if no text). `api.upload()` (FormData).
+- Validated: typecheck (all) + `pnpm build` green; HTTP smoke (CSV→spreadsheet/58 chars, TXT→text, foreign
+  conversation→404, migration 003 applied, bytes+text stored); repo smoke (link, owner-only context, B can't read or
+  hijack A's attachments, cascade-on-delete).
+- **Adversarial review: security dimension found NOTHING (multi-tenant scoping solid); 5 robustness/UX defects found
+  + ALL FIXED** (3 false positives refuted): F1 NUL bytes from UTF-16 files crashed Postgres INSERT (now stripped in
+  extract cap()); attach-2/3 in-flight upload racing a conversation switch orphaned the file / unsafe `!` (now capture
+  conv + discard stale results); attach-1 mid-send conversation switch pushed the reply into the wrong thread (now
+  guard UI updates by conv id); F2 large base64 INSERT could exceed MySQL packet → opaque 500 (addAttachment now
+  wrapped with a clear error). Re-validated: typecheck/build green + NUL-strip unit check (UTF-16 csv → no NUL).
+- **Part 2 (the "complete this Excel and get it back" code-interpreter) NOT yet built** — user chose a sandboxed
+  Python interpreter. Plan: do it as **Pyodide (CPython-in-WASM)** in a worker (real Python incl. pandas/openpyxl, but
+  WASM-sandboxed: no host FS/network, no system Python to deploy → respects the hard "no Python / seamless" constraint)
+  exposed to the chat as a tool that reads an attachment's bytes (data_b64), runs model-generated code, and returns an
+  output file for download. This is the next chunk.
+
+## ✅ PASS 15 — Code interpreter (Pyodide/WASM sandbox) [Part 2 of the file feature] (2026-06-29)
+"Completá este Excel y devolvémelo" — the model runs Python in a sandbox to transform the user's attached files and
+returns a downloadable result. Done with **Pyodide (CPython→WASM)** to honor "no system Python / seamless deploy":
+real Python, but WASM-sandboxed (no host filesystem/network), no Python to install, just an npm dep.
+- **Decision** (user, 2026-06-29): wanted a real Python code interpreter but dislikes Python + values seamless deploy;
+  and for the modest "complete an excel" use case a separate pod isn't worth it. Resolution: Pyodide in a worker
+  thread, in-process, behind a pluggable `CodeExecutor` interface (swap to a container/microVM pod later w/o rewrite).
+- **Offline libs**: bundled openpyxl + et_xmlfile wheels (~270KB) in apps/gateway/assets/pyodide-wheels; the worker
+  extracts the .whl (a zip) onto sys.path via stdlib zipfile — NO micropip, NO network. pandas/numpy deliberately not
+  bundled (heavier); openpyxl + stdlib (csv/json/etc.) covers spreadsheet completion. Dockerfile copies the assets.
+- **Executor** (interpreter/executor.ts + worker.ts): Pyodide lazy-loads on first run (boot stays fast); files passed
+  in/out as base64; a hard **timeout terminates the worker** (only reliable way to stop sync WASM) and it respawns;
+  executions **serialized via a promise-chain queue**; worker `unref`'d so it doesn't hold the process open.
+- **Chat integration**: built-in tool `kravn_run_python` (reserved name) added to the tool-loop; the loop routes that
+  name to `runInterpreter`, which feeds the conversation's attachment bytes (owner-scoped `getAttachmentFiles`) to the
+  sandbox, persists output files as new attachments, links them to the assistant message, and returns stdout/stderr.
+  System prompt tells the model the file names + how to produce a download.
+- **Anthropic tool-calling wired (2026-06-29)**: discovered the user's only provider is Anthropic (claude-sonnet-4-5),
+  so the interpreter never engaged ("I can't create Excel files"). Added Anthropic Messages tool support: complete()
+  now sends `tools` (name/description/input_schema), parses `tool_use` blocks → normalized tool_calls, and
+  `toAnthropicMessages()` translates the internal OpenAI-shaped history (incl. tool_use/tool_result, grouped) to
+  Anthropic blocks. Tool loop now runs for OpenAI-family AND Anthropic; **Gemini still plain (no tools yet)**.
+- **Download**: `GET /api/chat/attachments/:id/download` (auth, owner-scoped) streams the bytes; client renders
+  attachment chips as download buttons (auth fetch → blob → save).
+- Validated: typecheck (all) + `pnpm build` green. **Executor proven standalone**: real Excel completion
+  (total=price×qty → valid xlsx), error→traceback, stdout capture, infinite-loop→terminated at timeout, recovery after
+  kill. **Download HTTP round-trip** (md5 identical, 401 without auth). Gateway boots fine (interpreter lazy). The only
+  link not live-tested is the model *deciding* to call the tool (needs a real provider key); the tool-loop itself is
+  proven and every deterministic step (sandbox, persistence, download, Anthropic msg translation) is tested.
+- **Adversarial review: 2 confirmed (7 refuted incl. sandbox-escape/traversal) — BOTH FIXED + validated**: (high)
+  WASM linear memory was uncapped → a giant Python allocation could OOM the gateway process; fixed by capping the
+  worker's WASM heap to 768MB via `v8.setFlagsFromString('--wasm-max-mem-pages=12288')` inside the worker (execArgv
+  rejects V8 flags) — re-tested: a 2GB alloc now fails with MemoryError, the process survives, Excel still works.
+  (low) final tool round executed + persisted outputs then discarded the result as "limit reached" → now the loop
+  detects the limit BEFORE running that round's tools.
+- Notes/limits: interpreter wired for OpenAI-family + Anthropic (Gemini still plain); pandas/numpy not bundled
+  (openpyxl + stdlib only); WASM heap capped at 768MB/worker.
+
+## ✅ PASS 16 — Tools-are-plugins: code interpreter → native plugin; AGENTS.md; removed Hello (2026-06-29)
+User direction: keep it ordered — every tool must be a plugin (native, pre-loaded like Tool Guard), not hardcoded.
+- **AGENTS.md** (new, repo root): codifies the principle as Core principle #1 (+ multi-tenant scoping, cross-dialect
+  SQL, app-config/secrets, validate+review). This is the recurrence guard.
+- **Native plugin registry** (`plugins/native.ts` + PluginManager): a native (built-in) plugin is seeded as a DB
+  record (appears in the Plugins screen, enable/disable, config), **enabled by default on first install**, re-seeded
+  if removed, and skipped by the code-loader (it's in-code, with privileged runtime a sandboxed user plugin can't
+  have). `manager.isEnabled(id)` added; `setEnabled` allows native ids.
+- **Code interpreter is now `kravn-code-interpreter` native plugin** (type mcp-server, the `run_python` tool def lives
+  in native.ts). ChatService no longer hardcodes the tool — it offers it only when `plugins.isEnabled(CODE_INTERPRETER_ID)`
+  && the provider supports tool-calling. Execution stays native (Pyodide + attachment files) — the distinction the
+  AGENTS.md rule draws between native and user plugins. Toggle it off in the Plugins UI → the tool disappears from chat.
+- **Removed the "Hello MCP Server" example** (seed const, examples/plugins/hello-server.mjs, seeded copy, and the row
+  in the running DB). Tool Guard remains as the canonical example.
+- Validated: typecheck + build green; fresh-DB boot shows `kravn-code-interpreter` (source native, enabled) +
+  `tool-guard` (disabled), no hello-server. Existing DBs get the native plugin seeded on next restart.
+
+## ✅ PASS 17 — Code interpreter is a first-class plugin + plugin file-workspace context (2026-06-29)
+User direction: make the interpreter 100% a plugin with the same management as any plugin, and extend the plugin
+system if needed (welcomed — future clients can write advanced plugins). Done (parts A+B; ZIP bundles = part C, next).
+- **A) Native plugins are first-class mcp-server plugins.** native.ts is now a FACTORY (`nativePlugins(deps)`) that
+  builds a real `McpServerPlugin` (with `server.listTools/callTool`) for the code interpreter, with the Pyodide
+  executor injected (privileged in-code runtime a sandboxed user plugin can't have). PluginManager takes the native
+  plugins in its constructor, keeps a `native` map, seeds+enables them, and `mcpPlugin`/`enabledMcpServers`/`serverCallTool`
+  now resolve native ids → so they flow through the EXACT same pipeline as imported plugins: `syncPluginServers` →
+  `plg_<id>` server + registry Tool rows → appear in the Tools screen, composable into virtual servers, executed via
+  `registry.invokeTool` → upstream plugin shim → `serverCallTool` → native `server.callTool`. No more hardcoded tool
+  or special-case in ChatService.
+- **B) File-workspace context for tool calls (general capability).** SDK: `McpToolFile`, `McpCallContext {files,actor}`,
+  optional 4th `ctx` arg on `McpServerHandlers.callTool`, and `McpToolResult.files`. Threaded `invokeTool(…, ctx)` →
+  `upstream.callTool(…, ctx)` → (only the in-process plugin shim via `PluginClientLike.callToolCtx`; real MCP clients
+  never get it) → `serverCallTool(…, ctx)` → `server.callTool(…, ctx)`. Chat passes the conversation's attachments as
+  the workspace and persists any `result.files` as downloadable attachments (replacing the old runInterpreter bypass).
+- **Chat**: auto-offers the interpreter's registry tools when the plugin is enabled (also composable into vservers);
+  all tools (incl. interpreter) dispatch through `registry.invokeTool` with the file workspace; `persistToolFiles`
+  saves output files + strips bytes before feeding the result back to the model.
+- Validated: plugin-sdk + gateway typecheck + `pnpm build` green. **End-to-end smoke via the registry**: the
+  interpreter appears as a registry tool under `plg_kravn-code-interpreter`, shows in the global Tools list, and
+  `registry.invokeTool(toolId, {code}, actor, {files:[xlsx]})` completed the Excel (totals 6,10) and returned the
+  output file — proving the file-ctx-in / files-out path through the normal plugin pipeline.
+- **Adversarial review: 3 confirmed (2 refuted) — ALL FIXED + re-validated**: (F1) tool-result `files` were persisted
+  as user attachments with no cap and from ANY upstream → now only honored from trusted in-process plugin tools
+  (toolId `tl_plg_…`) with 10-file/15MB caps + shape validation; (native-delete) deleting a native plugin re-seeded it
+  enabled → `remove()` now rejects native ids + the operator hides Delete for built-ins; (canRunCode) the run_python
+  prompt hint used a generic "any tool" flag → now keyed to the interpreter's actual availability. Re-validated:
+  trusted interpreter still returns files; remove(native) rejected.
+- AGENTS.md principle #1 already codifies "tools are plugins"; this makes the interpreter actually obey it.
+
+## ✅ PASS 18 — Deploy: Helm chart current + GitHub Actions publishing to the owner's GHCR (2026-06-29)
+Goal: the MCP gateway installable on Worldsys's cluster from the USER's own registry (not Worldsys's org).
+- **Helm chart (charts/kravn) updated**: added `role` (all|gateway|chat, default all), `publicUrl`, `clientUrl`; a
+  generic `database` block (Postgres/MySQL/SQL Server via DATABASE_URL, supersedes the Postgres-only block, back-compat
+  kept); bumped memory limit to 1280Mi (the Pyodide interpreter caps WASM at ~768MB) with a note to drop to 512Mi for
+  role=gateway; default image → `ghcr.io/OWNER/kravn` (CI rewrites OWNER at package time). Still zero-override install
+  (SQLite PVC + auto-gen secret). Validated: `helm lint` clean; `helm template` renders defaults + overrides
+  (role=gateway, external mysql, ingress, 2 replicas, shared secret).
+- **.github/workflows/release.yml**: on tag `v*.*.*` (or manual) → build the gateway image (root Dockerfile) and push
+  image + Helm chart (OCI) to **ghcr.io/<repo-owner>** using the built-in GITHUB_TOKEN (no extra secrets). Uses
+  `${GITHUB_REPOSITORY_OWNER,,}` so it publishes under the user's account by construction — never Worldsys's org.
+- **.github/workflows/ci.yml**: push/PR → pnpm install + `pnpm build` + `pnpm typecheck` + `helm lint`.
+- **Dockerfile**: added the native toolchain (python3/make/g++) to the build stage and (temporarily, then purged) to
+  the runtime stage so better-sqlite3 always builds even if no prebuilt binary is fetched.
+- NOT yet done by the user (manual, outward-facing — left for them): `git init` + create a GitHub repo under THEIR
+  account + push + `git tag v0.1.0 && git push --tags` to trigger the release. Then on Worldsys:
+  `helm install kravn oci://ghcr.io/<owner>/charts/kravn --version 0.1.0` (make the GHCR packages public or add an
+  imagePullSecret). Docker build not locally verifiable here (no Docker in this env); the CI runs it.
+
+### Deferred to later phases (intentional, not missing)
+ZIP plugin bundles (manifest+entry+assets, e.g. for advanced plugins) — part C of the plugin extension, designed not built ·
+multi-replica session affinity & durable event store · gRPC-to-MCP reflection · OpenTelemetry export ·
+dedicated API tokens for external MCP clients · resources/prompts test playground (tools playground is done) ·
+live smoke against real pg/mysql/mssql servers · SSO one-time-code (vs token-in-URL) hardening ·
+project-document RAG/embeddings · agents/knowledge-bases port from old kravn ·
+Gemini/Anthropic tool-calling (incl. interpreter for them) — currently OpenAI-family only ·
+interpreter pandas/numpy bundle + WASM memory cap + dedicated interpreter pod (if usage grows) ·
+attachment image/vision support · object-storage for attachment bytes (currently base64 in DB).

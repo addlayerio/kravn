@@ -1,0 +1,25 @@
+{
+  "name": "kravn",
+  "private": true,
+  "version": "0.1.0",
+  "description": "Kravn — a seamless MCP gateway, registry and proxy + operator/client apps.",
+  "type": "module",
+  "license": "Apache-2.0",
+  "packageManager": "pnpm@9.15.0",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "build": "nx run-many -t build",
+    "typecheck": "nx run-many -t typecheck",
+    "build:pnpm": "pnpm -r build",
+    "dev": "pnpm --filter @kravn/gateway dev",
+    "dev:gateway": "pnpm --filter @kravn/gateway dev",
+    "dev:operator": "pnpm --filter @kravn/operator dev",
+    "dev:client": "pnpm --filter @kravn/client dev",
+    "start": "node apps/gateway/dist/main.js"
+  },
+  "devDependencies": {
+    "nx": "^20.3.3"
+  }
+}

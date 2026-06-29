@@ -1,0 +1,32 @@
+# Kravn — local single-container run. Boots with SQLite, zero extra config.
+#   docker compose up --build   ->   open http://localhost:8080
+#
+# To use Postgres instead, uncomment the `db` service and the DATABASE_URL line.
+services:
+  kravn:
+    build: .
+    image: kravn:local
+    ports:
+      - '8080:8080'
+    environment:
+      # Everything else is configured at runtime from the admin UI.
+      # DATABASE_URL: postgres://kravn:kravn@db:5432/kravn
+      NODE_ENV: production
+    volumes:
+      - kravn-data:/data
+    restart: unless-stopped
+    # depends_on:
+    #   - db
+
+  # db:
+  #   image: postgres:16-alpine
+  #   environment:
+  #     POSTGRES_USER: kravn
+  #     POSTGRES_PASSWORD: kravn
+  #     POSTGRES_DB: kravn
+  #   volumes:
+  #     - kravn-pg:/var/lib/postgresql/data
+
+volumes:
+  kravn-data:
+  # kravn-pg:

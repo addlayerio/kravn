@@ -1,0 +1,14 @@
+node_modules
+**/node_modules
+**/dist
+apps/gateway/public
+.nx
+data
+.git
+.gitignore
+*.log
+.env
+.env.local
+charts
+*.md
+.vscode

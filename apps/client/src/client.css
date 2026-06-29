@@ -1,0 +1,261 @@
+/* Client chat layout — builds on the shared @kravn/ui design tokens. */
+.chat-shell {
+  display: grid;
+  grid-template-columns: 280px 1fr;
+  height: 100vh;
+}
+.chat-sidebar {
+  background: var(--bg-sidebar);
+  border-right: 1px solid var(--border);
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+.chat-sidebar .brand {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 16px 18px;
+  height: 56px;
+  border-bottom: 1px solid var(--border);
+  font-weight: 700;
+}
+.chat-sidebar .convs {
+  flex: 1;
+  overflow: auto;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.conv-item {
+  padding: 0.55rem 0.7rem;
+  border-radius: 8px;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 13.5px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.conv-item:hover {
+  background: var(--hover);
+  color: var(--text);
+}
+.conv-item.active {
+  background: var(--accent-bg);
+  color: var(--accent);
+}
+.chat-sidebar .foot {
+  border-top: 1px solid var(--border);
+  padding: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.chat-main {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+.chat-head {
+  border-bottom: 1px solid var(--border);
+  padding: 12px 20px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.chat-thread {
+  flex: 1;
+  overflow: auto;
+  padding: 1.5rem;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+}
+.msg {
+  display: flex;
+  margin-bottom: 1rem;
+}
+.msg.user {
+  justify-content: flex-end;
+}
+.bubble {
+  max-width: 75%;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  line-height: 1.55;
+}
+.msg.user .bubble {
+  background: var(--brand);
+  color: var(--brand-fg);
+}
+.msg.assistant .bubble {
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+}
+.composer {
+  border-top: 1px solid var(--border);
+  padding: 1rem;
+  display: flex;
+  gap: 0.5rem;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.composer textarea {
+  resize: none;
+  flex: 1;
+  font-family: var(--font-sans);
+}
+.chat-empty {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+  gap: 0.75rem;
+}
+
+/* Sidebar sections (Projects / Chats) */
+.side-section {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 10px 4px;
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+.side-section .add {
+  cursor: pointer;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font-size: 16px;
+  line-height: 1;
+  padding: 0 4px;
+}
+.side-section .add:hover {
+  color: var(--accent);
+}
+
+/* Project panel (main area) */
+.project-panel {
+  flex: 1;
+  overflow: auto;
+  padding: 1.5rem;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 1.25rem;
+}
+.project-panel h2 {
+  margin: 0;
+}
+.panel-card {
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  padding: 1rem;
+  background: var(--bg-surface);
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+}
+.panel-card h3 {
+  margin: 0;
+  font-size: 14px;
+}
+.panel-card textarea {
+  width: 100%;
+  resize: vertical;
+  font-family: var(--font-sans);
+  box-sizing: border-box;
+}
+.doc-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.doc-item .doc-meta {
+  color: var(--text-muted);
+  font-size: 12px;
+}
+
+/* Chat attachments */
+.composer-wrap {
+  border-top: 1px solid var(--border);
+}
+.composer-wrap .composer {
+  border-top: none;
+}
+.att-tray {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  padding: 0.6rem 1rem 0;
+  max-width: 860px;
+  width: 100%;
+  margin: 0 auto;
+  box-sizing: border-box;
+}
+.att-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.25rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--bg-surface);
+  font-size: 12.5px;
+  white-space: nowrap;
+}
+.att-x {
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: var(--text-muted);
+  font-size: 15px;
+  line-height: 1;
+  padding: 0 2px;
+}
+.att-x:hover {
+  color: var(--ws-danger, #d33);
+}
+.msg-atts {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin-top: 0.35rem;
+}
+.msg.user .msg-atts {
+  justify-content: flex-end;
+}
+.att-dl {
+  cursor: pointer;
+  font: inherit;
+  font-size: 12.5px;
+  color: inherit;
+}
+.att-dl:hover {
+  border-color: var(--accent);
+}
+.att-dl .dl-icon {
+  color: var(--text-muted);
+}

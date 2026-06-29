@@ -1,0 +1,30 @@
+Kravn is installed. 🎛️
+
+{{- if .Values.ingress.enabled }}
+It is reachable via your Ingress at:
+{{- range .Values.ingress.hosts }}
+  http{{ if $.Values.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+No Ingress is enabled (the seamless default). Reach the admin UI with a port-forward:
+
+  kubectl port-forward svc/{{ include "kravn.fullname" . }} 8080:{{ .Values.service.port }}
+
+then open http://localhost:8080 and complete the one-time setup wizard.
+{{- end }}
+
+Data:
+{{- if .Values.postgres.enabled }}
+  Using external PostgreSQL.
+{{- else }}
+  Using embedded SQLite on a {{ .Values.persistence.size }} PersistentVolumeClaim.
+{{- end }}
+
+{{- if and (gt (int .Values.replicaCount) 1) (not (or .Values.secret .Values.existingSecret)) }}
+
+⚠️  replicaCount > 1 without a shared `secret` is unsafe: each pod will generate its own
+    signing key. Set `secret` (or `existingSecret`) so all replicas share one key.
+{{- end }}
+
+Everything else (security, transports, federation, auth providers, observability) is configured
+at runtime from the Settings page — no redeploy required.

@@ -1,0 +1,114 @@
+# Kravn Helm values.
+# Designed to `helm install kravn ./charts/kravn` with ZERO overrides:
+#   - SQLite on a small PVC (no external DB), secret auto-generated and persisted.
+#   - No Ingress, no ServiceMonitor, no CRDs required.
+#   - SSRF allows in-cluster networks by default (configurable later in the UI).
+# Harden / scale later by enabling the sections below.
+
+replicaCount: 1
+
+image:
+  # Published by CI to the repo owner's GHCR. The release workflow rewrites this to ghcr.io/<owner>/kravn
+  # when packaging the chart, so `helm install` works with zero overrides.
+  repository: ghcr.io/OWNER/kravn
+  tag: ""        # defaults to .Chart.AppVersion
+  pullPolicy: IfNotPresent
+
+imagePullSecrets: []
+nameOverride: ""
+fullnameOverride: ""
+
+# Which slice of the backend this deployment serves (same image):
+#   all     -> everything (control-plane API + MCP endpoint + operator UI + chat). Default.
+#   gateway -> control-plane API + MCP endpoint + operator UI only (no end-user chat / code interpreter).
+#   chat    -> end-user chat API only.
+# For a pure MCP gateway at minimal memory, set role: gateway (the Pyodide code interpreter never loads).
+role: "all"
+
+# Externally-visible URL (OAuth callbacks / absolute links). Empty -> derived from the incoming request.
+publicUrl: ""
+# Base URL of the separate end-user client app (only needed if you deploy apps/client AND use SSO from it).
+clientUrl: ""
+
+service:
+  type: ClusterIP
+  port: 80
+
+# Persistent storage for the embedded SQLite DB + auto-generated secret key.
+# Required for single-replica zero-config operation. Disable only when using Postgres
+# AND providing `secret` below (so restarts keep a stable signing key).
+persistence:
+  enabled: true
+  size: 1Gi
+  storageClass: ""
+  accessMode: ReadWriteOnce
+
+# Optional external database (PostgreSQL / MySQL·MariaDB / SQL Server). When enabled, set `url`
+# (or point at an existing secret). Unset -> embedded SQLite on the PVC. Takes precedence over `postgres`.
+#   postgres://user:pass@host:5432/db?sslmode=require
+#   mysql://user:pass@host:3306/db
+#   sqlserver://user:pass@host:1433/db?encrypt=true
+database:
+  enabled: false
+  url: ""
+  existingSecret: ""      # secret containing key DATABASE_URL
+  existingSecretKey: DATABASE_URL
+
+# Deprecated alias for `database` (Postgres-only). Prefer `database` above.
+postgres:
+  enabled: false
+  url: ""
+  existingSecret: ""
+  existingSecretKey: DATABASE_URL
+
+# Shared signing/encryption secret. Leave empty for single-replica (auto-generated on the PVC).
+# REQUIRED for replicaCount > 1 so all pods share one key. Provide directly or via existingSecret.
+secret: ""
+existingSecret: ""        # secret containing key KRAVN_SECRET
+existingSecretKey: KRAVN_SECRET
+
+# Extra environment (advanced; most config lives in the app UI, not here).
+extraEnv: []
+#  - name: KRAVN_PUBLIC_URL
+#    value: https://kravn.example.com
+
+ingress:
+  enabled: false
+  className: ""
+  annotations: {}
+  hosts:
+    - host: kravn.local
+      paths:
+        - path: /
+          pathType: Prefix
+  tls: []
+
+metrics:
+  serviceMonitor:
+    enabled: false        # requires the Prometheus Operator CRD
+    interval: 30s
+    labels: {}
+
+resources:
+  # The default (role: all) ships the Pyodide code interpreter, whose WASM sandbox is capped at ~768MB
+  # per run — so the pod needs headroom. For a pure gateway (role: gateway) you can lower the limit to ~512Mi.
+  requests:
+    cpu: 100m
+    memory: 256Mi
+  limits:
+    memory: 1280Mi
+
+podAnnotations: {}
+podSecurityContext:
+  runAsNonRoot: true
+  runAsUser: 1000
+  fsGroup: 1000
+securityContext:
+  allowPrivilegeEscalation: false
+  readOnlyRootFilesystem: false
+  capabilities:
+    drop: ["ALL"]
+
+nodeSelector: {}
+tolerations: []
+affinity: {}
