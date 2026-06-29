@@ -82,8 +82,8 @@ manual DDL. Pick the engine with `DATABASE_URL`; the same migrations run on all 
 
 Migrations run automatically on boot; the platform creates/updates every table itself.
 
-Set `KRAVN_DB_SCHEMA` to build all tables inside a specific schema (PostgreSQL / SQL Server) — it's
-auto-created if missing. Empty means the default schema (`public` / `dbo`); not used for SQLite, and on
+Set `KRAVN_DB_SCHEMA` to build all tables inside a specific schema (**PostgreSQL only**) — it's
+auto-created if missing. Empty means the default `public` schema. Ignored on SQL Server/SQLite; on
 MySQL the schema is the database (set it in `DATABASE_URL`).
 
 ### Roles (one image, separate pods)

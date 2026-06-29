@@ -56,6 +56,9 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const secret = resolveSecret(env);
 
   const knex = createKnex(env.db);
+  if (env.db.schema && env.db.client !== 'pg') {
+    log.warn({ client: env.db.client }, 'KRAVN_DB_SCHEMA is only applied on PostgreSQL; ignored for this dialect');
+  }
   await runMigrations(knex, env.db);
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);

@@ -16,7 +16,7 @@ export function createKnex(db: DbConfig): Knex {
     fs.mkdirSync(path.dirname(db.file), { recursive: true });
   }
 
-  const useSchema = db.schema && (db.client === 'pg' || db.client === 'mssql');
+  const useSchema = db.schema && db.client === 'pg';
 
   const config: Knex.Config = {
     client: db.client,

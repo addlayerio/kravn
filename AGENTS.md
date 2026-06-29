@@ -36,11 +36,13 @@ Schema changes go through versioned migrations in `db/migrations.ts` (append, ne
 PK/unique/indexed columns are `varchar(n)`; large/JSON columns are `text` (no DB default — MySQL forbids
 it); booleans are `integer` 0/1. Use `longtext` for big payloads so they fit on MySQL.
 
-**Always reference tables UNQUALIFIED** (`users`, never `public.users` / `dbo.users` / `<schema>.users`).
-The DB schema is operator-configured via `KRAVN_DB_SCHEMA` and applied centrally: Knex `searchPath` +
+**Always reference tables UNQUALIFIED** (`users`, never `public.users` / `<schema>.users`). The DB schema is
+operator-configured via `KRAVN_DB_SCHEMA` (**PostgreSQL only**) and applied centrally: Knex `searchPath` +
 `migrations.schemaName` (db/knex.ts) and a `CREATE SCHEMA IF NOT EXISTS` in `runMigrations` (db/migrations.ts).
 So any new migration / repo SQL is schema-correct automatically — never hardcode a schema name, never assume
-`public`/`dbo`, and don't qualify identifiers. (MySQL: schema == database, set in `DATABASE_URL`; SQLite: N/A.)
+`public`, and don't qualify identifiers. (Verified live: on SQL Server knex does NOT honor searchPath for DDL —
+tables land in `dbo` — so KRAVN_DB_SCHEMA is pg-only and ignored elsewhere with a warning. MySQL: schema ==
+database, set in `DATABASE_URL`; SQLite: N/A.)
 
 ### 4. Config lives in the app, secrets are fail-closed
 Only true infra is env (DB, secret, port, public URL, role). Everything else is runtime DB-backed

@@ -53,8 +53,8 @@ database:
   url: ""
   existingSecret: ""      # secret containing key DATABASE_URL
   existingSecretKey: DATABASE_URL
-  # Build all tables inside this schema (PostgreSQL / SQL Server); auto-created if missing.
-  # Empty -> default schema (public / dbo). Not used for SQLite; on MySQL the schema is the database.
+  # Build all tables inside this schema (PostgreSQL only); auto-created if missing. Empty -> public.
+  # Ignored on SQL Server/SQLite; on MySQL the schema is the database (set it in the url).
   schema: ""
 
 # Deprecated alias for `database` (Postgres-only). Prefer `database` above.

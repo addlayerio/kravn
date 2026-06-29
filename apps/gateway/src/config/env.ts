@@ -33,7 +33,7 @@ const envSchema = z.object({
   KRAVN_ROLE: z.enum(['all', 'gateway', 'chat']).default('all'),
   /** Base URL of the separate end-user client SPA, used as an SSO return target (e.g. https://chat.example.com). */
   KRAVN_CLIENT_URL: z.string().default(''),
-  /** Build all tables inside this DB schema (PostgreSQL / SQL Server). Empty -> the default schema. */
+  /** Build all tables inside this DB schema (PostgreSQL only). Empty -> the default schema. */
   KRAVN_DB_SCHEMA: z.string().default(''),
 });
 

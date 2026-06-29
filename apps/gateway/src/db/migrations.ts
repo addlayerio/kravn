@@ -330,12 +330,8 @@ const migrationSource: Knex.MigrationSource<Migration> = {
 
 /** Run all pending migrations. Safe to call on every boot. */
 export async function runMigrations(knex: Knex, db?: DbConfig): Promise<void> {
-  if (db?.schema) {
-    if (db.client === 'pg') {
-      await knex.raw(`create schema if not exists "${db.schema}"`);
-    } else if (db.client === 'mssql') {
-      await knex.raw(`if not exists (select 1 from sys.schemas where name = '${db.schema}') exec('create schema [${db.schema}]')`);
-    }
+  if (db?.schema && db.client === 'pg') {
+    await knex.raw(`create schema if not exists "${db.schema}"`);
   }
   await knex.migrate.latest({ migrationSource });
 }
