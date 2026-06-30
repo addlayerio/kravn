@@ -40,7 +40,11 @@ it); booleans are `integer` 0/1. Use `longtext` for big payloads so they fit on 
 operator-configured via `KRAVN_DB_SCHEMA` (**PostgreSQL + SQL Server**) and applied centrally so any new
 migration / repo SQL is schema-correct automatically — never hardcode a schema name, never assume `public`,
 and don't qualify identifiers. How it's applied per dialect (all in db/knex.ts + `runMigrations` in db/migrations.ts):
-- **PostgreSQL**: Knex `searchPath` + `migrations.schemaName` + `CREATE SCHEMA IF NOT EXISTS`.
+- **PostgreSQL**: Knex `searchPath` + `migrations.schemaName`; `runMigrations` creates the schema only if it
+  is genuinely missing (it looks it up in `information_schema.schemata` first — `CREATE SCHEMA IF NOT EXISTS`
+  checks the CREATE-on-database privilege *before* the existence check, so an unconditional create breaks a
+  least-privilege user that already owns its schema). On PG 15+/Azure `public` is not writable by a non-owner,
+  so operators give the app user its own schema (pre-created `AUTHORIZATION <user>`, or grant CREATE on the DB).
 - **SQL Server**: there is no per-session search_path — unqualified names resolve through the connecting
   login's `DEFAULT_SCHEMA`. So `runMigrations` does `CREATE SCHEMA` + `ALTER USER ... WITH DEFAULT_SCHEMA`
   (best-effort) and verifies via `SCHEMA_NAME()`. Verified live: a non-sysadmin login gets repointed in-session

@@ -361,12 +361,30 @@ async function applyMssqlSchema(knex: Knex, schema: string): Promise<SchemaSetup
   return { requested: true, schema, applied: effective === schema, effective };
 }
 
+/**
+ * Ensure the target schema exists on PostgreSQL without requiring CREATE-on-database when it already does.
+ *
+ * `CREATE SCHEMA IF NOT EXISTS` checks the CREATE-on-database privilege BEFORE the existence check, so it
+ * errors for a least-privilege app user even when the schema is already there. We look it up first and only
+ * attempt creation when it is genuinely missing — so an operator can pre-create it
+ * (`CREATE SCHEMA <s> AUTHORIZATION <app_user>`) and run Kravn without ever granting CREATE on the database.
+ * The schema name is a validated identifier (env.resolveSchema), so it is safe to inline.
+ */
+async function ensurePgSchema(knex: Knex, schema: string): Promise<void> {
+  const found = (await knex.raw('select 1 from information_schema.schemata where schema_name = ?', [schema])) as {
+    rows?: unknown[];
+  };
+  if (!found?.rows || found.rows.length === 0) {
+    await knex.raw(`create schema if not exists "${schema}"`);
+  }
+}
+
 /** Run all pending migrations. Safe to call on every boot. Returns how the requested schema was applied. */
 export async function runMigrations(knex: Knex, db?: DbConfig): Promise<SchemaSetupResult> {
   const schema = db?.schema;
   let result: SchemaSetupResult = { requested: !!schema, schema, applied: false };
   if (schema && db?.client === 'pg') {
-    await knex.raw(`create schema if not exists "${schema}"`);
+    await ensurePgSchema(knex, schema);
     result = { requested: true, schema, applied: true, effective: schema };
   } else if (schema && db?.client === 'mssql') {
     result = await applyMssqlSchema(knex, schema);

@@ -54,8 +54,11 @@ database:
   existingSecret: ""      # secret containing key DATABASE_URL
   existingSecretKey: DATABASE_URL
   # Build all tables inside this schema (PostgreSQL + SQL Server); auto-created if missing. Empty -> default.
-  # PostgreSQL: applied via searchPath. SQL Server: applied by repointing the login DEFAULT_SCHEMA — use a
-  # NON-sysadmin login (a sysadmin like "sa" maps to dbo and the schema is ignored with a warning).
+  # PostgreSQL: applied via searchPath. RECOMMENDED on managed Postgres (PG 15+/Azure) because "public" is
+  # not writable by a non-owner: either pre-create the schema owned by the app user
+  # (CREATE SCHEMA <s> AUTHORIZATION <user> -- no CREATE-on-database needed) or grant the user CREATE on the
+  # database. SQL Server: applied by repointing the login DEFAULT_SCHEMA — use a NON-sysadmin login (a
+  # sysadmin like "sa" maps to dbo and the schema is ignored with a warning).
   # Not applicable to SQLite; on MySQL the schema is the database (set it in the url).
   schema: ""
 
