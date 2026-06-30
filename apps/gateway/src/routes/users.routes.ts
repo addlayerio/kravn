@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { createUserSchema } from '@kravn/contracts';
+import { createUserSchema, updateUserRoleSchema } from '@kravn/contracts';
 import type { Services } from '../services.js';
 import { AuthError } from '../auth/auth.service.js';
 import { currentUser } from '../auth/plugin.js';
@@ -34,6 +34,28 @@ export function userRoutes(app: FastifyInstance, s: Services): void {
       if (err instanceof AuthError) return sendError(reply, err.status, err.code, err.message);
       throw err;
     }
+  });
+
+  app.patch('/api/users/:id', { preHandler: [app.authenticate, app.authorize('users.write')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const dto = parse(reply, updateUserRoleSchema, req.body);
+    if (!dto) return;
+    const outcome = await withAdminLock(async (): Promise<'ok' | 'not_found' | 'last_admin'> => {
+      const target = await s.repos.users.getById(id);
+      if (!target) return 'not_found';
+      // Anti-lockout: don't demote the last admin out of the admin role.
+      if (target.role === 'admin' && dto.role !== 'admin' && (await s.repos.users.countByRole('admin')) <= 1) {
+        return 'last_admin';
+      }
+      if (target.role !== dto.role) await s.repos.users.setRole(id, dto.role);
+      return 'ok';
+    });
+    if (outcome === 'not_found') return sendError(reply, 404, 'not_found', 'User not found.');
+    if (outcome === 'last_admin') {
+      return sendError(reply, 400, 'last_admin', 'Cannot remove the last admin. Promote another account to admin first.');
+    }
+    const u = (await s.repos.users.getById(id))!;
+    return { user: { id: u.id, email: u.email, name: u.name, role: u.role, createdAt: u.createdAt, updatedAt: u.updatedAt } };
   });
 
   app.delete('/api/users/:id', { preHandler: [app.authenticate, app.authorize('users.write')] }, async (req, reply) => {

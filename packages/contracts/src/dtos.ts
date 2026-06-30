@@ -293,6 +293,9 @@ export const createUserSchema = z.object({
 });
 export type CreateUserRequest = z.infer<typeof createUserSchema>;
 
+export const updateUserRoleSchema = z.object({ role: roleSchema });
+export type UpdateUserRoleRequest = z.infer<typeof updateUserRoleSchema>;
+
 // ─── Local prompts ─────────────────────────────────────────────────────────────────────────────────
 
 export const upsertLocalPromptSchema = z.object({

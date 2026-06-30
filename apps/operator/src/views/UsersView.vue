@@ -47,6 +47,18 @@ async function save() {
   }
 }
 
+async function changeRole(u: User, role: string) {
+  if (u.role === role) return;
+  try {
+    await api.patch(`/api/users/${u.id}`, { role });
+    u.role = role as User['role'];
+    toast.success(`Role updated to ${role}.`);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Could not update role.');
+    await load(); // revert the <select> to the server's value
+  }
+}
+
 async function remove(u: User) {
   if (!confirm(`Delete user "${u.email}"?`)) return;
   try {
@@ -75,7 +87,18 @@ async function remove(u: User) {
         <tr v-for="u in users" :key="u.id">
           <td style="font-weight: 600">{{ u.email }}</td>
           <td>{{ u.name || '—' }}</td>
-          <td><span class="badge">{{ u.role }}</span></td>
+          <td>
+            <select
+              v-if="auth.can('users.write') && u.id !== auth.user?.id"
+              :value="u.role"
+              @change="changeRole(u, ($event.target as HTMLSelectElement).value)"
+            >
+              <option value="viewer">Viewer</option>
+              <option value="editor">Editor</option>
+              <option value="admin">Admin</option>
+            </select>
+            <span v-else class="badge">{{ u.role }}</span>
+          </td>
           <td>
             <button
               v-if="auth.can('users.write') && u.id !== auth.user?.id"
