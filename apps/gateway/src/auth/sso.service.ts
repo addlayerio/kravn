@@ -274,7 +274,12 @@ export class SsoService {
       issuer: c.saml.issuer || 'kravn',
       idpCert: certs.length <= 1 ? certs[0] ?? '' : certs,
       callbackUrl: `${baseUrl}/api/auth/sso/saml/callback`,
+      // Require the ASSERTION to be signed (the identity is cryptographically verified), but do NOT require
+      // a signature on the Response envelope. Entra/Azure AD signs the assertion by default and leaves the
+      // response unsigned; node-saml v5 flipped wantAuthnResponseSigned to default true, which rejected
+      // those with "Invalid document signature". Assertion-signed-only is the standard, secure SAML mode.
       wantAssertionsSigned: true,
+      wantAuthnResponseSigned: false,
       ...(c.saml.idpIssuer ? { idpIssuer: c.saml.idpIssuer } : {}),
     });
   }
