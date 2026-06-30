@@ -106,27 +106,43 @@ function parseMssql(dsn: string): DbConfig {
  * postgres:// | postgresql://   -> PostgreSQL (pg)
  * mysql:// | mariadb://         -> MySQL / MariaDB (mysql2)
  * sqlserver:// | mssql://       -> Microsoft SQL Server (tedious)
- * sqlite:// | <path>            -> SQLite file
+ * sqlite:// | file:// | <path>  -> SQLite file
+ *
+ * SQLAlchemy-style "dialect+driver://" DSNs (e.g. postgresql+psycopg://, mysql+pymysql://,
+ * mssql+pyodbc://) are accepted too — the "+driver" suffix the Node drivers don't understand is
+ * stripped. An unknown "scheme://" fails loudly instead of being silently treated as a file path
+ * (which would otherwise mkdir a directory named after the whole connection string).
  */
 function resolveDb(databaseUrl: string, dataDir: string): DbConfig {
   const url = databaseUrl.trim();
   if (!url) {
     return sqlite(path.resolve(dataDir, 'kravn.sqlite'));
   }
-  if (url.startsWith('postgres://') || url.startsWith('postgresql://')) {
-    return { kind: 'pg', client: 'pg', connection: url };
+
+  const scheme = url.match(/^([a-z][a-z0-9+.-]*):\/\//i)?.[1]?.toLowerCase();
+  // Rewrite the leading "<anything>://" to a canonical scheme the Node driver accepts.
+  const canonical = (s: string) => url.replace(/^[^:]+:\/\//, `${s}://`);
+
+  if (scheme && /^postgres(ql)?(\+\w+)?$/.test(scheme)) {
+    return { kind: 'pg', client: 'pg', connection: canonical('postgres') };
   }
-  if (url.startsWith('mysql://') || url.startsWith('mariadb://')) {
-    return { kind: 'mysql', client: 'mysql2', connection: url.replace(/^mariadb:\/\//, 'mysql://') };
+  if (scheme && /^(mysql|mariadb)(\+\w+)?$/.test(scheme)) {
+    return { kind: 'mysql', client: 'mysql2', connection: canonical('mysql') };
   }
-  if (url.startsWith('sqlserver://') || url.startsWith('mssql://')) {
-    return parseMssql(url);
+  if (scheme && /^(sqlserver|mssql)(\+\w+)?$/.test(scheme)) {
+    return parseMssql(canonical('sqlserver'));
   }
-  if (url.startsWith('sqlite://')) {
-    const file = url.replace(/^sqlite:\/\//, '');
+  if (scheme === 'sqlite' || scheme === 'file') {
+    const file = url.replace(/^[a-z]+:\/\//i, '');
     return sqlite(path.resolve(file || path.join(dataDir, 'kravn.sqlite')));
   }
-  // Treat anything else as a sqlite file path.
+  if (scheme) {
+    throw new Error(
+      `Unsupported DATABASE_URL scheme "${scheme}://". Use postgres://, mysql://, sqlserver:// or sqlite:// ` +
+        `(SQLAlchemy "+driver" forms like postgresql+psycopg:// are also accepted).`,
+    );
+  }
+  // No "scheme://" at all -> a bare filesystem path to a SQLite file.
   return sqlite(path.resolve(url));
 }
 
