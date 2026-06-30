@@ -15,6 +15,8 @@ interface SpConfig {
   tenantId: string;
   clientId: string;
   clientSecret: string;
+  /** M365 geo region — REQUIRED by the Graph Search API for app-only requests (e.g. NAM, EUR, BRA). */
+  region: string;
 }
 
 class SpError extends Error {}
@@ -23,13 +25,14 @@ function readConfig(config: Record<string, unknown>): SpConfig {
   const tenantId = String(config.tenantId ?? '').trim();
   const clientId = String(config.clientId ?? '').trim();
   const clientSecret = String(config.clientSecret ?? '').trim();
+  const region = String(config.region ?? '').trim().toUpperCase();
   if (!tenantId || !clientId || !clientSecret) {
     throw new SpError(
       'SharePoint is not configured. Set Tenant ID, Client ID and Client Secret in the plugin config ' +
-        '(an Entra app registration with Application permissions Sites.Read.All + Files.Read.All).',
+        '(an Entra app registration with Application permissions Sites.Read.All or Sites.Selected + Files.Read.All).',
     );
   }
-  return { tenantId, clientId, clientSecret };
+  return { tenantId, clientId, clientSecret, region };
 }
 
 // App-only access tokens (~1h) cached per tenant+client.
@@ -151,8 +154,15 @@ async function search(cfg: SpConfig, args: Record<string, unknown>): Promise<Mcp
   const query = String(args.query ?? '').trim();
   if (!query) return text('Error: query is required.', true);
   const size = Math.min(25, Math.max(1, Number(args.size) || 10));
+  if (!cfg.region) {
+    return text(
+      'Search needs a Region. The Microsoft Graph Search API requires a "region" for app-only requests — ' +
+        "set the Region field in the plugin config to your M365 tenant's geo (e.g. NAM, EUR, BRA, APC, GBR, IND).",
+      true,
+    );
+  }
   const data = await graph(cfg, 'POST', '/search/query', {
-    requests: [{ entityTypes: ['driveItem'], query: { queryString: query }, from: 0, size }],
+    requests: [{ entityTypes: ['driveItem'], query: { queryString: query }, from: 0, size, region: cfg.region }],
   });
   const hits = data?.value?.[0]?.hitsContainers?.[0]?.hits ?? [];
   if (!hits.length) return text(`No SharePoint files matched "${query}".`);
@@ -249,6 +259,12 @@ export function sharepointPlugin(): McpServerPlugin {
           tenantId: { type: 'string', title: 'Tenant ID', description: 'Entra tenant (GUID or domain).' },
           clientId: { type: 'string', title: 'Client ID', description: 'App registration (application) ID.' },
           clientSecret: { type: 'string', title: 'Client Secret', description: 'App registration client secret.', secret: true },
+          region: {
+            type: 'string',
+            title: 'Region',
+            description:
+              "M365 geo region (REQUIRED for search with app-only): NAM, EUR, APC, AUS, BRA, CAN, GBR, IND, JPN, etc.",
+          },
         },
         required: ['tenantId', 'clientId', 'clientSecret'],
       },
