@@ -1,4 +1,5 @@
 import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-sdk';
+import { extractText } from '../chat/extract.js';
 
 /**
  * Native SharePoint plugin — talk to SharePoint over MCP via the Microsoft Graph API.
@@ -87,9 +88,6 @@ async function graphBytes(cfg: SpConfig, path: string): Promise<{ buf: Buffer; t
   return { buf: Buffer.from(await res.arrayBuffer()), type: res.headers.get('content-type') || '' };
 }
 
-const TEXT_RE = /^(text\/|application\/(json|xml|x-yaml|yaml|csv|markdown))/i;
-const TEXT_EXT = /\.(txt|md|markdown|csv|json|xml|yaml|yml|log|html?|tsv)$/i;
-
 function text(t: string, isError = false): McpToolResult {
   return { content: [{ type: 'text', text: t }], isError };
 }
@@ -136,8 +134,8 @@ const TOOLS: McpToolDef[] = [
   {
     name: 'sharepoint_read_document',
     description:
-      'Read the text content of a SharePoint document. Identify it either by {driveId,itemId} (from search) ' +
-      'or by {siteId,path}. Text files are returned inline; binary Office files return their metadata + web URL.',
+      'Read the text content of a SharePoint document — Word (.docx), PDF, Excel/CSV and plain text are all ' +
+      'extracted to text. Identify the file either by {driveId,itemId} (from search) or by {siteId,path}.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -225,20 +223,27 @@ async function readDocument(cfg: SpConfig, args: Record<string, unknown>): Promi
   const size: number = meta?.size ?? 0;
   const mime: string = meta?.file?.mimeType ?? '';
   const webUrl: string = meta?.webUrl ?? '';
-  const isText = TEXT_RE.test(mime) || TEXT_EXT.test(name);
 
-  if (!isText) {
-    return text(
-      `"${name}" is a binary document (${mime || 'unknown type'}, ${size} bytes) — not readable as text inline.\n` +
-        `Open it at: ${webUrl}`,
-    );
+  if (size > 25 * 1024 * 1024) {
+    return text(`"${name}" is too large to read inline (${size} bytes). Open it at: ${webUrl}`, true);
   }
-  if (size > 5 * 1024 * 1024) return text(`"${name}" is too large to read inline (${size} bytes).`, true);
 
   const { buf } = await graphBytes(cfg, contentPath);
-  const body = buf.toString('utf8');
-  const clipped = body.length > 12_000 ? `${body.slice(0, 12_000)}\n…[truncated, ${body.length} chars total]` : body;
-  return text(`# ${name}\n${webUrl}\n\n${clipped}`);
+  // Reuse Kravn's document extractor (same one the chat uses): PDF (unpdf), Word .docx (mammoth),
+  // Excel/CSV (xlsx) and plain text/code all come back as text.
+  let extracted: { text: string };
+  try {
+    extracted = await extractText(name, mime, buf);
+  } catch (e) {
+    return text(`Could not read "${name}": ${e instanceof Error ? e.message : 'extraction failed'}. Open it at: ${webUrl}`, true);
+  }
+  if (!extracted.text.trim()) {
+    return text(
+      `"${name}" (${mime || 'unknown type'}, ${size} bytes) has no extractable text — it may be an image or a ` +
+        `scanned PDF (no text layer). Open it at: ${webUrl}`,
+    );
+  }
+  return text(`# ${name}\n${webUrl}\n\n${extracted.text}`);
 }
 
 export function sharepointPlugin(): McpServerPlugin {
