@@ -48,6 +48,8 @@ export function userRoutes(app: FastifyInstance, s: Services): void {
       // promote the SSO user to admin first, then this allows removing the old one).
       if (target.role === 'admin' && (await s.repos.users.countByRole('admin')) <= 1) return true;
       await s.repos.users.delete(id);
+      // Revoke the user's OAuth grants so a connected client (e.g. Claude) can't keep acting as them.
+      await s.repos.oauth.deleteRefreshForUser(id);
       return false;
     });
     if (blocked) {

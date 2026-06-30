@@ -5,6 +5,8 @@ import { useBootstrapStore } from './stores/bootstrap';
 const routes: RouteRecordRaw[] = [
   { path: '/setup', name: 'setup', component: () => import('./views/SetupView.vue'), meta: { public: true } },
   { path: '/login', name: 'login', component: () => import('./views/LoginView.vue'), meta: { public: true } },
+  // Standalone full-page OAuth consent (requires auth -> the guard routes through login/SSO first).
+  { path: '/oauth/consent', name: 'oauth-consent', component: () => import('./views/OAuthConsentView.vue') },
   {
     path: '/',
     component: () => import('./components/AppShell.vue'),

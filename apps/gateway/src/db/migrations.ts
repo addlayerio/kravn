@@ -309,8 +309,69 @@ const attachments: Migration = {
   },
 };
 
+/**
+ * 004 — OAuth 2.1 authorization server (so remote MCP clients like Claude connect via the standard
+ * OAuth + Dynamic Client Registration flow). Clients are registered dynamically (public + PKCE, no
+ * secret); auth codes and pending /authorize requests are short-lived; refresh tokens are stored hashed.
+ * Access tokens are stateless Kravn JWTs, so they need no table here.
+ */
+const oauth: Migration = {
+  name: '004_oauth_server',
+  async up(knex) {
+    await createIfMissing(knex, 'oauth_clients', (t) => {
+      t.string('id', 64).primary(); // client_id
+      t.string('name', 255).notNullable().defaultTo('');
+      t.text('redirect_uris').notNullable(); // JSON array
+      t.text('grant_types').notNullable(); // JSON array
+      t.text('scope').notNullable();
+      t.string('token_endpoint_auth_method', 32).notNullable().defaultTo('none');
+      t.string('created_at', 40).notNullable();
+    });
+    await createIfMissing(knex, 'oauth_auth_codes', (t) => {
+      t.string('code', 191).primary();
+      t.string('client_id', 64).notNullable();
+      t.string('user_id', 64).notNullable();
+      t.text('redirect_uri').notNullable();
+      t.string('code_challenge', 191).notNullable();
+      t.string('code_challenge_method', 16).notNullable().defaultTo('S256');
+      t.text('scope').notNullable();
+      t.text('resource').notNullable();
+      t.string('expires_at', 40).notNullable();
+      t.string('created_at', 40).notNullable();
+    });
+    await createIfMissing(knex, 'oauth_refresh_tokens', (t) => {
+      t.string('id', 64).primary();
+      t.string('token_hash', 191).notNullable().unique();
+      t.string('client_id', 64).notNullable();
+      t.string('user_id', 64).notNullable().index();
+      t.text('scope').notNullable();
+      t.string('expires_at', 40).notNullable();
+      t.string('created_at', 40).notNullable();
+    });
+    await createIfMissing(knex, 'oauth_pending', (t) => {
+      t.string('id', 64).primary(); // opaque request id carried through the login round-trip
+      t.string('client_id', 64).notNullable();
+      t.text('redirect_uri').notNullable();
+      t.string('code_challenge', 191).notNullable();
+      t.string('code_challenge_method', 16).notNullable().defaultTo('S256');
+      t.text('scope').notNullable();
+      t.text('state').notNullable();
+      t.text('resource').notNullable();
+      t.string('binding_hash', 191).notNullable().defaultTo(''); // sha256(binding cookie) — anti-fixation
+      t.string('expires_at', 40).notNullable();
+      t.string('created_at', 40).notNullable();
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('oauth_pending');
+    await knex.schema.dropTableIfExists('oauth_refresh_tokens');
+    await knex.schema.dropTableIfExists('oauth_auth_codes');
+    await knex.schema.dropTableIfExists('oauth_clients');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

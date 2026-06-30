@@ -22,7 +22,31 @@ function ssoUrl(m: { kind: string; id: string }): string {
   return m.kind === 'saml' ? '/api/auth/sso/saml/start' : `/api/auth/sso/oauth/${m.id}/start`;
 }
 
+const POST_LOGIN_KEY = 'kravn.postLogin';
+
+/** Where to land after auth: the guard's ?redirect=, else a target stashed before an SSO round-trip, else home. */
+function postLoginTarget(): string {
+  const fromQuery = route.query.redirect as string | undefined;
+  if (fromQuery) return fromQuery;
+  try {
+    return sessionStorage.getItem(POST_LOGIN_KEY) || '/';
+  } catch {
+    return '/';
+  }
+}
+
 onMounted(async () => {
+  // Stash the intended destination so it survives the SAML round-trip (which returns to /login?token=
+  // and drops the query). sessionStorage persists across the same-tab redirect.
+  const redirect = route.query.redirect as string | undefined;
+  if (redirect) {
+    try {
+      sessionStorage.setItem(POST_LOGIN_KEY, redirect);
+    } catch {
+      /* ignore */
+    }
+  }
+
   // Capture an SSO redirect (?token=) or surface an SSO error.
   const token = route.query.token as string | undefined;
   const ssoError = route.query.sso_error as string | undefined;
@@ -32,7 +56,13 @@ onMounted(async () => {
     auth.token = token;
     await auth.loadMe();
     if (auth.isAuthenticated) {
-      router.replace('/');
+      const target = postLoginTarget();
+      try {
+        sessionStorage.removeItem(POST_LOGIN_KEY);
+      } catch {
+        /* ignore */
+      }
+      router.replace(target);
       return;
     }
     setToken(null);
@@ -45,7 +75,13 @@ async function submit() {
   busy.value = true;
   try {
     await auth.login(form);
-    router.push((route.query.redirect as string) || '/');
+    const target = postLoginTarget();
+    try {
+      sessionStorage.removeItem(POST_LOGIN_KEY);
+    } catch {
+      /* ignore */
+    }
+    router.push(target);
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Login failed.';
   } finally {

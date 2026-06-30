@@ -993,6 +993,165 @@ export interface Repos {
   teams: TeamsRepo;
   chat: ChatRepo;
   tokens: TokensRepo;
+  oauth: OAuthRepo;
+}
+
+export interface OAuthClient {
+  id: string;
+  name: string;
+  redirectUris: string[];
+  grantTypes: string[];
+  scope: string;
+  tokenEndpointAuthMethod: string;
+  createdAt: string;
+}
+export interface OAuthCode {
+  code: string;
+  clientId: string;
+  userId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  scope: string;
+  resource: string;
+  expiresAt: string;
+}
+export interface OAuthPending {
+  id: string;
+  clientId: string;
+  redirectUri: string;
+  codeChallenge: string;
+  codeChallengeMethod: string;
+  scope: string;
+  state: string;
+  resource: string;
+  /** sha256(binding secret). Binds approval to the browser that started /authorize (anti-fixation). */
+  bindingHash: string;
+  expiresAt: string;
+}
+export interface OAuthRefresh {
+  id: string;
+  tokenHash: string;
+  clientId: string;
+  userId: string;
+  scope: string;
+  expiresAt: string;
+}
+
+export class OAuthRepo {
+  constructor(private store: Store) {}
+
+  async createClient(c: OAuthClient): Promise<void> {
+    await this.store.run(
+      `INSERT INTO oauth_clients (id, name, redirect_uris, grant_types, scope, token_endpoint_auth_method, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [c.id, c.name, JSON.stringify(c.redirectUris), JSON.stringify(c.grantTypes), c.scope, c.tokenEndpointAuthMethod, now()],
+    );
+  }
+  async getClient(id: string): Promise<OAuthClient | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM oauth_clients WHERE id = ?', [id]);
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      name: r.name ?? '',
+      redirectUris: JSON.parse(r.redirect_uris || '[]'),
+      grantTypes: JSON.parse(r.grant_types || '[]'),
+      scope: r.scope ?? '',
+      tokenEndpointAuthMethod: r.token_endpoint_auth_method ?? 'none',
+      createdAt: r.created_at,
+    };
+  }
+
+  async createPending(p: OAuthPending): Promise<void> {
+    await this.store.run(
+      `INSERT INTO oauth_pending (id, client_id, redirect_uri, code_challenge, code_challenge_method, scope, state, resource, binding_hash, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [p.id, p.clientId, p.redirectUri, p.codeChallenge, p.codeChallengeMethod, p.scope, p.state, p.resource, p.bindingHash, p.expiresAt, now()],
+    );
+  }
+  async getPending(id: string): Promise<OAuthPending | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM oauth_pending WHERE id = ?', [id]);
+    if (!r) return undefined;
+    return {
+      id: r.id,
+      clientId: r.client_id,
+      redirectUri: r.redirect_uri,
+      codeChallenge: r.code_challenge,
+      codeChallengeMethod: r.code_challenge_method,
+      scope: r.scope,
+      state: r.state,
+      resource: r.resource,
+      bindingHash: r.binding_hash ?? '',
+      expiresAt: r.expires_at,
+    };
+  }
+  async countClients(): Promise<number> {
+    const r = await this.store.get<{ c: number }>('SELECT COUNT(*) AS c FROM oauth_clients');
+    return Number(r?.c ?? 0);
+  }
+  async deletePending(id: string): Promise<void> {
+    await this.store.run('DELETE FROM oauth_pending WHERE id = ?', [id]);
+  }
+
+  async createCode(c: OAuthCode): Promise<void> {
+    await this.store.run(
+      `INSERT INTO oauth_auth_codes (code, client_id, user_id, redirect_uri, code_challenge, code_challenge_method, scope, resource, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      [c.code, c.clientId, c.userId, c.redirectUri, c.codeChallenge, c.codeChallengeMethod, c.scope, c.resource, c.expiresAt, now()],
+    );
+  }
+  /** Atomically claim + delete an auth code (single-use). Only the caller whose DELETE removed the row wins. */
+  async takeCode(code: string): Promise<OAuthCode | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM oauth_auth_codes WHERE code = ?', [code]);
+    if (!r) return undefined;
+    // The DELETE's affected-row count is the atomic claim: on a concurrent double-redeem only one DELETE
+    // removes the row (count 1); the loser sees 0 and gets nothing.
+    if ((await this.store.delCount('oauth_auth_codes', { code })) !== 1) return undefined;
+    return {
+      code: r.code,
+      clientId: r.client_id,
+      userId: r.user_id,
+      redirectUri: r.redirect_uri,
+      codeChallenge: r.code_challenge,
+      codeChallengeMethod: r.code_challenge_method,
+      scope: r.scope,
+      resource: r.resource,
+      expiresAt: r.expires_at,
+    };
+  }
+
+  async createRefresh(r: OAuthRefresh): Promise<void> {
+    await this.store.run(
+      `INSERT INTO oauth_refresh_tokens (id, token_hash, client_id, user_id, scope, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?)`,
+      [r.id, r.tokenHash, r.clientId, r.userId, r.scope, r.expiresAt, now()],
+    );
+  }
+  /** Atomically claim + delete a refresh token by its hash (rotation). Only the winning DELETE returns it. */
+  async claimRefresh(hash: string): Promise<OAuthRefresh | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM oauth_refresh_tokens WHERE token_hash = ?', [hash]);
+    if (!r) return undefined;
+    if ((await this.store.delCount('oauth_refresh_tokens', { id: r.id })) !== 1) return undefined;
+    return {
+      id: r.id,
+      tokenHash: r.token_hash,
+      clientId: r.client_id,
+      userId: r.user_id,
+      scope: r.scope,
+      expiresAt: r.expires_at,
+    };
+  }
+  /** Revoke every OAuth grant for a user (e.g. on account deletion). */
+  async deleteRefreshForUser(userId: string): Promise<void> {
+    await this.store.run('DELETE FROM oauth_refresh_tokens WHERE user_id = ?', [userId]);
+  }
+
+  /** Best-effort cleanup of expired codes / pending requests / refresh tokens. */
+  async gc(nowIso: string): Promise<void> {
+    await this.store.run('DELETE FROM oauth_auth_codes WHERE expires_at < ?', [nowIso]);
+    await this.store.run('DELETE FROM oauth_pending WHERE expires_at < ?', [nowIso]);
+    await this.store.run('DELETE FROM oauth_refresh_tokens WHERE expires_at < ?', [nowIso]);
+  }
 }
 
 export function createRepos(store: Store): Repos {
@@ -1009,5 +1168,6 @@ export function createRepos(store: Store): Repos {
     teams: new TeamsRepo(store),
     chat: new ChatRepo(store),
     tokens: new TokensRepo(store),
+    oauth: new OAuthRepo(store),
   };
 }

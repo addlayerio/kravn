@@ -12,6 +12,7 @@ import { SettingsService } from './settings/settings.service.js';
 import { JwtService } from './auth/jwt.js';
 import { AuthService } from './auth/auth.service.js';
 import { SsoService } from './auth/sso.service.js';
+import { OAuthService } from './auth/oauth.service.js';
 import { SsrfGuard } from './http/ssrf.js';
 import { installGlobalSsrfDispatcher } from './http/client.js';
 import { UpstreamManager } from './mcp/upstream.js';
@@ -34,6 +35,7 @@ export interface Services {
   jwt: JwtService;
   auth: AuthService;
   sso: SsoService;
+  oauth: OAuthService;
   ssrf: SsrfGuard;
   upstream: UpstreamManager;
   registry: RegistryService;
@@ -128,11 +130,12 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const auth = new AuthService(repos, settings, env, log);
   await auth.bootstrapFromEnv();
   const sso = new SsoService(repos, encryptor, jwt, settings, log);
+  const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins);
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, sso, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics };
 }
 
 /** Kick off background work after the HTTP server is listening. */

@@ -6,6 +6,8 @@ export interface KravnClaims extends JWTPayload {
   email: string;
   role: string;
   jti: string;
+  /** 'mcp' marks a token issued via the OAuth flow — usable ONLY on MCP endpoints, never the control-plane API. */
+  scope?: string;
 }
 
 export class JwtService {
@@ -15,9 +17,12 @@ export class JwtService {
     this.key = new TextEncoder().encode(secret);
   }
 
-  async sign(input: { userId: string; email: string; role: string }, ttlMinutes: number): Promise<string> {
+  async sign(
+    input: { userId: string; email: string; role: string; scope?: string },
+    ttlMinutes: number,
+  ): Promise<string> {
     const nowSec = Math.floor(Date.now() / 1000);
-    return new SignJWT({ email: input.email, role: input.role })
+    return new SignJWT({ email: input.email, role: input.role, ...(input.scope ? { scope: input.scope } : {}) })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(input.userId)
       .setJti(newJti())

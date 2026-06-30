@@ -126,6 +126,18 @@ whose text is injected as reference context into every chat started in the proje
 3. **Virtual servers** → compose a curated slice and expose it at `/servers/<slug>/mcp`.
 4. Point an MCP client at `POST /mcp` (global) or `POST /servers/<slug>/mcp`, with a Kravn bearer token.
 
+### Connecting remote clients (Claude) via OAuth
+
+Kravn is also an **OAuth 2.1 authorization server** for its MCP endpoints, so remote clients like Claude
+connect with the standard connector flow (Dynamic Client Registration + PKCE) — no hand-pasted token.
+On a 401 the MCP endpoint returns `WWW-Authenticate` pointing at `/.well-known/oauth-protected-resource`;
+the client registers (`/oauth/register`), sends the user through `/oauth/authorize` (which delegates login
+to Kravn's existing local/SAML sign-in and shows a consent screen), then exchanges the code at `/oauth/token`.
+The issued access token is **MCP-scoped** — it can call MCP endpoints but not the control-plane API.
+
+Set **`KRAVN_PUBLIC_URL`** to your externally-visible URL (e.g. `https://mcp.example.com`) so the OAuth
+issuer/endpoint URLs in the discovery metadata are stable and not derived from request headers.
+
 ## Status
 
 This is a focused MVP that is genuinely end-to-end (boot → register → sync → proxy → admin UI).

@@ -47,6 +47,12 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
     try {
       const claims = await deps.jwt.verify(extracted.token);
 
+      // MCP-scoped tokens (issued via OAuth) authenticate MCP endpoints only — never the control-plane API
+      // that this `authenticate` preHandler guards. The MCP routes use authenticateToken() instead.
+      if (claims.scope === 'mcp') {
+        return reply.code(403).send({ error: { code: 'wrong_scope', message: 'This token cannot access the control-plane API.' } });
+      }
+
       // Fail-closed revocation: if the check errors, treat as revoked.
       let revoked = true;
       try {

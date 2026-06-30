@@ -13,6 +13,8 @@ export interface Store {
   run(sql: string, params?: unknown[]): Promise<void>;
   get<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T | undefined>;
   all<T = Record<string, unknown>>(sql: string, params?: unknown[]): Promise<T[]>;
+  /** Delete matching rows and return how many were removed (knex normalizes the count across dialects). */
+  delCount(table: string, where: Record<string, unknown>): Promise<number>;
   close(): Promise<void>;
 }
 
@@ -52,6 +54,9 @@ class KnexStore implements Store {
   async all<T>(sql: string, params: unknown[] = []): Promise<T[]> {
     const res = await this.db.raw(sql, params as Knex.RawBinding[]);
     return rowsOf(res) as T[];
+  }
+  async delCount(table: string, where: Record<string, unknown>): Promise<number> {
+    return Number(await this.db(table).where(where).del());
   }
   async close(): Promise<void> {
     await this.db.destroy();

@@ -4,6 +4,7 @@ import type { Services } from '../services.js';
 import type { JsonRpcRequest, McpScope } from '../mcp/downstream.js';
 import { authenticateToken, bearerToken } from '../auth/plugin.js';
 import type { AuthUser } from '../auth/auth.service.js';
+import { deriveBaseUrl } from '../http/baseurl.js';
 
 /**
  * Downstream MCP endpoints (Kravn AS an MCP server).
@@ -14,6 +15,19 @@ import type { AuthUser } from '../auth/auth.service.js';
  *      restricted    -> user role must be in the VS allowedRoles
  */
 export function mcpRoutes(app: FastifyInstance, s: Services): void {
+  // RFC 9728: on a 401 from an MCP endpoint, point clients (Claude, etc.) at the Protected Resource
+  // Metadata so they can discover the OAuth authorization server and run the connect flow.
+  app.addHook('onSend', async (req, reply, payload) => {
+    if (reply.statusCode === 401) {
+      const url = req.raw.url ?? '';
+      if (url === '/mcp' || /^\/servers\/[^/]+\/mcp\b/.test(url)) {
+        const base = deriveBaseUrl(req, s.settings, s.env);
+        reply.header('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`);
+      }
+    }
+    return payload;
+  });
+
   async function handle(scope: McpScope | null, body: unknown, reply: FastifyReply, actor?: AuthUser) {
     if (!scope) return reply.code(404).send({ error: { code: 'not_found', message: 'No such MCP endpoint.' } });
     const messages = (Array.isArray(body) ? body : [body]) as JsonRpcRequest[];
@@ -27,10 +41,19 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
     return Array.isArray(body) ? responses : responses[0];
   }
 
-  // Global endpoint: always authenticated + mcp.invoke.
-  app.post('/mcp', { preHandler: [app.authenticate, app.authorize('mcp.invoke')] }, async (req, reply) => {
+  // Global endpoint: any signed-in user with mcp.invoke (accepts OAuth mcp-scoped tokens too — which is
+  // why this uses a manual token check rather than app.authenticate, which rejects mcp-scoped tokens).
+  app.post('/mcp', async (req, reply) => {
+    const token = bearerToken(req);
+    const user = token ? await authenticateToken(token, s.jwt, s.repos) : null;
+    if (!user) {
+      return reply.code(401).send({ error: { code: 'unauthenticated', message: 'Authentication required.' } });
+    }
+    if (!permissionMatches(user.permissions, 'mcp.invoke')) {
+      return reply.code(403).send({ error: { code: 'forbidden', message: 'Not allowed to invoke MCP.' } });
+    }
     const scope = await s.downstream.buildScope(null);
-    return handle(scope, req.body, reply, req.user ?? undefined);
+    return handle(scope, req.body, reply, user);
   });
 
   // Per-virtual-server endpoint with its own access policy.

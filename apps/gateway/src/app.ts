@@ -26,11 +26,12 @@ import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
+import { oauthRoutes } from './routes/oauth.routes.js';
 import type { Services } from './services.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 
-const API_PREFIXES = ['/api', '/mcp', '/metrics', '/healthz', '/readyz'];
+const API_PREFIXES = ['/api', '/mcp', '/metrics', '/healthz', '/readyz', '/oauth', '/.well-known'];
 
 function resolveStaticDir(envStaticDir: string): string | null {
   if (envStaticDir) return path.resolve(envStaticDir);
@@ -87,6 +88,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   setupRoutes(app, services);
   authRoutes(app, services);
   ssoRoutes(app, services);
+  oauthRoutes(app, services);
 
   // Control-plane + MCP gateway surface.
   if (wantGateway) {
