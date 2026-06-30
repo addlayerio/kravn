@@ -4,6 +4,7 @@ import { RouterLink } from 'vue-router';
 import type { UpstreamServer, Tool, VirtualServer } from '@kravn/contracts';
 import { api } from '../api/client';
 import { useBootstrapStore } from '../stores/bootstrap';
+import ArchitectureFlow from '../components/ArchitectureFlow.vue';
 
 const bootstrap = useBootstrapStore();
 const servers = ref<UpstreamServer[]>([]);
@@ -34,6 +35,8 @@ onMounted(async () => {
       <small class="muted">{{ bootstrap.info?.instanceName }} · v{{ bootstrap.info?.version }}</small>
     </div>
   </div>
+
+  <ArchitectureFlow />
 
   <div class="grid cols-3">
     <RouterLink to="/servers" class="card">

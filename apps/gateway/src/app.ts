@@ -24,6 +24,7 @@ import { chatRoutes } from './routes/chat.routes.js';
 import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
+import { overviewRoutes } from './routes/overview.routes.js';
 import type { Services } from './services.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -95,6 +96,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     userRoutes(app, services);
     logRoutes(app, services);
     mcpRoutes(app, services);
+    overviewRoutes(app, services);
   }
 
   // End-user chat surface (the dedicated chat pod serves only this + the shared routes above).

@@ -124,6 +124,23 @@ export interface BootstrapInfo {
   ssoMethods: SsoMethod[];
 }
 
+/** Aggregated platform state for the dashboard "Architecture Flow" panel. */
+export interface PlatformOverview {
+  instanceName: string;
+  version: string;
+  /** INPUTS */
+  virtualServers: { total: number; active: number };
+  /** GATEWAY middleware */
+  plugins: { total: number; enabled: number; byHook: { hook: string; count: number }[] };
+  /** OUTPUTS */
+  servers: { total: number; online: number };
+  tools: { total: number; enabled: number };
+  prompts: { total: number; enabled: number };
+  resources: { total: number; enabled: number };
+  /** INFRASTRUCTURE */
+  database: { kind: string; connected: boolean };
+}
+
 // ─── SSO / identity provider configuration (GLOBAL: who can log into Kravn) ──────────────────────────
 
 export const oauthProviderSchema = z.object({

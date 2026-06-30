@@ -169,6 +169,9 @@ importers:
       '@kravn/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      echarts:
+        specifier: ^5.5.1
+        version: 5.6.0
       lucide-vue-next:
         specifier: ^0.469.0
         version: 0.469.0(vue@3.5.39(typescript@5.9.3))
@@ -178,6 +181,9 @@ importers:
       vue:
         specifier: ^3.5.13
         version: 3.5.39(typescript@5.9.3)
+      vue-echarts:
+        specifier: ^7.0.3
+        version: 7.0.3(@vue/runtime-core@3.5.39)(echarts@5.6.0)(vue@3.5.39(typescript@5.9.3))
       vue-router:
         specifier: ^4.5.0
         version: 4.6.4(vue@3.5.39(typescript@5.9.3))
@@ -1371,6 +1377,9 @@ packages:
   ecdsa-sig-formatter@1.0.11:
     resolution: {integrity: sha512-nagl3RYrbNv6kQkeJIpt6NJZy8twLB/2vtz6yN9Z4vRKHN4/QZJIEbqohALSgwKdnksuY3k5Addp5lg8sVoVcQ==}
 
+  echarts@5.6.0:
+    resolution: {integrity: sha512-oTbVTsXfKuEhxftHqL5xprgLoc0k7uScAwtryCgWF6hPYFLRwOUHiFmHGCBKP5NPFNkDVopOieyUqYGH8Fa3kA==}
+
   ee-first@1.1.1:
     resolution: {integrity: sha512-WMwm9LhRUo+WUaRN+vRuETqG89IgZphVSNkdFgeb6sS/E4OrDIN7t48CAewSHXc6C8lefD8KKfr5vY61brQlow==}
 
@@ -2551,6 +2560,9 @@ packages:
     resolution: {integrity: sha512-NoZ4roiN7LnbKn9QqE1amc9DJfzvZXxF4xDavcOWt1BPkdx+m+0gJuPM+S0vCe7zTJMYUP0R8pO2XMr+Y8oLIg==}
     engines: {node: '>=6'}
 
+  tslib@2.3.0:
+    resolution: {integrity: sha512-N82ooyxVNm6h1riLCoyS9e3fuJ3AMG2zIZs2Gd1ATcSFjSA23Q0fzjjZeh0jbJvWVDZ0cJT8yaNNaaXHzueNjg==}
+
   tslib@2.8.1:
     resolution: {integrity: sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==}
 
@@ -2643,6 +2655,17 @@ packages:
   vscode-uri@3.1.0:
     resolution: {integrity: sha512-/BpdSx+yCQGnCvecbyXdxHDkuk55/G3xwnC0GqY4gmQ3j+A+g8kzzgB4Nk/SINjqn6+waqw3EgbVF2QKExkRxQ==}
 
+  vue-demi@0.13.11:
+    resolution: {integrity: sha512-IR8HoEEGM65YY3ZJYAjMlKygDQn25D5ajNFNoKh9RSDMQtlzCxtfQjdQgv9jjK+m3377SsJXY8ysq8kLCZL25A==}
+    engines: {node: '>=12'}
+    hasBin: true
+    peerDependencies:
+      '@vue/composition-api': ^1.0.0-rc.1
+      vue: ^3.0.0-0 || ^2.6.0
+    peerDependenciesMeta:
+      '@vue/composition-api':
+        optional: true
+
   vue-demi@0.14.10:
     resolution: {integrity: sha512-nMZBOwuzabUO0nLgIcc6rycZEebF6eeUfaiQx9+WSk8e29IbLvPU9feI6tqW4kTo3hvoYAJkMh8n8D0fuISphg==}
     engines: {node: '>=12'}
@@ -2652,6 +2675,16 @@ packages:
       vue: ^3.0.0-0 || ^2.6.0
     peerDependenciesMeta:
       '@vue/composition-api':
+        optional: true
+
+  vue-echarts@7.0.3:
+    resolution: {integrity: sha512-/jSxNwOsw5+dYAUcwSfkLwKPuzTQ0Cepz1LxCOpj2QcHrrmUa/Ql0eQqMmc1rTPQVrh2JQ29n2dhq75ZcHvRDw==}
+    peerDependencies:
+      '@vue/runtime-core': ^3.0.0
+      echarts: ^5.5.1
+      vue: ^2.7.0 || ^3.1.1
+    peerDependenciesMeta:
+      '@vue/runtime-core':
         optional: true
 
   vue-router@4.6.4:
@@ -2783,6 +2816,9 @@ packages:
 
   zod@3.25.76:
     resolution: {integrity: sha512-gzUt/qt81nXsFGKIFcC3YnfEAx5NkunCfnDlvuBSSFS02bcXu4Lmea0AFIUwbLWxWPx3d9p8S5QoaujKcNQxcQ==}
+
+  zrender@5.6.1:
+    resolution: {integrity: sha512-OFXkDJKcrlx5su2XbzJvj/34Q3m6PvyCZkVPHGYpcCJ52ek4U/ymZyfuV1nKE23AyBJ51E/6Yr0mhZ7xGTO4ag==}
 
 snapshots:
 
@@ -3803,6 +3839,11 @@ snapshots:
   ecdsa-sig-formatter@1.0.11:
     dependencies:
       safe-buffer: 5.2.1
+
+  echarts@5.6.0:
+    dependencies:
+      tslib: 2.3.0
+      zrender: 5.6.1
 
   ee-first@1.1.1: {}
 
@@ -5096,6 +5137,8 @@ snapshots:
       minimist: 1.2.8
       strip-bom: 3.0.0
 
+  tslib@2.3.0: {}
+
   tslib@2.8.1: {}
 
   tsx@4.22.4:
@@ -5146,9 +5189,23 @@ snapshots:
 
   vscode-uri@3.1.0: {}
 
+  vue-demi@0.13.11(vue@3.5.39(typescript@5.9.3)):
+    dependencies:
+      vue: 3.5.39(typescript@5.9.3)
+
   vue-demi@0.14.10(vue@3.5.39(typescript@5.9.3)):
     dependencies:
       vue: 3.5.39(typescript@5.9.3)
+
+  vue-echarts@7.0.3(@vue/runtime-core@3.5.39)(echarts@5.6.0)(vue@3.5.39(typescript@5.9.3)):
+    dependencies:
+      echarts: 5.6.0
+      vue: 3.5.39(typescript@5.9.3)
+      vue-demi: 0.13.11(vue@3.5.39(typescript@5.9.3))
+    optionalDependencies:
+      '@vue/runtime-core': 3.5.39
+    transitivePeerDependencies:
+      - '@vue/composition-api'
 
   vue-router@4.6.4(vue@3.5.39(typescript@5.9.3)):
     dependencies:
@@ -5261,3 +5318,7 @@ snapshots:
       zod: 3.25.76
 
   zod@3.25.76: {}
+
+  zrender@5.6.1:
+    dependencies:
+      tslib: 2.3.0
