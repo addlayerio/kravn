@@ -8,6 +8,7 @@ import type {
 } from '@kravn/contracts';
 import crypto from 'node:crypto';
 import { newId, hashPassword, type Encryptor } from '../crypto.js';
+import { normalizeCerts } from './saml-metadata.js';
 import { AuthError, type AuthUser, toAuthUser } from './auth.service.js';
 import type { JwtService } from './jwt.js';
 import type { Repos, UserRecord } from '../db/repos.js';
@@ -119,7 +120,7 @@ export class SsoService {
         issuer: input.saml.issuer,
         idpIssuer: input.saml.idpIssuer,
         emailAttribute: input.saml.emailAttribute,
-        idpCertEnc: input.saml.idpCert ? this.encryptor.encrypt(input.saml.idpCert) : current.saml.idpCertEnc,
+        idpCertEnc: input.saml.idpCert ? this.encryptor.encrypt(normalizeCerts(input.saml.idpCert)) : current.saml.idpCertEnc,
       },
     };
     // Invalidate cached OIDC issuers so config changes take effect immediately.
@@ -261,10 +262,17 @@ export class SsoService {
   // ─── SAML ────────────────────────────────────────────────────────────────────────────────────
 
   private async samlInstance(c: StoredAuthConfig, baseUrl: string): Promise<SAML> {
+    // Stored as newline-joined base64 certs (IdPs publish several signing keys for rollover). Pass them
+    // all to node-saml, which accepts the document signature if it validates against ANY of them.
+    const certs = this.encryptor
+      .decrypt(c.saml.idpCertEnc)
+      .split('\n')
+      .map((x) => x.trim())
+      .filter(Boolean);
     return new SAML({
       entryPoint: c.saml.entryPoint,
       issuer: c.saml.issuer || 'kravn',
-      idpCert: this.encryptor.decrypt(c.saml.idpCertEnc),
+      idpCert: certs.length <= 1 ? certs[0] ?? '' : certs,
       callbackUrl: `${baseUrl}/api/auth/sso/saml/callback`,
       wantAssertionsSigned: true,
       ...(c.saml.idpIssuer ? { idpIssuer: c.saml.idpIssuer } : {}),

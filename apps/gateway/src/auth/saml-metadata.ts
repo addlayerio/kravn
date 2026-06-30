@@ -30,6 +30,18 @@ function cleanCert(raw: string): string {
     .trim();
 }
 
+/**
+ * Normalize one-or-more pasted/imported signing certificates into Kravn's stored form: each cert as a
+ * single base64 line, multiple certs joined by newlines. Accepts multiple PEM blocks or a bare base64
+ * blob. IdPs like Entra publish SEVERAL signing certs (key rollover); keeping all of them is what lets
+ * a response validate regardless of which key the IdP signed with.
+ */
+export function normalizeCerts(raw: string): string {
+  const pem = raw.match(/-----BEGIN CERTIFICATE-----[\s\S]*?-----END CERTIFICATE-----/g);
+  const certs = pem ? pem.map(cleanCert) : raw.split('\n').map(cleanCert);
+  return [...new Set(certs.filter(Boolean))].join('\n');
+}
+
 export function parseSamlMetadata(xml: string): SamlMetadataResult {
   const parser = new XMLParser({
     ignoreAttributes: false,
@@ -57,12 +69,15 @@ export function parseSamlMetadata(xml: string): SamlMetadataResult {
   const idp = Array.isArray(ed.IDPSSODescriptor) ? ed.IDPSSODescriptor[0] : ed.IDPSSODescriptor;
   if (!idp) throw new Error('No IDPSSODescriptor — this is not Identity Provider metadata.');
 
-  // Signing certificate: prefer KeyDescriptor use="signing", else first.
+  // Signing certificates: collect EVERY KeyDescriptor use="signing" (IdPs publish several for key
+  // rollover) and every X509Certificate within each, so validation works whichever key signed the response.
   const kds = toArray<any>(idp.KeyDescriptor);
-  const signing = kds.find((k) => (k['@_use'] ?? 'signing') === 'signing') ?? kds[0];
-  let certNode = signing?.KeyInfo?.X509Data?.X509Certificate;
-  if (Array.isArray(certNode)) certNode = certNode[0];
-  const idpCert = cleanCert(text(certNode));
+  const signingKds = kds.filter((k) => (k['@_use'] ?? 'signing') === 'signing');
+  const certs = (signingKds.length ? signingKds : kds)
+    .flatMap((k) => toArray<unknown>(k?.KeyInfo?.X509Data?.X509Certificate))
+    .map((n) => cleanCert(text(n)))
+    .filter(Boolean);
+  const idpCert = [...new Set(certs)].join('\n');
   if (!idpCert) throw new Error('No signing certificate found in metadata.');
 
   // SSO redirect endpoint.
