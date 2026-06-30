@@ -76,8 +76,8 @@ async function migrateDatabase(env: Env, knex: Knex, log: Logger): Promise<void>
 }
 
 /**
- * Run schema migrations standalone, then release the connection. Used by KRAVN_MIGRATE=only — a dedicated
- * migration Job that runs once before a multi-replica rollout, so the app pods can start with KRAVN_MIGRATE=skip.
+ * Run schema migrations standalone, then release the connection. Entry point for the `migrate` subcommand
+ * (`node main.js migrate`), used by the Helm migration Job to apply the schema once before the pods roll.
  */
 export async function runDbMigrations(env: Env = loadEnv()): Promise<void> {
   const log = createLogger(env);
@@ -96,14 +96,9 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const secret = resolveSecret(env);
 
   const knex = createKnex(env.db);
-  if (env.migrate === 'skip') {
-    log.info(
-      { db: env.db.kind },
-      'KRAVN_MIGRATE=skip — not running schema migrations (a migration Job is expected to have applied them)',
-    );
-  } else {
-    await migrateDatabase(env, knex, log);
-  }
+  // Always safe to call: Knex serializes concurrent runs with a lock, and pending migrations are a
+  // no-op once a migration step (the Helm migration Job, `node main.js migrate`) has already applied them.
+  await migrateDatabase(env, knex, log);
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);
 

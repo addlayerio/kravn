@@ -5,8 +5,9 @@ import { buildApp } from './app.js';
 async function main(): Promise<void> {
   const env = loadEnv();
 
-  // Migration-only mode: apply the schema and exit (used by the Kubernetes migration Job).
-  if (env.migrate === 'only') {
+  // `node main.js migrate` -> apply the schema and exit. Used by the Helm migration Job so the schema
+  // is migrated once before the pods roll. Without the subcommand, pods still migrate on boot.
+  if (process.argv[2] === 'migrate') {
     await runDbMigrations(env);
     process.exit(0);
   }

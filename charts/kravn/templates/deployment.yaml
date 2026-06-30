@@ -51,10 +51,6 @@ spec:
               value: {{ .Values.clientUrl | quote }}
             {{- end }}
             {{- include "kravn.dbEnv" . | nindent 12 }}
-            {{- if .Values.migrations.job.enabled }}
-            - name: KRAVN_MIGRATE
-              value: "skip"
-            {{- end }}
             {{- if or .Values.secret .Values.existingSecret }}
             - name: KRAVN_SECRET
               valueFrom:

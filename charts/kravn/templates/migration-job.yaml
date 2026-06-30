@@ -1,10 +1,8 @@
-{{- if .Values.migrations.job.enabled }}
-{{- if not (or .Values.database.enabled .Values.postgres.enabled) }}
-{{- fail "migrations.job.enabled requires an external database (set database.enabled and database.url/existingSecret). With embedded SQLite each pod owns its own file, so a shared migration Job makes no sense." }}
-{{- end }}
-# Run schema migrations ONCE before the app rolls out, as a Helm pre-install/pre-upgrade hook.
-# Helm waits for this Job to succeed before creating/updating the Deployment, which is exactly the
-# "migrate first, then start the pods" dependency. The app pods then run with KRAVN_MIGRATE=skip.
+{{- if and .Values.migrations.job.enabled (or .Values.database.enabled .Values.postgres.enabled) }}
+# Migrate the schema ONCE before the app rolls out, as a Helm pre-install/pre-upgrade hook. Helm waits
+# for this Job to succeed before creating/updating the Deployment, so the pods always start against an
+# up-to-date schema. Rendered automatically whenever an external database is configured (with embedded
+# SQLite there is no shared database to migrate, so each pod just migrates its own file on boot).
 apiVersion: batch/v1
 kind: Job
 metadata:
@@ -40,9 +38,9 @@ spec:
           imagePullPolicy: {{ .Values.image.pullPolicy }}
           securityContext:
             {{- toYaml .Values.securityContext | nindent 12 }}
+          # Apply the schema and exit (the rest of the app never starts in this Job).
+          command: ["node", "apps/gateway/dist/main.js", "migrate"]
           env:
-            - name: KRAVN_MIGRATE
-              value: "only"
             # The migration process is stateless (no SQLite file, no secret.key); /tmp is always writable.
             - name: KRAVN_DATA_DIR
               value: /tmp

@@ -69,13 +69,14 @@ postgres:
   existingSecret: ""
   existingSecretKey: DATABASE_URL
 
-# Schema migrations. By default every pod runs migrations on boot — Knex serializes concurrent runs with
-# a lock, so this is safe (and simplest) for a single replica. For MULTI-REPLICA, enable the Job: a
-# pre-install/pre-upgrade hook migrates ONCE before the rollout (Helm waits for it), and the app pods then
-# start with KRAVN_MIGRATE=skip. Requires an external database (database.enabled) — not for embedded SQLite.
+# Schema migrations. When an external database is configured, the chart AUTOMATICALLY runs a
+# pre-install/pre-upgrade hook Job that migrates the schema ONCE before the pods roll (Helm waits for it).
+# This needs no configuration — it just happens. With embedded SQLite there's no shared database, so each
+# pod migrates its own file on boot and no Job is rendered. `enabled` is only an escape hatch for operators
+# who apply migrations out-of-band (e.g. from CI); leave it true for the normal flow.
 migrations:
   job:
-    enabled: false
+    enabled: true
     backoffLimit: 3
     activeDeadlineSeconds: 600
     resources:

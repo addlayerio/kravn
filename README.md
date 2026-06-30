@@ -81,18 +81,13 @@ manual DDL. Pick the engine with `DATABASE_URL`; the same migrations run on all 
 | SQL Server | `sqlserver://user:pass@host:1433/kravn?encrypt=true` |
 
 Migrations run automatically on boot; the platform creates/updates every table itself. Knex serializes
-concurrent runs with a lock, so multiple replicas booting at once won't corrupt the schema. For a cleaner
-multi-replica rollout you can instead migrate **once** in a dedicated step via `KRAVN_MIGRATE`:
+concurrent runs with a lock, so multiple replicas booting at once won't corrupt the schema.
 
-| `KRAVN_MIGRATE` | Behavior |
-|---|---|
-| `on` (default) | Run migrations on boot, then serve. Simplest; single-replica. |
-| `only` | Run migrations and exit 0 — a dedicated migration Job before the rollout. |
-| `skip` | Don't migrate, just serve — the app pods once the Job has migrated (fails fast if it hasn't). |
-
-The Helm chart wires this up for you: set `migrations.job.enabled=true` and it runs a `pre-install`/`pre-upgrade`
-hook Job (`KRAVN_MIGRATE=only`) that Helm waits on before the Deployment rolls, while the app pods start with
-`KRAVN_MIGRATE=skip`. Requires an external database.
+On Kubernetes with an **external database**, the Helm chart goes one step further with **no configuration**:
+it runs a `pre-install`/`pre-upgrade` hook Job that applies the schema **once** before the pods roll (Helm
+waits for the Job to finish, then brings up the Deployment). The Job runs the same image with the `migrate`
+subcommand (`node apps/gateway/dist/main.js migrate` — apply schema and exit). With embedded SQLite there's
+no shared database, so each pod just migrates its own file on boot and no Job is rendered.
 
 Set `KRAVN_DB_SCHEMA` to build all tables inside a specific schema (**PostgreSQL + SQL Server**) — it's
 auto-created if missing. Empty means the default schema. On PostgreSQL it's applied via `searchPath`; on
