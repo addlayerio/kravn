@@ -1,6 +1,7 @@
 import Fastify, { type FastifyInstance } from 'fastify';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
+import formbody from '@fastify/formbody';
 import multipart from '@fastify/multipart';
 import fastifyStatic from '@fastify/static';
 import fs from 'node:fs';
@@ -53,6 +54,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
 
   await app.register(cookie);
   await app.register(cors, { origin: true });
+  // Parse application/x-www-form-urlencoded — the SAML HTTP-POST binding posts SAMLResponse/RelayState
+  // as form fields to the ACS callback; without this Fastify rejects it with 415 Unsupported Media Type.
+  await app.register(formbody);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 8 } });
 
   registerAuth(app, {
