@@ -209,14 +209,14 @@ export const createServerSchema = z
     name: z.string().min(1).max(120),
     description: z.string().max(2000).default(''),
     transport: transportSchema,
-    url: z.string().default(''),
-    command: z.string().default(''),
-    args: z.array(z.string()).default([]),
-    env: z.record(z.string()).default({}),
-    headers: z.record(z.string()).default({}),
+    url: z.string().max(2048).default(''),
+    command: z.string().max(2000).default(''),
+    args: z.array(z.string().max(2000)).max(100).default([]),
+    env: z.record(z.string().max(8192)).default({}),
+    headers: z.record(z.string().max(8192)).default({}),
     authType: authTypeSchema.default('none'),
     /** Plaintext credential on the way in; encrypted at rest, never read back. */
-    authValue: z.string().default(''),
+    authValue: z.string().max(8192).default(''),
     enabled: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
@@ -233,13 +233,13 @@ export type CreateServerRequest = z.infer<typeof createServerSchema>;
 export const updateServerSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.string().max(2000).optional(),
-  url: z.string().optional(),
-  command: z.string().optional(),
-  args: z.array(z.string()).optional(),
-  env: z.record(z.string()).optional(),
-  headers: z.record(z.string()).optional(),
+  url: z.string().max(2048).optional(),
+  command: z.string().max(2000).optional(),
+  args: z.array(z.string().max(2000)).max(100).optional(),
+  env: z.record(z.string().max(8192)).optional(),
+  headers: z.record(z.string().max(8192)).optional(),
   authType: authTypeSchema.optional(),
-  authValue: z.string().optional(),
+  authValue: z.string().max(8192).optional(),
   enabled: z.boolean().optional(),
 });
 export type UpdateServerRequest = z.infer<typeof updateServerSchema>;

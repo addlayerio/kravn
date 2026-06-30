@@ -93,3 +93,8 @@ export function slugify(input: string): string {
     .slice(0, 60);
   return stripped || 'item';
 }
+
+/** Stable hex digest prefix of an input, for deriving bounded-length deterministic ids. */
+export function shortHash(input: string, length = 12): string {
+  return crypto.createHash('sha256').update(input).digest('hex').slice(0, length);
+}

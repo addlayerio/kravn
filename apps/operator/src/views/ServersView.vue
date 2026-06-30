@@ -167,11 +167,11 @@ async function remove(srv: UpstreamServer) {
 
       <div class="field">
         <label>Name</label>
-        <input v-model="form.name" required />
+        <input v-model="form.name" required maxlength="120" />
       </div>
       <div class="field">
         <label>Description</label>
-        <input v-model="form.description" />
+        <input v-model="form.description" maxlength="2000" />
       </div>
       <div class="field" v-if="!editingId">
         <label>Transport</label>
@@ -185,13 +185,13 @@ async function remove(srv: UpstreamServer) {
       <template v-if="form.transport !== 'stdio'">
         <div class="field">
           <label>URL</label>
-          <input v-model="form.url" placeholder="https://my-mcp-server.svc.cluster.local/mcp" />
+          <input v-model="form.url" maxlength="2048" placeholder="https://my-mcp-server.svc.cluster.local/mcp" />
         </div>
       </template>
       <template v-else>
         <div class="field">
           <label>Command</label>
-          <input v-model="form.command" placeholder="npx" />
+          <input v-model="form.command" maxlength="2000" placeholder="npx" />
         </div>
         <div class="field">
           <label>Arguments (one per line)</label>
@@ -209,7 +209,7 @@ async function remove(srv: UpstreamServer) {
       </div>
       <div class="field" v-if="form.authType !== 'none'">
         <label>Credential {{ editingId ? '(leave blank to keep current)' : '' }}</label>
-        <input v-model="form.authValue" type="password" :placeholder="form.authType === 'basic' ? 'user:password' : 'token'" />
+        <input v-model="form.authValue" type="password" maxlength="8192" :placeholder="form.authType === 'basic' ? 'user:password' : 'token'" />
       </div>
 
       <div class="field">
