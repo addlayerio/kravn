@@ -57,7 +57,7 @@ interface Field {
   key: string;
   label: string;
   help?: string;
-  control: 'string' | 'number' | 'boolean' | 'enum' | 'string[]' | 'json' | 'pick-multi' | 'pick-one';
+  control: 'string' | 'number' | 'boolean' | 'enum' | 'string[]' | 'json' | 'pick-multi' | 'pick-one' | 'secret';
   options?: string[];
   /** When set, options come live from the registry (`x-kravn-source` in the schema). */
   source?: SourceKind;
@@ -74,7 +74,8 @@ function fieldsFromSchema(schema: any): Field[] | null {
       : undefined;
     let control: Field['control'] = 'string';
     let options: string[] | undefined;
-    if (Array.isArray(p.enum)) {
+    if (p.secret === true) control = 'secret';
+    else if (Array.isArray(p.enum)) {
       control = 'enum';
       options = p.enum.map(String);
     } else if (p.type === 'boolean') control = 'boolean';
@@ -376,6 +377,13 @@ async function saveConfig() {
           </select>
           <textarea v-else-if="f.control === 'string[]'" rows="3" v-model="arrText[f.key]" placeholder="One per line"></textarea>
           <textarea v-else-if="f.control === 'json'" rows="4" spellcheck="false" v-model="jsonText[f.key]" placeholder="JSON value"></textarea>
+          <input
+            v-else-if="f.control === 'secret'"
+            type="password"
+            autocomplete="new-password"
+            v-model="model[f.key]"
+            :placeholder="configPlugin?.configSecretsSet?.[f.key] ? '•••••• (set — leave blank to keep)' : ''"
+          />
           <input v-else v-model="model[f.key]" />
 
           <small v-if="f.help" class="muted">{{ f.help }}</small>

@@ -22,6 +22,12 @@ hardcoded tool special-cased inside a service.
   + the native-plugin registry), not as a `const SOME_TOOL = {...}` wired straight into `ChatService`.
 - Native plugins that need privileged runtime (e.g. the code interpreter needs the Pyodide executor +
   attachment files) get that via the plugin's native context — they are still managed as plugins.
+- A native plugin that integrates an external service (e.g. **SharePoint** via Microsoft Graph) is just an
+  `mcp-server` native plugin with a `configSchema`. Credential fields are marked `secret: true` in the schema:
+  the PluginManager encrypts them at rest (via `Encryptor`), masks them in the API/UI (write-only — blank
+  preserves), and decrypts only when handing config to the plugin at runtime. A native plugin whose
+  `configSchema.required` is non-empty is seeded **disabled** (it needs config first). This is the pattern for
+  every credential-bearing catalog plugin.
 - Provider tool-calling (OpenAI / Anthropic / Gemini function-calling) is a **separate layer**: making a
   tool "available to a model" means wiring that provider's tool-calling, regardless of where the tool
   lives. Don't conflate "is it a plugin" (tool source) with "can this model call it" (provider wiring).

@@ -328,6 +328,8 @@ export interface PluginView {
   source: string;
   error: string;
   config: Record<string, unknown>;
+  /** Which `secret: true` config fields currently have a value (the values themselves are never returned). */
+  configSecretsSet?: Record<string, boolean>;
   configSchema?: unknown;
   /** Human labels of the hook points this (hook) plugin implements. */
   hookPoints?: string[];

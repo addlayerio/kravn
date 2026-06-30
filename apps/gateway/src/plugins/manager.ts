@@ -12,6 +12,7 @@ import type { PluginView } from '@kravn/contracts';
 import type { Repos, PluginRecord } from '../db/repos.js';
 import type { LogStore } from '../logstore.js';
 import type { Logger } from 'pino';
+import type { Encryptor } from '../crypto.js';
 import { SEED_PLUGINS } from './examples.js';
 
 export class PluginDenied extends Error {
@@ -56,12 +57,71 @@ export class PluginManager {
     private log: Logger,
     private logstore: LogStore,
     nativePlugins: McpServerPlugin[] = [],
+    private encryptor?: Encryptor,
   ) {
     this.native = new Map(nativePlugins.map((p) => [p.manifest.id, p]));
   }
 
   private isNative(id: string): boolean {
     return this.native.has(id);
+  }
+
+  // ─── Config secrets ──────────────────────────────────────────────────────────────────────────
+  // Config fields marked `secret: true` in a plugin's configSchema (e.g. a client secret) are encrypted
+  // at rest (prefixed `enc:`), decrypted only when handed to the plugin at runtime, and never returned
+  // to the UI — write-only, matching how upstream-server and LLM credentials are handled.
+
+  private secretFieldsOf(r: PluginRecord): string[] {
+    const props = (r.manifest as { configSchema?: { properties?: Record<string, { secret?: boolean }> } })?.configSchema
+      ?.properties;
+    if (!props) return [];
+    return Object.entries(props)
+      .filter(([, p]) => p?.secret === true)
+      .map(([k]) => k);
+  }
+
+  /** Encrypt incoming secret fields; a blank/absent secret preserves the previously stored value. */
+  private encryptConfig(r: PluginRecord, incoming: Record<string, unknown>, prev: Record<string, unknown>): Record<string, unknown> {
+    const out = { ...incoming };
+    for (const k of this.secretFieldsOf(r)) {
+      const v = incoming[k];
+      if (typeof v === 'string' && v.length > 0) {
+        out[k] = this.encryptor ? this.encryptor.encrypt(v) : v; // encrypt() is prefixed + idempotent
+      } else if (prev[k] !== undefined) {
+        out[k] = prev[k]; // write-only: keep the existing secret when the field is left blank
+      } else {
+        delete out[k];
+      }
+    }
+    return out;
+  }
+
+  /** Decrypt secret fields for runtime use by the plugin. */
+  private decryptConfig(r: PluginRecord): Record<string, unknown> {
+    const out = { ...r.config };
+    if (!this.encryptor) return out;
+    for (const k of this.secretFieldsOf(r)) {
+      const v = out[k];
+      if (typeof v === 'string' && this.encryptor.isEncrypted(v)) {
+        try {
+          out[k] = this.encryptor.decrypt(v);
+        } catch {
+          out[k] = '';
+        }
+      }
+    }
+    return out;
+  }
+
+  /** Strip secret values for the UI, plus a map of which secrets are currently set. */
+  private maskConfig(r: PluginRecord): { config: Record<string, unknown>; secretsSet: Record<string, boolean> } {
+    const config = { ...r.config };
+    const secretsSet: Record<string, boolean> = {};
+    for (const k of this.secretFieldsOf(r)) {
+      secretsSet[k] = typeof config[k] === 'string' && (config[k] as string).length > 0;
+      config[k] = '';
+    }
+    return { config, secretsSet };
   }
 
   // ─── Loading (from source held in the DB / memory) ─────────────────────────────────────────────
@@ -155,7 +215,11 @@ export class PluginManager {
           code: '',
           manifest: m,
         });
-        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, true);
+        // Enable on first install — unless the plugin requires config (credentials), in which case it
+        // stays disabled until the operator fills it in, so unconfigured tools don't pollute the catalog.
+        const req = (n.manifest as { configSchema?: { required?: unknown[] } })?.configSchema?.required;
+        const needsConfig = Array.isArray(req) && req.length > 0;
+        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, !needsConfig);
       } catch (err) {
         this.log.warn({ err, plugin: n.manifest.id }, 'failed to seed native plugin');
       }
@@ -216,7 +280,7 @@ export class PluginManager {
       .map((r) => ({ r, plugin: this.loaded.get(r.id) as HookPlugin | undefined }))
       .filter((x) => x.plugin && x.plugin.hooks && typeof (x.plugin.hooks as any)[method] === 'function')
       .sort((a, b) => a.r.priority - b.r.priority)
-      .map((x) => ({ id: x.r.id, plugin: x.plugin as HookPlugin, config: x.r.config }));
+      .map((x) => ({ id: x.r.id, plugin: x.plugin as HookPlugin, config: this.decryptConfig(x.r) }));
   }
 
   hasResolveUser(): boolean {
@@ -340,7 +404,7 @@ export class PluginManager {
     if (!r || !r.enabled || r.type !== 'mcp-server' || !p) {
       throw new Error(`plugin server '${id}' is not available`);
     }
-    return { plugin: p, config: r.config };
+    return { plugin: p, config: this.decryptConfig(r) };
   }
 
   async serverListTools(id: string) {
@@ -377,6 +441,7 @@ export class PluginManager {
   }
 
   private toView(r: PluginRecord): PluginView {
+    const { config, secretsSet } = this.maskConfig(r);
     return {
       id: r.id,
       name: r.name,
@@ -388,7 +453,8 @@ export class PluginManager {
       enabled: r.enabled,
       source: r.source,
       error: r.error,
-      config: r.config,
+      config,
+      configSecretsSet: secretsSet,
       configSchema: (r.manifest as any)?.configSchema,
       hookPoints: r.type === 'hook' ? this.hookPointsOf(r.id) : [],
       installedAt: r.installedAt,
@@ -411,8 +477,9 @@ export class PluginManager {
   }
 
   async setConfig(id: string, config: Record<string, unknown>): Promise<void> {
-    if (!this.records.has(id)) throw new Error('Unknown plugin.');
-    await this.repos.plugins.setConfig(id, config);
+    const r = this.records.get(id);
+    if (!r) throw new Error('Unknown plugin.');
+    await this.repos.plugins.setConfig(id, this.encryptConfig(r, config, r.config));
     await this.refreshRecords();
     await this.onChange?.();
   }

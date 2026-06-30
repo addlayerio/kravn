@@ -119,7 +119,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const upstream = new UpstreamManager(log, () => settings.get().mcp.requestTimeoutMs);
   // The code interpreter is shipped as a native plugin (privileged runtime); build it with the executor injected.
   const interpreter = new PyodideExecutor(log);
-  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter }));
+  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter }), encryptor);
   upstream.setPluginManager(plugins);
   const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins });
   const downstream = new DownstreamMcp(repos, registry, settings, plugins);
