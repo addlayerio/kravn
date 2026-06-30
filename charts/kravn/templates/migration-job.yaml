@@ -1,0 +1,67 @@
+{{- if .Values.migrations.job.enabled }}
+{{- if not (or .Values.database.enabled .Values.postgres.enabled) }}
+{{- fail "migrations.job.enabled requires an external database (set database.enabled and database.url/existingSecret). With embedded SQLite each pod owns its own file, so a shared migration Job makes no sense." }}
+{{- end }}
+# Run schema migrations ONCE before the app rolls out, as a Helm pre-install/pre-upgrade hook.
+# Helm waits for this Job to succeed before creating/updating the Deployment, which is exactly the
+# "migrate first, then start the pods" dependency. The app pods then run with KRAVN_MIGRATE=skip.
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: {{ include "kravn.fullname" . }}-migrate
+  labels:
+    {{- include "kravn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: migrate
+  annotations:
+    "helm.sh/hook": pre-install,pre-upgrade
+    "helm.sh/hook-weight": "-5"
+    "helm.sh/hook-delete-policy": before-hook-creation,hook-succeeded
+spec:
+  backoffLimit: {{ .Values.migrations.job.backoffLimit }}
+  {{- with .Values.migrations.job.activeDeadlineSeconds }}
+  activeDeadlineSeconds: {{ . }}
+  {{- end }}
+  template:
+    metadata:
+      labels:
+        {{- include "kravn.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: migrate
+    spec:
+      restartPolicy: Never
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        {{- toYaml .Values.podSecurityContext | nindent 8 }}
+      containers:
+        - name: migrate
+          image: {{ include "kravn.image" . }}
+          imagePullPolicy: {{ .Values.image.pullPolicy }}
+          securityContext:
+            {{- toYaml .Values.securityContext | nindent 12 }}
+          env:
+            - name: KRAVN_MIGRATE
+              value: "only"
+            # The migration process is stateless (no SQLite file, no secret.key); /tmp is always writable.
+            - name: KRAVN_DATA_DIR
+              value: /tmp
+            {{- include "kravn.dbEnv" . | nindent 12 }}
+            {{- with .Values.extraEnv }}
+            {{- toYaml . | nindent 12 }}
+            {{- end }}
+          resources:
+            {{- toYaml .Values.migrations.job.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+{{- end }}

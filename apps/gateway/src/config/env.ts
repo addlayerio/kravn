@@ -35,6 +35,13 @@ const envSchema = z.object({
   KRAVN_CLIENT_URL: z.string().default(''),
   /** Build all tables inside this DB schema (PostgreSQL + SQL Server). Empty -> the default schema. */
   KRAVN_DB_SCHEMA: z.string().default(''),
+  /**
+   * How this process handles schema migrations:
+   *   on   -> run migrations on boot, then serve (default; single-pod / zero-config)
+   *   only -> run migrations and exit 0 (for a dedicated migration Job before a multi-replica rollout)
+   *   skip -> do not run migrations, just serve (app pods when a Job already migrated)
+   */
+  KRAVN_MIGRATE: z.enum(['on', 'only', 'skip']).default('on'),
 });
 
 export type RawEnv = z.infer<typeof envSchema>;
@@ -72,6 +79,8 @@ export interface Env {
   role: AppRole;
   /** Base URL of the end-user client SPA (SSO return target); '' if not configured. */
   clientUrl: string;
+  /** Migration behavior: 'on' (migrate then serve), 'only' (migrate then exit), 'skip' (serve without migrating). */
+  migrate: 'on' | 'only' | 'skip';
 }
 
 function sqlite(file: string): DbConfig {
@@ -188,5 +197,6 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     pluginsDir: raw.KRAVN_PLUGINS_DIR ? path.resolve(raw.KRAVN_PLUGINS_DIR) : path.resolve(dataDir, 'plugins'),
     role: raw.KRAVN_ROLE,
     clientUrl: absoluteUrlOrEmpty('KRAVN_CLIENT_URL', raw.KRAVN_CLIENT_URL),
+    migrate: raw.KRAVN_MIGRATE,
   };
 }

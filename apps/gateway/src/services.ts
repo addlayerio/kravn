@@ -1,4 +1,5 @@
 import type { Logger } from 'pino';
+import type { Knex } from 'knex';
 import { loadEnv, type Env } from './config/env.js';
 import { resolveSecret } from './config/secret.js';
 import { createLogger } from './logger.js';
@@ -50,18 +51,19 @@ declare module 'fastify' {
   }
 }
 
-/** Build and initialize every service. Connecting to upstreams is left to start() (background). */
-export async function createServices(env: Env = loadEnv()): Promise<Services> {
-  const log = createLogger(env);
-  const secret = resolveSecret(env);
-
-  const knex = createKnex(env.db);
+/** Warn when KRAVN_DB_SCHEMA was set on a dialect that can't honor it. */
+function warnSchemaDialect(env: Env, log: Logger): void {
   if (env.db.schema && (env.db.client === 'better-sqlite3' || env.db.client === 'mysql2')) {
     log.warn(
       { client: env.db.client },
       'KRAVN_DB_SCHEMA is not applicable to this dialect (SQLite: N/A; MySQL: the schema is the database — set it in DATABASE_URL); ignored',
     );
   }
+}
+
+/** Prepare the schema (schema-aware migrations) and log how the requested DB schema was applied. */
+async function migrateDatabase(env: Env, knex: Knex, log: Logger): Promise<void> {
+  warnSchemaDialect(env, log);
   const schemaResult = await runMigrations(knex, env.db);
   if (schemaResult.requested && !schemaResult.applied) {
     log.warn(
@@ -70,6 +72,37 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
     );
   } else if (schemaResult.requested && schemaResult.applied) {
     log.info({ schema: schemaResult.schema, client: env.db.client }, 'KRAVN_DB_SCHEMA applied — tables built inside schema');
+  }
+}
+
+/**
+ * Run schema migrations standalone, then release the connection. Used by KRAVN_MIGRATE=only — a dedicated
+ * migration Job that runs once before a multi-replica rollout, so the app pods can start with KRAVN_MIGRATE=skip.
+ */
+export async function runDbMigrations(env: Env = loadEnv()): Promise<void> {
+  const log = createLogger(env);
+  const knex = createKnex(env.db);
+  try {
+    await migrateDatabase(env, knex, log);
+    log.info({ db: env.db.kind }, 'schema migrations complete');
+  } finally {
+    await knex.destroy();
+  }
+}
+
+/** Build and initialize every service. Connecting to upstreams is left to start() (background). */
+export async function createServices(env: Env = loadEnv()): Promise<Services> {
+  const log = createLogger(env);
+  const secret = resolveSecret(env);
+
+  const knex = createKnex(env.db);
+  if (env.migrate === 'skip') {
+    log.info(
+      { db: env.db.kind },
+      'KRAVN_MIGRATE=skip — not running schema migrations (a migration Job is expected to have applied them)',
+    );
+  } else {
+    await migrateDatabase(env, knex, log);
   }
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);

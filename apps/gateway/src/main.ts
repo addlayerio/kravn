@@ -1,9 +1,16 @@
 import { loadEnv } from './config/env.js';
-import { createServices, startBackground, shutdownServices } from './services.js';
+import { createServices, startBackground, shutdownServices, runDbMigrations } from './services.js';
 import { buildApp } from './app.js';
 
 async function main(): Promise<void> {
   const env = loadEnv();
+
+  // Migration-only mode: apply the schema and exit (used by the Kubernetes migration Job).
+  if (env.migrate === 'only') {
+    await runDbMigrations(env);
+    process.exit(0);
+  }
+
   const services = await createServices(env);
   const app = await buildApp(services);
 

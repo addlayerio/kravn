@@ -69,6 +69,22 @@ postgres:
   existingSecret: ""
   existingSecretKey: DATABASE_URL
 
+# Schema migrations. By default every pod runs migrations on boot — Knex serializes concurrent runs with
+# a lock, so this is safe (and simplest) for a single replica. For MULTI-REPLICA, enable the Job: a
+# pre-install/pre-upgrade hook migrates ONCE before the rollout (Helm waits for it), and the app pods then
+# start with KRAVN_MIGRATE=skip. Requires an external database (database.enabled) — not for embedded SQLite.
+migrations:
+  job:
+    enabled: false
+    backoffLimit: 3
+    activeDeadlineSeconds: 600
+    resources:
+      requests:
+        cpu: 50m
+        memory: 256Mi
+      limits:
+        memory: 512Mi
+
 # Shared signing/encryption secret. Leave empty for single-replica (auto-generated on the PVC).
 # REQUIRED for replicaCount > 1 so all pods share one key. Provide directly or via existingSecret.
 secret: ""

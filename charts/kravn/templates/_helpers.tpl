@@ -32,3 +32,35 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
+
+{{/*
+Database env shared by the app Deployment and the migration Job: KRAVN_DB_SCHEMA + DATABASE_URL.
+Keeps both in sync so the Job migrates the exact database the pods connect to.
+*/}}
+{{- define "kravn.dbEnv" -}}
+{{- if .Values.database.schema }}
+- name: KRAVN_DB_SCHEMA
+  value: {{ .Values.database.schema | quote }}
+{{- end }}
+{{- if .Values.database.enabled }}
+- name: DATABASE_URL
+  {{- if .Values.database.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.database.existingSecret }}
+      key: {{ .Values.database.existingSecretKey }}
+  {{- else }}
+  value: {{ .Values.database.url | quote }}
+  {{- end }}
+{{- else if .Values.postgres.enabled }}
+- name: DATABASE_URL
+  {{- if .Values.postgres.existingSecret }}
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.postgres.existingSecret }}
+      key: {{ .Values.postgres.existingSecretKey }}
+  {{- else }}
+  value: {{ .Values.postgres.url | quote }}
+  {{- end }}
+{{- end }}
+{{- end -}}
