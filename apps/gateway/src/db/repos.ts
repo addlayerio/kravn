@@ -74,6 +74,16 @@ export class UsersRepo {
     const rows = await this.store.all('SELECT * FROM users ORDER BY created_at ASC');
     return rows.map(mapUser).map(({ passwordHash, ...u }) => u);
   }
+  async setRole(id: string, role: Role): Promise<void> {
+    await this.store.run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?', [role, now(), id]);
+  }
+  async setPasswordHash(id: string, passwordHash: string): Promise<void> {
+    await this.store.run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [passwordHash, now(), id]);
+  }
+  async countByRole(role: Role): Promise<number> {
+    const r = await this.store.get<{ c: number }>('SELECT COUNT(*) AS c FROM users WHERE role = ?', [role]);
+    return Number(r?.c ?? 0);
+  }
   async delete(id: string): Promise<void> {
     await this.store.run('DELETE FROM users WHERE id = ?', [id]);
   }

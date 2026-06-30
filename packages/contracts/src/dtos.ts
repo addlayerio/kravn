@@ -190,6 +190,12 @@ export const updateAuthConfigSchema = z.object({
   saml: samlConfigSchema.default({}),
   autoProvision: z.boolean().default(true),
   defaultRole: roleSchema.default('viewer'),
+  /**
+   * Emails granted the admin role when they sign in via SSO (e.g. an EntraID user that should be the
+   * admin). The account is created/promoted to admin even if auto-provisioning is off. Lets you replace
+   * the local admin with an SSO identity and run SSO-only. Compared case-insensitively.
+   */
+  adminEmails: z.array(z.string().email().max(254)).max(50).default([]),
 });
 export type UpdateAuthConfigRequest = z.infer<typeof updateAuthConfigSchema>;
 
@@ -215,6 +221,7 @@ export interface AuthConfigView {
   };
   autoProvision: boolean;
   defaultRole: string;
+  adminEmails: string[];
   /** ACS URL the operator must register in their IdP. */
   samlCallbackUrl: string;
 }

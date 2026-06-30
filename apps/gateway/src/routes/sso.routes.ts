@@ -17,6 +17,20 @@ export function ssoRoutes(app: FastifyInstance, s: Services): void {
   app.put('/api/auth/config', { preHandler: [app.authenticate, app.authorize('settings.write')] }, async (req, reply) => {
     const dto = parse(reply, updateAuthConfigSchema, req.body);
     if (!dto) return;
+    // Anti-lockout (mirror of the /api/settings guard): if local password login is currently OFF, the new
+    // SSO config must still leave a reachable admin — at least one enabled provider AND an admin email —
+    // otherwise disabling the last provider (or clearing adminEmails) would brick all access.
+    if (!s.settings.get().auth.passwordLoginEnabled) {
+      const current = await s.sso.view(deriveBaseUrl(req, s.settings, s.env));
+      if (s.sso.enabledCountForInput(dto, current) === 0 || dto.adminEmails.length === 0) {
+        return sendError(
+          reply,
+          400,
+          'sso_lockout',
+          'Local password login is disabled, so the SSO config must keep at least one enabled provider and one admin email — re-enable password login first to make this change.',
+        );
+      }
+    }
     try {
       await s.sso.save(dto);
       return { config: await s.sso.view(deriveBaseUrl(req, s.settings, s.env)) };

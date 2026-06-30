@@ -11,7 +11,7 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
       version: KRAVN_VERSION,
       setupRequired: await s.auth.setupRequired(),
       publicRegistration: settings.auth.publicRegistrationEnabled,
-      passwordLoginEnabled: true,
+      passwordLoginEnabled: settings.auth.passwordLoginEnabled,
       ssoMethods: await s.sso.methods(),
     };
   });

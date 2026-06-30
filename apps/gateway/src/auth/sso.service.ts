@@ -37,6 +37,8 @@ interface StoredAuthConfig {
   saml: StoredSaml;
   autoProvision: boolean;
   defaultRole: Role;
+  /** Lowercased emails that become admin when they sign in via SSO. */
+  adminEmails: string[];
 }
 
 function defaultConfig(): StoredAuthConfig {
@@ -45,6 +47,7 @@ function defaultConfig(): StoredAuthConfig {
     saml: { enabled: false, label: 'SAML', entryPoint: '', issuer: 'kravn', idpIssuer: '', idpCertEnc: '', emailAttribute: 'email' },
     autoProvision: true,
     defaultRole: 'viewer',
+    adminEmails: [],
   };
 }
 
@@ -93,6 +96,7 @@ export class SsoService {
     const next: StoredAuthConfig = {
       autoProvision: input.autoProvision,
       defaultRole: input.defaultRole,
+      adminEmails: [...new Set(input.adminEmails.map((e) => e.trim().toLowerCase()).filter(Boolean))],
       oauthProviders: input.oauthProviders.map((p) => {
         const prev = current.oauthProviders.find((x) => x.id === p.id);
         const clientSecretEnc = p.clientSecret
@@ -147,8 +151,38 @@ export class SsoService {
       },
       autoProvision: c.autoProvision,
       defaultRole: c.defaultRole,
+      adminEmails: c.adminEmails,
       samlCallbackUrl: `${baseUrl}/api/auth/sso/saml/callback`,
     };
+  }
+
+  /** True if at least one SSO method is fully configured + enabled (used to prevent passwordless lockout). */
+  async hasEnabledProvider(): Promise<boolean> {
+    return (await this.methods()).length > 0;
+  }
+
+  /** True if `email` (any case) is a designated admin email. */
+  async isAdminEmail(email: string): Promise<boolean> {
+    return (await this.load()).adminEmails.includes(email.trim().toLowerCase());
+  }
+
+  /**
+   * True only if an admin can actually reach the system via SSO: at least one enabled provider AND at
+   * least one designated admin email. Required before local password login may be disabled, so the
+   * operator can never end up with SSO enabled but no admin path.
+   */
+  async hasReachableAdmin(): Promise<boolean> {
+    const c = await this.load();
+    return (await this.methods()).length > 0 && c.adminEmails.length > 0;
+  }
+
+  /** How many SSO methods WOULD be enabled for a proposed config (mirror of methods(), over the input). */
+  enabledCountForInput(input: UpdateAuthConfigRequest, current: AuthConfigView): number {
+    const oauth = input.oauthProviders.filter((p) => p.enabled && p.clientId && p.discoveryUrl).length;
+    const samlHasCert =
+      !!input.saml.idpCert || current.saml.idpCertSet; // cert may already be stored (not re-sent)
+    const saml = input.saml.enabled && input.saml.entryPoint && samlHasCert ? 1 : 0;
+    return oauth + saml;
   }
 
   /** Public login methods for the SPA (no secrets). */
@@ -264,16 +298,32 @@ export class SsoService {
   // ─── Shared ──────────────────────────────────────────────────────────────────────────────────
 
   private async findOrCreate(c: StoredAuthConfig, email: string, name: string): Promise<UserRecord> {
-    const existing = await this.repos.users.getByEmail(email);
-    if (existing) return existing;
-    if (!c.autoProvision) {
+    const lower = email.trim().toLowerCase();
+    const designatedAdmin = c.adminEmails.includes(lower);
+
+    const existing = await this.repos.users.getByEmail(lower);
+    if (existing) {
+      // Promote a designated admin who currently has a lower role (e.g. replacing the local admin).
+      if (designatedAdmin && existing.role !== 'admin') {
+        await this.repos.users.setRole(existing.id, 'admin');
+        // Invalidate any pre-existing local password: a squatter could have registered this email before
+        // it was designated; promotion must not hand them an admin account they can still log into locally.
+        await this.repos.users.setPasswordHash(existing.id, hashPassword(crypto.randomBytes(32).toString('hex')));
+        this.log.info({ email: lower }, 'SSO user promoted to admin (adminEmails); local password reset');
+        return { ...existing, role: 'admin' };
+      }
+      return existing;
+    }
+
+    // A designated admin is an explicit allowlist, so it is provisioned even if auto-provision is off.
+    if (!c.autoProvision && !designatedAdmin) {
       throw new AuthError('not_provisioned', 'No account exists for this identity and auto-provisioning is off.', 403);
     }
     return this.repos.users.create({
       id: newId(),
-      email,
-      name: name || email,
-      role: c.defaultRole,
+      email: lower,
+      name: name || lower,
+      role: designatedAdmin ? 'admin' : c.defaultRole,
       // SSO-only account: random password it can never practically use.
       passwordHash: hashPassword(crypto.randomBytes(32).toString('hex')),
     });

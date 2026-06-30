@@ -16,6 +16,7 @@ const error = ref('');
 const busy = ref(false);
 
 const ssoMethods = computed(() => bootstrap.info?.ssoMethods ?? []);
+const passwordLoginEnabled = computed(() => bootstrap.info?.passwordLoginEnabled !== false);
 
 function ssoUrl(m: { kind: string; id: string }): string {
   return m.kind === 'saml' ? '/api/auth/sso/saml/start' : `/api/auth/sso/oauth/${m.id}/start`;
@@ -70,11 +71,11 @@ async function submit() {
         </a>
       </div>
 
-      <div v-if="ssoMethods.length" class="row" style="margin: 0.5rem 0">
+      <div v-if="ssoMethods.length && passwordLoginEnabled" class="row" style="margin: 0.5rem 0">
         <hr style="flex: 1; border-color: var(--border)" /><small class="muted">or</small><hr style="flex: 1; border-color: var(--border)" />
       </div>
 
-      <form @submit.prevent="submit">
+      <form v-if="passwordLoginEnabled" @submit.prevent="submit">
         <div class="field">
           <label>Email</label>
           <input v-model="form.email" type="email" required />
@@ -87,6 +88,10 @@ async function submit() {
           {{ busy ? 'Signing in…' : 'Sign in' }}
         </button>
       </form>
+
+      <p v-else-if="!ssoMethods.length" class="muted" style="text-align: center; margin: 0">
+        No sign-in method is available. Password login is disabled and no SSO provider is configured.
+      </p>
     </div>
   </div>
 </template>

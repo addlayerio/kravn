@@ -9,6 +9,18 @@ export function settingsRoutes(app: FastifyInstance, s: Services): void {
   });
 
   app.put('/api/settings', { preHandler: [app.authenticate, app.authorize('settings.write')] }, async (req, reply) => {
+    // Anti-lockout: never let an operator disable local password login unless an admin can still reach the
+    // system via SSO — i.e. at least one SSO provider is enabled AND at least one admin email is designated.
+    const wantPasswordOff =
+      (req.body as { auth?: { passwordLoginEnabled?: boolean } })?.auth?.passwordLoginEnabled === false;
+    if (wantPasswordOff && !(await s.sso.hasReachableAdmin())) {
+      return sendError(
+        reply,
+        400,
+        'passwordless_lockout',
+        'Cannot disable local password login: first enable an SSO provider AND designate at least one admin email (Authentication page), or you would lock everyone out.',
+      );
+    }
     try {
       const updated = await s.settings.update(req.body);
       return { settings: updated };

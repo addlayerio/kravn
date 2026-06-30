@@ -73,6 +73,16 @@ export const appSettingsSchema = z
       .object({
         publicRegistrationEnabled: z.boolean().default(false),
         sessionTtlMinutes: z.number().int().positive().max(43_200).default(720),
+        /** Local email+password login. Disable to run SSO-only (e.g. EntraID). */
+        passwordLoginEnabled: z.boolean().default(true),
+        /** Brute-force protection for local login (per IP and per email). */
+        loginRateLimit: z
+          .object({
+            enabled: z.boolean().default(true),
+            maxAttempts: z.number().int().positive().max(10_000).default(10),
+            windowSeconds: z.number().int().positive().max(86_400).default(300),
+          })
+          .default({}),
       })
       .default({}),
 
@@ -194,8 +204,12 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
     key: 'auth',
     label: 'Authentication',
     fields: [
+      { path: 'auth.passwordLoginEnabled', label: 'Local password login', control: 'boolean' },
       { path: 'auth.publicRegistrationEnabled', label: 'Public registration', control: 'boolean' },
       { path: 'auth.sessionTtlMinutes', label: 'Session TTL (minutes)', control: 'number' },
+      { path: 'auth.loginRateLimit.enabled', label: 'Login rate limit', control: 'boolean' },
+      { path: 'auth.loginRateLimit.maxAttempts', label: 'Rate limit · max attempts', control: 'number' },
+      { path: 'auth.loginRateLimit.windowSeconds', label: 'Rate limit · window (seconds)', control: 'number' },
     ],
   },
   {

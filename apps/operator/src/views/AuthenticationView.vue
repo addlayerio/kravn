@@ -37,7 +37,7 @@ const saml = reactive({
   idpCert: '',
   emailAttribute: 'email',
 });
-const general = reactive({ autoProvision: true, defaultRole: 'viewer' as 'admin' | 'editor' | 'viewer' });
+const general = reactive({ autoProvision: true, defaultRole: 'viewer' as 'admin' | 'editor' | 'viewer', adminEmails: '' });
 const metadataUrl = ref('');
 const importing = ref(false);
 
@@ -73,6 +73,7 @@ function applyConfig(c: AuthConfigView) {
   });
   general.autoProvision = c.autoProvision;
   general.defaultRole = c.defaultRole as 'admin' | 'editor' | 'viewer';
+  general.adminEmails = (c.adminEmails ?? []).join('\n');
   callbackUrl.value = c.samlCallbackUrl;
 }
 
@@ -99,6 +100,7 @@ async function save() {
     const payload = {
       autoProvision: general.autoProvision,
       defaultRole: general.defaultRole,
+      adminEmails: general.adminEmails.split(/[\s,;]+/).map((e) => e.trim().toLowerCase()).filter(Boolean),
       oauthProviders: providers.value.map((p) => ({
         id: p.id,
         label: p.label,
@@ -252,6 +254,20 @@ async function importMetadata() {
           <option value="editor">Editor</option>
           <option value="admin">Admin</option>
         </select>
+      </div>
+      <div class="field" style="max-width: 480px">
+        <label>Admin emails (one per line)</label>
+        <textarea
+          v-model="general.adminEmails"
+          rows="3"
+          :disabled="!canWrite"
+          placeholder="admin@yourcompany.com"
+        ></textarea>
+        <small class="muted">
+          These accounts are granted the admin role when they sign in via SSO (e.g. an EntraID user that
+          replaces the local admin) — created/promoted even if auto-create is off. Disable local password
+          login (Settings → Authentication) once your SSO admin can sign in.
+        </small>
       </div>
     </div>
   </template>
