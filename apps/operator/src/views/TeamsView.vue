@@ -118,11 +118,18 @@ const accessTeam = ref<Team | null>(null);
 const accessServers = ref<ServerAccess[]>([]);
 const accessLoading = ref(false);
 const accessBusy = ref<string | null>(null); // id of the server currently saving
+// UI-only view mode per server: 'subset' lets the user open the tool list and pick tools even before any
+// are selected (an empty subset persists server-side as "all", so we can't derive the mode from that alone).
+const toolMode = reactive<Record<string, 'all' | 'subset'>>({});
+function displayMode(vs: ServerAccess): 'all' | 'subset' {
+  return toolMode[vs.id] ?? (vs.allTools ? 'all' : 'subset');
+}
 
 async function openAccess(t: Team) {
   accessTeam.value = t;
   showAccess.value = true;
   accessServers.value = [];
+  Object.keys(toolMode).forEach((k) => delete toolMode[k]); // derive mode from freshly-loaded state
   accessLoading.value = true;
   try {
     accessServers.value = (await api.get<{ servers: ServerAccess[] }>(`/api/teams/${t.id}/servers`)).servers;
@@ -147,13 +154,16 @@ async function saveAccess(vs: ServerAccess, body: { granted: boolean; toolIds?: 
 }
 
 function toggleGrant(vs: ServerAccess) {
+  delete toolMode[vs.id]; // reset override so a fresh grant derives its mode from the server response
   saveAccess(vs, vs.granted ? { granted: false } : { granted: true, toolIds: null });
 }
 function setMode(vs: ServerAccess, mode: 'all' | 'subset') {
+  toolMode[vs.id] = mode;
+  // 'all' persists immediately; 'subset' just reveals the tool list — the subset is saved as tools are ticked.
   if (mode === 'all') saveAccess(vs, { granted: true, toolIds: null });
-  else saveAccess(vs, { granted: true, toolIds: vs.toolIds.length ? vs.toolIds : [] });
 }
 function toggleTool(vs: ServerAccess, toolId: string) {
+  toolMode[vs.id] = 'subset'; // stay in subset mode even if the last tool is unticked (server would read it as "all")
   const next = vs.toolIds.includes(toolId) ? vs.toolIds.filter((x) => x !== toolId) : [...vs.toolIds, toolId];
   saveAccess(vs, { granted: true, toolIds: next });
 }
@@ -275,21 +285,21 @@ function toggleTool(vs: ServerAccess, toolId: string) {
           <div v-if="vs.granted" style="margin-top: 0.5rem; padding-left: 1.5rem">
             <div class="row" style="gap: 1rem; margin-bottom: 0.4rem">
               <label class="checkbox">
-                <input type="radio" :checked="vs.allTools" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'all')" />
+                <input type="radio" :name="'mode-' + vs.id" :checked="displayMode(vs) === 'all'" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'all')" />
                 All tools
               </label>
               <label class="checkbox">
-                <input type="radio" :checked="!vs.allTools" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'subset')" />
+                <input type="radio" :name="'mode-' + vs.id" :checked="displayMode(vs) === 'subset'" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'subset')" />
                 Only selected tools
               </label>
             </div>
-            <div v-if="!vs.allTools" style="display: flex; flex-direction: column; gap: 0.2rem; padding-left: 0.5rem">
+            <div v-if="displayMode(vs) === 'subset'" style="display: flex; flex-direction: column; gap: 0.2rem; padding-left: 0.5rem">
               <label v-for="t in vs.tools" :key="t.id" class="checkbox">
                 <input type="checkbox" :checked="vs.toolIds.includes(t.id)" :disabled="!canWrite || accessBusy === vs.id" @change="toggleTool(vs, t.id)" />
                 {{ t.name }}
               </label>
               <small v-if="vs.tools.length === 0" class="muted">This MCP has no tools.</small>
-              <small v-else class="muted">Pick the tools this team may use. Clearing all reverts to “All tools”.</small>
+              <small v-else-if="vs.toolIds.length === 0" class="muted">Pick the tools this team may use (none selected = the team gets all).</small>
             </div>
           </div>
         </div>
