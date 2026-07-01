@@ -1,6 +1,7 @@
 import type { McpServerPlugin, McpToolResult } from '@kravn/plugin-sdk';
 import type { CodeExecutor } from '../interpreter/executor.js';
 import { sharepointPlugin } from './sharepoint.js';
+import { jiraPlugin } from './jira.js';
 
 /**
  * Native (built-in) plugins shipped with Kravn.
@@ -82,5 +83,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): McpServerPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), jiraPlugin()];
 }
