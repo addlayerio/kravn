@@ -14,7 +14,9 @@ async function verifyStreamTicket(req: FastifyRequest, s: Services): Promise<boo
   try {
     const claims = await s.jwt.verify(ticket);
     if (claims.scope !== 'logstream') return false; // never accept a session/mcp token here
-    if (await s.repos.tokens.isRevoked(claims.jti)) return false;
+    // Atomic single-use: a ticket opens exactly ONE stream. Concurrent replays of the same ticket lose the
+    // jti-PK race and are denied. The SPA already fetches a fresh ticket per (re)connect.
+    if (!(await s.repos.tokens.consume(claims.jti))) return false;
     const user = await s.repos.users.getById(claims.sub);
     if (!user) return false;
     return permissionMatches(permissionsForRole(user.role), 'logs.read');

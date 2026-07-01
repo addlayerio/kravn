@@ -110,8 +110,9 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     try {
       const claims = await s.jwt.verify(code);
       if (claims.scope !== 'handoff') return sendError(reply, 401, 'invalid_code', 'Invalid handoff code.');
-      if (await s.repos.tokens.isRevoked(claims.jti)) return sendError(reply, 401, 'invalid_code', 'Code already used.');
-      await s.repos.tokens.revoke(claims.jti); // single-use
+      // Atomic single-use claim: exactly one concurrent exchange of a given code wins (jti PK). A stolen
+      // code racing the legitimate login can no longer both succeed.
+      if (!(await s.repos.tokens.consume(claims.jti))) return sendError(reply, 401, 'invalid_code', 'Code already used.');
       const user = await s.repos.users.getById(claims.sub);
       if (!user) return sendError(reply, 401, 'invalid_code', 'Account no longer exists.');
       const token = await s.jwt.sign(

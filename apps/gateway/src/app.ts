@@ -121,7 +121,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AuthError) return reply.code(err.status).send({ error: { code: err.code, message: err.message } });
     if (err instanceof ZodError) {
-      return reply.code(400).send({ error: { code: 'validation', message: 'Invalid request.', details: err.issues } });
+      // Don't echo err.issues — it leaks field names/schema shape. Route handlers that want field-level
+      // feedback use zod safeParse + the `parse()` helper, which returns a curated message.
+      return reply.code(400).send({ error: { code: 'validation', message: 'Invalid request.' } });
     }
     // Client errors (e.g. malformed JSON body -> Fastify 400) should surface as 4xx, not a generic 500.
     const status = (err as { statusCode?: number }).statusCode;

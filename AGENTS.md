@@ -66,3 +66,13 @@ settings. Credentials are encrypted at rest and write-only (never read back to c
 ### 5. Validate + adversarially review substantial changes
 Typecheck + build + a smoke test for new surfaces; for anything security-sensitive run an adversarial
 review and fix confirmed findings before declaring done.
+
+**Security is re-validated on EVERY change — see [`SECURITY.md`](./SECURITY.md) (mandatory).** It holds the
+trust boundaries, the invariants that must never break (tokens Bearer-only & never in URLs; atomic
+fail-closed single-use codes/tickets; authorize + ownership on every route; scope confinement; stdio/plugins
+admin-only; secrets encrypted/write-only; security headers/CORS/`trustProxy` in-app; no leaky errors), the
+inventory of controls, the accepted residual risk (top open item: **per-MCP entitlements are opt-in — mark
+sensitive virtual servers `restricted`**), and the per-change checklist + review process. Before calling any
+change done, run the SECURITY.md §6 checklist against your diff; if it touches auth, tokens, routes, MCP,
+OAuth, SSO, plugins, DB or headers (§5), run the adversarial review and fix confirmed findings first. Add a
+row to the SECURITY.md change log for any release that touches security.

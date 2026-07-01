@@ -745,6 +745,23 @@ export class TokensRepo {
   async revoke(jti: string): Promise<void> {
     await this.store.run('INSERT INTO token_revocations (jti, revoked_at) VALUES (?, ?)', [jti, now()]).catch(() => {});
   }
+  /**
+   * Atomically claim a single-use token by its jti. Returns true for exactly ONE caller — the first to
+   * insert the row — because the `jti` PRIMARY KEY rejects every concurrent/subsequent duplicate insert.
+   * This is the atomic replacement for the check-then-act `isRevoked()` + `revoke()` pattern, which had a
+   * TOCTOU race (two concurrent requests both passed the read before either wrote). Fails CLOSED: any
+   * insert error — the duplicate-key violation OR a transient DB error — yields false (deny), never a
+   * silent success. Use this for handoff codes and stream tickets; use `revoke()` for fire-and-forget
+   * session invalidation (logout), where idempotency, not first-wins, is what's wanted.
+   */
+  async consume(jti: string): Promise<boolean> {
+    try {
+      await this.store.run('INSERT INTO token_revocations (jti, revoked_at) VALUES (?, ?)', [jti, now()]);
+      return true;
+    } catch {
+      return false; // duplicate jti (already consumed) or a DB error → deny
+    }
+  }
   async isRevoked(jti: string): Promise<boolean> {
     const r = await this.store.get('SELECT jti FROM token_revocations WHERE jti = ?', [jti]);
     return !!r;

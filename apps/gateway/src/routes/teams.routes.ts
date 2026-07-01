@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
 import { createTeamSchema, updateTeamSchema, addTeamMemberSchema } from '@kravn/contracts';
 import { newId, slugify } from '../crypto.js';
+import { currentUser } from '../auth/plugin.js';
 import type { Services } from '../services.js';
 import { parse, sendError } from './_helpers.js';
 
@@ -25,6 +26,12 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/teams/:id/members', read, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!(await s.repos.teams.getById(id))) return sendError(reply, 404, 'not_found', 'Team not found.');
+    // `teams.read` alone is not enough to read a roster: a non-admin may only list members of a team they
+    // belong to. Otherwise any viewer could enumerate every team's membership and role assignments by id.
+    const me = currentUser(req);
+    if (me.role !== 'admin' && !me.teams.includes(id)) {
+      return sendError(reply, 403, 'forbidden', 'You are not a member of this team.');
+    }
     return { members: await s.repos.teams.members(id) };
   });
 
