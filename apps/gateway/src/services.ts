@@ -11,6 +11,7 @@ import { Encryptor } from './crypto.js';
 import { SettingsService } from './settings/settings.service.js';
 import { JwtService } from './auth/jwt.js';
 import { AuthService } from './auth/auth.service.js';
+import { ScimService } from './scim/scim.service.js';
 import { SsoService } from './auth/sso.service.js';
 import { OAuthService } from './auth/oauth.service.js';
 import { SsrfGuard } from './http/ssrf.js';
@@ -34,6 +35,7 @@ export interface Services {
   encryptor: Encryptor;
   jwt: JwtService;
   auth: AuthService;
+  scim: ScimService;
   sso: SsoService;
   oauth: OAuthService;
   ssrf: SsrfGuard;
@@ -127,6 +129,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
     registry.syncPluginServers().catch((err) => log.warn({ err }, 'plugin-server sync failed'));
   await plugins.scan();
 
+  const scim = new ScimService(store);
   const auth = new AuthService(repos, settings, env, log);
   await auth.bootstrapFromEnv();
   // Guarantee the Platform Administrator Team exists and holds every admin (backfills pre-feature installs,
@@ -140,7 +143,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics };
 }
 
 /** Kick off background work after the HTTP server is listening. */

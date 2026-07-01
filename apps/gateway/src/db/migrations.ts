@@ -392,8 +392,24 @@ const teamServerTools: Migration = {
   },
 };
 
+/**
+ * 006 — User deactivation. `disabled` (0/1) lets an account be turned off (blocked from login, existing
+ * sessions rejected) without deleting it — used by the user ABM and by SCIM deprovisioning.
+ */
+const userDisabled: Migration = {
+  name: '006_user_disabled',
+  async up(knex) {
+    await ensureColumn(knex, 'users', 'disabled', (t) => t.integer('disabled').notNullable().defaultTo(0));
+  },
+  async down(knex) {
+    if (await knex.schema.hasColumn('users', 'disabled')) {
+      await knex.schema.alterTable('users', (t) => t.dropColumn('disabled'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

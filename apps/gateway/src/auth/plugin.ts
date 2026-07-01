@@ -65,6 +65,7 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
 
       const user = await deps.repos.users.getById(claims.sub);
       if (!user) return reply.code(401).send({ error: { code: 'unknown_user', message: 'Account no longer exists.' } });
+      if (user.disabled) return reply.code(403).send({ error: { code: 'account_disabled', message: 'This account is disabled.' } });
 
       // CSRF (double-submit) only matters for cookie-authenticated mutating requests.
       if (
@@ -130,7 +131,7 @@ export async function authenticateToken(token: string, jwt: JwtService, repos: R
     const claims = await jwt.verify(token);
     if (await repos.tokens.isRevoked(claims.jti)) return null;
     const user = await repos.users.getById(claims.sub);
-    if (!user) return null;
+    if (!user || user.disabled) return null;
     return toAuthUser(user, await repos.teams.teamIdsForUser(user.id));
   } catch {
     return null;

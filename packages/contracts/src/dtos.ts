@@ -308,6 +308,18 @@ export type CreateUserRequest = z.infer<typeof createUserSchema>;
 export const updateUserRoleSchema = z.object({ role: roleSchema });
 export type UpdateUserRoleRequest = z.infer<typeof updateUserRoleSchema>;
 
+/** Full user edit (ABM). Every field optional — only what's sent is changed. */
+export const updateUserSchema = z
+  .object({
+    name: z.string().max(120).optional(),
+    email: z.string().email().optional(),
+    role: roleSchema.optional(),
+    password: z.string().min(8).max(200).optional(),
+    disabled: z.boolean().optional(),
+  })
+  .refine((v) => Object.keys(v).length > 0, { message: 'No fields to update.' });
+export type UpdateUserRequest = z.infer<typeof updateUserSchema>;
+
 // ─── Local prompts ─────────────────────────────────────────────────────────────────────────────────
 
 export const upsertLocalPromptSchema = z.object({

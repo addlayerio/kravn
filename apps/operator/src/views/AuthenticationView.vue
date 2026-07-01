@@ -50,6 +50,52 @@ onMounted(async () => {
   }
 });
 
+// ─── SCIM directory sync (provisioning from Entra/AD — complements SAML) ───────────────────────────
+const canManageScim = auth.can('users.write');
+const scim = reactive({ enabled: false, hasToken: false, defaultRole: 'viewer' as 'editor' | 'viewer' });
+const newScimToken = ref('');
+const scimEndpoint = ref('');
+onMounted(() => void loadScim());
+
+async function loadScim() {
+  scimEndpoint.value = `${window.location.origin}/scim/v2`;
+  try {
+    const c = await api.get<{ enabled: boolean; hasToken: boolean; defaultRole: string }>('/api/scim/config');
+    scim.enabled = c.enabled;
+    scim.hasToken = c.hasToken;
+    scim.defaultRole = c.defaultRole === 'editor' ? 'editor' : 'viewer';
+  } catch {
+    /* not permitted / unavailable */
+  }
+}
+async function generateScimToken() {
+  if (!confirm('Generate a new SCIM bearer token? Any existing token stops working immediately.')) return;
+  try {
+    const r = await api.post<{ token: string }>('/api/scim/token', {});
+    newScimToken.value = r.token;
+    await loadScim();
+    toast.success('SCIM token generated — copy it now, it will not be shown again.');
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Could not generate SCIM token.');
+  }
+}
+async function saveScim() {
+  try {
+    await api.put('/api/scim/config', { enabled: scim.enabled, defaultRole: scim.defaultRole });
+    toast.success('SCIM settings saved.');
+    await loadScim();
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Could not save SCIM settings.');
+  }
+}
+async function disableScim() {
+  if (!confirm('Disable SCIM and revoke the token?')) return;
+  await api.del('/api/scim/token');
+  newScimToken.value = '';
+  await loadScim();
+  toast.success('SCIM disabled.');
+}
+
 function applyConfig(c: AuthConfigView) {
   providers.value = c.oauthProviders.map((p) => ({
     id: p.id,
@@ -269,6 +315,50 @@ async function importMetadata() {
           login (Settings → Authentication) once your SSO admin can sign in.
         </small>
       </div>
+    </div>
+
+    <div v-if="canManageScim" class="card">
+      <h2>Directory sync (SCIM)</h2>
+      <small class="muted">
+        Let Entra ID / your IdP provision and deactivate users automatically (SCIM 2.0). This complements
+        SAML: SAML signs users in, SCIM keeps the user list in sync (create / update / deactivate). SCIM never
+        creates admins.
+      </small>
+
+      <div class="field" style="max-width: 560px; margin-top: 0.75rem">
+        <label>SCIM endpoint — the “Tenant URL” in Entra</label>
+        <div class="row" style="gap: 0.5rem">
+          <input :value="scimEndpoint" readonly />
+          <button class="btn" type="button" @click="copyText(scimEndpoint)">Copy</button>
+        </div>
+      </div>
+
+      <div v-if="newScimToken" class="alert" style="border-color: var(--accent)">
+        <strong>Secret token — copy it now, it won’t be shown again:</strong>
+        <div class="row" style="gap: 0.5rem; margin-top: 0.4rem">
+          <input :value="newScimToken" readonly />
+          <button class="btn" type="button" @click="copyText(newScimToken)">Copy</button>
+        </div>
+      </div>
+
+      <div class="row" style="gap: 0.5rem; align-items: center; margin-top: 0.5rem">
+        <span class="badge" :class="scim.enabled && scim.hasToken ? 'online' : 'offline'">
+          {{ scim.enabled && scim.hasToken ? 'enabled' : 'disabled' }}
+        </span>
+        <button class="btn primary" type="button" @click="generateScimToken">
+          {{ scim.hasToken ? 'Regenerate token' : 'Generate token' }}
+        </button>
+        <button v-if="scim.hasToken" class="btn danger" type="button" @click="disableScim">Disable</button>
+      </div>
+
+      <div class="field" style="max-width: 240px; margin-top: 0.75rem">
+        <label>Role for provisioned users</label>
+        <select v-model="scim.defaultRole">
+          <option value="viewer">Viewer</option>
+          <option value="editor">Editor</option>
+        </select>
+      </div>
+      <div class="btn-row"><button class="btn" type="button" @click="saveScim">Save SCIM settings</button></div>
     </div>
   </template>
 </template>

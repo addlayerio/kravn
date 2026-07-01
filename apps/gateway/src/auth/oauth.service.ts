@@ -300,9 +300,11 @@ export class OAuthService {
   }
 
   private async issueTokens(userId: string, clientId: string, scope: string): Promise<TokenResponse> {
-    // Re-read the user so role changes / deletions take effect on every (re)issue.
+    // Re-read the user so role changes / deletions / deactivations take effect on every (re)issue — this is
+    // the single choke point for both the code exchange and refresh grants.
     const user = await this.repos.users.getById(userId);
     if (!user) throw new OAuthError('invalid_grant', 'The account no longer exists.');
+    if (user.disabled) throw new OAuthError('invalid_grant', 'The account is disabled.');
     const ttlMin = this.settings.get().auth.sessionTtlMinutes;
     // 'mcp' scope: this token authenticates MCP calls only, never the control-plane /api (see auth plugin).
     const accessToken = await this.jwt.sign({ userId: user.id, email: user.email, role: user.role, scope: 'mcp' }, ttlMin);

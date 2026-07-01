@@ -220,6 +220,8 @@ export const userSchema = z.object({
   email: z.string().email(),
   name: z.string().default(''),
   role: roleSchema,
+  /** A disabled user cannot log in and any existing session is rejected (used for deactivation / SCIM). */
+  disabled: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

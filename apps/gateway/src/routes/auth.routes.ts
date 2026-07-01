@@ -115,6 +115,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
       if (!(await s.repos.tokens.consume(claims.jti))) return sendError(reply, 401, 'invalid_code', 'Code already used.');
       const user = await s.repos.users.getById(claims.sub);
       if (!user) return sendError(reply, 401, 'invalid_code', 'Account no longer exists.');
+      if (user.disabled) return sendError(reply, 403, 'account_disabled', 'This account is disabled.');
       const token = await s.jwt.sign(
         { userId: user.id, email: user.email, role: user.role },
         s.settings.get().auth.sessionTtlMinutes,

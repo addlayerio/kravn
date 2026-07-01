@@ -4,6 +4,7 @@ import {
   type SetupRequest,
   type RegisterRequest,
   type CreateUserRequest,
+  type UpdateUserRequest,
 } from '@kravn/contracts';
 import { hashPassword, verifyPassword, newId } from '../crypto.js';
 import type { Repos, UserRecord } from '../db/repos.js';
@@ -96,7 +97,22 @@ export class AuthService {
     if (!user || !ok) {
       throw new AuthError('invalid_credentials', 'Invalid email or password.', 401);
     }
+    if (user.disabled) throw new AuthError('account_disabled', 'This account is disabled.', 403);
     return user;
+  }
+
+  /** Is an email already used by a DIFFERENT user? (case-insensitive) */
+  async isEmailTaken(email: string, exceptId: string): Promise<boolean> {
+    const clash = await this.repos.users.getByEmail(email);
+    return !!clash && clash.id !== exceptId;
+  }
+
+  /** Apply an ABM edit to a user (name/email/role/password/disabled). Field-level only — the route owns the
+   *  anti-lockout, self-guard and Platform-Administrator-Team sync around it. */
+  async updateUser(id: string, patch: UpdateUserRequest): Promise<UserRecord> {
+    await this.repos.users.update(id, { name: patch.name, email: patch.email, role: patch.role, disabled: patch.disabled });
+    if (patch.password) await this.repos.users.setPasswordHash(id, hashPassword(patch.password));
+    return (await this.repos.users.getById(id))!;
   }
 
   async register(req: RegisterRequest): Promise<UserRecord> {

@@ -41,6 +41,7 @@ function mapUser(r: any): UserRecord {
     email: r.email,
     name: r.name ?? '',
     role: r.role as Role,
+    disabled: r.disabled === 1 || r.disabled === true,
     passwordHash: r.password_hash,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
@@ -77,6 +78,22 @@ export class UsersRepo {
   }
   async setRole(id: string, role: Role): Promise<void> {
     await this.store.run('UPDATE users SET role = ?, updated_at = ? WHERE id = ?', [role, now(), id]);
+  }
+  /** Patch editable user fields (name/email/role/disabled). Email is lower-cased; disabled coerced to 0/1. */
+  async update(id: string, patch: { name?: string; email?: string; role?: Role; disabled?: boolean }): Promise<void> {
+    const cols: Record<string, string> = { name: 'name', email: 'email', role: 'role', disabled: 'disabled' };
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, col] of Object.entries(cols)) {
+      const v = (patch as Record<string, unknown>)[k];
+      if (v === undefined) continue;
+      sets.push(`${col} = ?`);
+      vals.push(k === 'email' ? String(v).toLowerCase() : k === 'disabled' ? (v ? 1 : 0) : v);
+    }
+    if (!sets.length) return;
+    sets.push('updated_at = ?');
+    vals.push(now(), id);
+    await this.store.run(`UPDATE users SET ${sets.join(', ')} WHERE id = ?`, vals);
   }
   async setPasswordHash(id: string, passwordHash: string): Promise<void> {
     await this.store.run('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [passwordHash, now(), id]);

@@ -27,6 +27,7 @@ import { logRoutes } from './routes/logs.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
+import { scimRoutes } from './routes/scim.routes.js';
 import type { Services } from './services.js';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
@@ -34,7 +35,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url));
 // NB: '/oauth' is intentionally NOT here. The real /oauth/{register,authorize,token} are registered routes
 // (matched before the catch-all), while /oauth/consent is an SPA (Vue) route that MUST fall through to
 // index.html. '/.well-known' is safe: all of its routes are server JSON, and there are no SPA routes under it.
-const API_PREFIXES = ['/api', '/mcp', '/metrics', '/healthz', '/readyz', '/.well-known'];
+const API_PREFIXES = ['/api', '/mcp', '/scim', '/metrics', '/healthz', '/readyz', '/.well-known'];
 
 function resolveStaticDir(envStaticDir: string): string | null {
   if (envStaticDir) return path.resolve(envStaticDir);
@@ -157,6 +158,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     llmRoutes(app, services);
     teamRoutes(app, services);
     userRoutes(app, services);
+    scimRoutes(app, services);
     logRoutes(app, services);
     mcpRoutes(app, services);
     overviewRoutes(app, services);
