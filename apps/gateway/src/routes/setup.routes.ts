@@ -15,7 +15,10 @@ export function setupRoutes(app: FastifyInstance, s: Services): void {
         { userId: user.id, email: user.email, role: user.role },
         s.settings.get().auth.sessionTtlMinutes,
       );
-      const body: AuthResponse = { token, user: toAuthUser(user) };
+      // Include team membership (setup() joined the admin to the Platform Administrator Team) so the
+      // operator recognises the new admin as a console user immediately — otherwise its gate would bounce it.
+      const teams = await s.repos.teams.teamIdsForUser(user.id);
+      const body: AuthResponse = { token, user: toAuthUser(user, teams) };
       return reply.code(201).send(body);
     } catch (err) {
       if (err instanceof AuthError) return sendError(reply, err.status, err.code, err.message);

@@ -1,5 +1,5 @@
 import { defineStore } from 'pinia';
-import { permissionMatches, type AuthResponse, type LoginRequest, type SetupRequest } from '@kravn/contracts';
+import { permissionMatches, PLATFORM_ADMIN_TEAM_ID, type AuthResponse, type LoginRequest, type SetupRequest } from '@kravn/contracts';
 import { api, getToken, setToken } from '../api/client';
 
 interface AuthUser {
@@ -19,6 +19,10 @@ export const useAuthStore = defineStore('auth', {
   }),
   getters: {
     isAuthenticated: (s) => !!s.token && !!s.user,
+    // Mirrors the backend gate: a system admin (role) OR a Platform Administrator Team member may use the
+    // console. A pure MCP consumer is authenticated but neither. The role check also keeps this robust if a
+    // response ever omits teams.
+    isPlatformAdmin: (s) => s.user?.role === 'admin' || !!s.user?.teams?.includes(PLATFORM_ADMIN_TEAM_ID),
   },
   actions: {
     can(permission: string): boolean {

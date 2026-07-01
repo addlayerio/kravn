@@ -23,10 +23,12 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
     return { tool };
   });
 
-  // Invoke a tool from the UI playground. ADMIN ONLY: this invokes a tool by id with NO virtual-server
-  // context, so it bypasses the per-VS access policy AND the per-team tool subset. Non-admins must invoke
-  // through a virtual server (/servers/:slug/mcp) or chat, where both entitlement levels are enforced.
-  app.post('/api/tools/:id/invoke', { preHandler: [app.authenticate] }, async (req, reply) => {
+  // Invoke a tool from the UI playground. Goes through authorize() (so the Platform-Administrator-Team gate
+  // applies like every control-plane route) AND is further restricted to admins inline: it invokes a tool by
+  // id with NO virtual-server context, so it bypasses the per-VS access policy AND the per-team tool subset.
+  // It must NOT be opened to editors (registry.write) or that bypass returns. Non-admins invoke through a
+  // virtual server (/servers/:slug/mcp) or chat, where both entitlement levels are enforced.
+  app.post('/api/tools/:id/invoke', { preHandler: [app.authenticate, app.authorize()] }, async (req, reply) => {
     const actor = currentUser(req);
     if (actor.role !== 'admin') {
       return sendError(reply, 403, 'forbidden', 'The raw tool playground is admin-only; invoke via a virtual server.');

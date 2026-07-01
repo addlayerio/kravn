@@ -356,9 +356,15 @@ export class SsoService {
         // Invalidate any pre-existing local password: a squatter could have registered this email before
         // it was designated; promotion must not hand them an admin account they can still log into locally.
         await this.repos.users.setPasswordHash(existing.id, hashPassword(crypto.randomBytes(32).toString('hex')));
+        // The newly-promoted SSO admin (e.g. replacing the local admin with an EntraID one) must land in
+        // the Platform Administrator Team so it keeps access to the admin console.
+        await this.repos.teams.ensurePlatformAdminMembership(existing.id);
         this.log.info({ email: lower }, 'SSO user promoted to admin (adminEmails); local password reset');
         return { ...existing, role: 'admin' };
       }
+      // Any admin signing in via SSO is (re)affirmed in the console gate team — keeps the roster complete
+      // for SSO-provisioned admins and self-heals if they were ever removed.
+      if (existing.role === 'admin') await this.repos.teams.ensurePlatformAdminMembership(existing.id);
       return existing;
     }
 
@@ -366,7 +372,7 @@ export class SsoService {
     if (!c.autoProvision && !designatedAdmin) {
       throw new AuthError('not_provisioned', 'No account exists for this identity and auto-provisioning is off.', 403);
     }
-    return this.repos.users.create({
+    const created = await this.repos.users.create({
       id: newId(),
       email: lower,
       name: name || lower,
@@ -374,6 +380,10 @@ export class SsoService {
       // SSO-only account: random password it can never practically use.
       passwordHash: hashPassword(crypto.randomBytes(32).toString('hex')),
     });
+    // A brand-new SSO account that IS a designated admin joins the console gate team; a normal SSO consumer
+    // does not (they can use MCPs but not the admin console).
+    if (designatedAdmin) await this.repos.teams.ensurePlatformAdminMembership(created.id);
+    return created;
   }
 
   private async issue(user: UserRecord, returnTo = 'operator'): Promise<SsoLoginResult> {

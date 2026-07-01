@@ -1,5 +1,5 @@
 import type { FastifyInstance, FastifyRequest, FastifyReply, preHandlerHookHandler } from 'fastify';
-import { permissionMatches } from '@kravn/contracts';
+import { permissionMatches, PLATFORM_ADMIN_TEAM_ID } from '@kravn/contracts';
 import { toAuthUser, type AuthUser } from './auth.service.js';
 import type { JwtService } from './jwt.js';
 import type { Repos } from '../db/repos.js';
@@ -99,6 +99,19 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
     return async function (req: FastifyRequest, reply: FastifyReply) {
       const user = req.user;
       if (!user) return reply.code(401).send({ error: { code: 'unauthenticated', message: 'Authentication required.' } });
+      // Admin-console gate: EVERY control-plane route goes through authorize(), so this one check confines
+      // the whole administration platform to the Platform Administrator Team. A user who only consumes MCPs
+      // (not in the team, not an admin) is rejected here regardless of their role's permissions. The chat and
+      // MCP data-plane use app.authenticate / authenticateToken, not authorize(), so they're unaffected.
+      // A role='admin' user is always allowed (they're the system administrators, and are seeded into the
+      // team anyway) — this is the anti-lockout backstop: no team-membership edge case can bar an admin from
+      // their own console. The team is what additionally grants console access to NON-admin (editor/viewer)
+      // users and is the canonical roster.
+      if (user.role !== 'admin' && !user.teams.includes(PLATFORM_ADMIN_TEAM_ID)) {
+        return reply.code(403).send({
+          error: { code: 'not_platform_admin', message: 'Access to the administration console is restricted to the Platform Administrator Team.' },
+        });
+      }
       const ok = permissions.every((p) => permissionMatches(user.permissions, p));
       if (!ok) return reply.code(403).send({ error: { code: 'forbidden', message: 'You do not have permission to do that.' } });
     };

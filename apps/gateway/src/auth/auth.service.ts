@@ -56,13 +56,14 @@ export class AuthService {
   async bootstrapFromEnv(): Promise<void> {
     if (!(await this.setupRequired())) return;
     if (this.env.adminEmail && this.env.adminPassword) {
-      await this.repos.users.create({
+      const admin = await this.repos.users.create({
         id: newId(),
         email: this.env.adminEmail,
         name: 'Administrator',
         role: 'admin',
         passwordHash: hashPassword(this.env.adminPassword),
       });
+      await this.repos.teams.ensurePlatformAdminMembership(admin.id);
       this.log.info({ email: this.env.adminEmail }, 'bootstrapped admin user from environment');
     }
   }
@@ -78,6 +79,8 @@ export class AuthService {
       role: 'admin',
       passwordHash: hashPassword(req.password),
     });
+    // The first admin seeds and joins the Platform Administrator Team — the gate for the admin console.
+    await this.repos.teams.ensurePlatformAdminMembership(user.id);
     if (req.instanceName) {
       await this.settings.update({ general: { instanceName: req.instanceName } });
     }
@@ -116,12 +119,15 @@ export class AuthService {
     if (await this.repos.users.getByEmail(req.email)) {
       throw new AuthError('email_taken', 'That email is already registered.', 409);
     }
-    return this.repos.users.create({
+    const user = await this.repos.users.create({
       id: newId(),
       email: req.email,
       name: req.name,
       role: req.role,
       passwordHash: hashPassword(req.password),
     });
+    // An admin created here must be able to reach the console; a viewer/editor must NOT (they're consumers).
+    if (req.role === 'admin') await this.repos.teams.ensurePlatformAdminMembership(user.id);
+    return user;
   }
 }

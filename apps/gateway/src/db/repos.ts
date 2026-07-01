@@ -23,6 +23,7 @@ import type {
   ChatAttachment,
   ChatAttachmentKind,
 } from '@kravn/contracts';
+import { PLATFORM_ADMIN_TEAM_ID, PLATFORM_ADMIN_TEAM_SLUG, PLATFORM_ADMIN_TEAM_NAME } from '@kravn/contracts';
 
 const now = (): string => new Date().toISOString();
 const bool = (v: unknown): boolean => v === 1 || v === true || v === '1';
@@ -791,6 +792,38 @@ export class TeamsRepo {
       for (const id of subset) union.add(id);
     }
     return union;
+  }
+
+  // ─── Platform Administrator Team (gates access to the admin console) ─────────────────────────────
+
+  /** Create the well-known Platform Administrator Team if it does not exist (fixed id/slug). Idempotent. */
+  async ensurePlatformAdminTeam(): Promise<void> {
+    if (await this.getById(PLATFORM_ADMIN_TEAM_ID)) return;
+    const ts = now();
+    await this.store
+      .run('INSERT INTO teams (id, name, slug, description, created_at, updated_at) VALUES (?,?,?,?,?,?)', [
+        PLATFORM_ADMIN_TEAM_ID,
+        PLATFORM_ADMIN_TEAM_NAME,
+        PLATFORM_ADMIN_TEAM_SLUG,
+        'Members can access the Kravn administration console. Consumers of MCPs are not in this team.',
+        ts,
+        ts,
+      ])
+      .catch(() => {}); // ignore a concurrent create
+  }
+
+  /** Ensure a user is a member of the Platform Administrator Team (creating the team if needed). */
+  async ensurePlatformAdminMembership(userId: string): Promise<void> {
+    await this.ensurePlatformAdminTeam();
+    await this.addMember(PLATFORM_ADMIN_TEAM_ID, userId, 'owner'); // addMember is idempotent
+  }
+
+  /** Startup reconciliation: guarantee the team exists and every admin-role user is a member (anti-lockout,
+   *  and backfills installs created before this feature existed). */
+  async reconcilePlatformAdmins(): Promise<void> {
+    await this.ensurePlatformAdminTeam();
+    const admins = await this.store.all<{ id: string }>('SELECT id FROM users WHERE role = ?', ['admin']);
+    for (const a of admins) await this.addMember(PLATFORM_ADMIN_TEAM_ID, a.id, 'owner');
   }
 }
 

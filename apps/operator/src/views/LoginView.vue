@@ -47,6 +47,11 @@ onMounted(async () => {
     }
   }
 
+  // Redirected here because the account is authenticated but not a Platform Administrator Team member.
+  if (route.query.denied) {
+    error.value = 'This account cannot access the administration console. Only members of the Platform Administrator Team can sign in here.';
+  }
+
   // Capture an SSO redirect (?token=) or surface an SSO error.
   // SSO returns a one-time ?code= (not a token). Exchange it for a session token.
   const code = route.query.code as string | undefined;
@@ -81,6 +86,10 @@ async function submit() {
   busy.value = true;
   try {
     await auth.login(form);
+    if (!auth.isPlatformAdmin) {
+      error.value = 'This account cannot access the administration console. Only members of the Platform Administrator Team can sign in here.';
+      return;
+    }
     const target = postLoginTarget();
     try {
       sessionStorage.removeItem(POST_LOGIN_KEY);

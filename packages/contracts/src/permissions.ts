@@ -5,6 +5,16 @@ import { z } from 'zod';
  * (the original ContextForge uses a far richer inheritance graph; Kravn starts
  * with three flat roles and a dot-notation permission model that can grow).
  */
+/**
+ * The well-known Platform Administrator Team. Membership in it — NOT merely having a role — is what gates
+ * access to the administration console (every control-plane route). A user given an account only to consume
+ * MCPs (e.g. a partner) is not in this team and therefore cannot reach the admin platform. The id/slug are
+ * fixed so the gate and the seeding logic reference the same team across all databases.
+ */
+export const PLATFORM_ADMIN_TEAM_ID = 'team_platform_admins';
+export const PLATFORM_ADMIN_TEAM_SLUG = 'platform-administrators';
+export const PLATFORM_ADMIN_TEAM_NAME = 'Platform Administrator Team';
+
 export const ROLES = ['admin', 'editor', 'viewer'] as const;
 export type Role = (typeof ROLES)[number];
 export const roleSchema = z.enum(ROLES);

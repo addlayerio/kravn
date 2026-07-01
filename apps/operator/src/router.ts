@@ -46,6 +46,13 @@ router.beforeEach(async (to) => {
     return to.path === '/setup' ? true : { name: 'setup' };
   }
 
+  // An authenticated user who is NOT in the Platform Administrator Team may hold a valid session (e.g. an
+  // MCP consumer) but must not reach the admin console. Keep them on /login with a clear message instead of
+  // a dashboard that 403s on every request.
+  if (auth.isAuthenticated && !auth.isPlatformAdmin) {
+    return to.path === '/login' ? true : { name: 'login', query: { denied: '1' } };
+  }
+
   if (to.meta.public) {
     if (to.path === '/setup') return { name: 'login' }; // setup already done
     if (auth.isAuthenticated && to.path === '/login') return { name: 'dashboard' };

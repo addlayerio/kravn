@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { createUserSchema, updateUserRoleSchema } from '@kravn/contracts';
+import { createUserSchema, updateUserRoleSchema, PLATFORM_ADMIN_TEAM_ID } from '@kravn/contracts';
 import type { Services } from '../services.js';
 import { AuthError } from '../auth/auth.service.js';
 import { currentUser } from '../auth/plugin.js';
@@ -48,6 +48,11 @@ export function userRoutes(app: FastifyInstance, s: Services): void {
         return 'last_admin';
       }
       if (target.role !== dto.role) await s.repos.users.setRole(id, dto.role);
+      // Keep console access aligned with the admin role: promoting to admin joins the Platform Administrator
+      // Team; demoting FROM admin removes them from it (revoking console access in one step). A user can
+      // still be an explicit non-admin console member — add them to the team directly for that.
+      if (dto.role === 'admin') await s.repos.teams.ensurePlatformAdminMembership(id);
+      else if (target.role === 'admin') await s.repos.teams.removeMember(PLATFORM_ADMIN_TEAM_ID, id);
       return 'ok';
     });
     if (outcome === 'not_found') return sendError(reply, 404, 'not_found', 'User not found.');

@@ -1,5 +1,5 @@
 import type { FastifyInstance } from 'fastify';
-import { createTeamSchema, updateTeamSchema, addTeamMemberSchema, setTeamServerAccessSchema } from '@kravn/contracts';
+import { createTeamSchema, updateTeamSchema, addTeamMemberSchema, setTeamServerAccessSchema, PLATFORM_ADMIN_TEAM_ID } from '@kravn/contracts';
 import { newId, slugify } from '../crypto.js';
 import { currentUser } from '../auth/plugin.js';
 import type { Services } from '../services.js';
@@ -56,6 +56,9 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
 
   app.delete('/api/teams/:id', write, async (req, reply) => {
     const { id } = req.params as { id: string };
+    if (id === PLATFORM_ADMIN_TEAM_ID) {
+      return sendError(reply, 400, 'protected_team', 'The Platform Administrator Team cannot be deleted; it gates console access.');
+    }
     // Strip the team from every virtual server's allowedTeams so no phantom grant lingers (the team's
     // tool-subset rows are cleared inside teams.delete()).
     const servers = await s.repos.virtualServers.list();
@@ -80,6 +83,11 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
 
   app.delete('/api/teams/:id/members/:userId', write, async (req, reply) => {
     const { id, userId } = req.params as { id: string; userId: string };
+    // Don't let an admin remove THEMSELVES from the console-gate team (would lock themselves out until the
+    // next restart's reconciliation). Removing other members is allowed.
+    if (id === PLATFORM_ADMIN_TEAM_ID && userId === currentUser(req).id) {
+      return sendError(reply, 400, 'self_lockout', 'You cannot remove yourself from the Platform Administrator Team.');
+    }
     await s.repos.teams.removeMember(id, userId);
     return reply.code(204).send();
   });

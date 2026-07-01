@@ -129,6 +129,11 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
 
   const auth = new AuthService(repos, settings, env, log);
   await auth.bootstrapFromEnv();
+  // Guarantee the Platform Administrator Team exists and holds every admin (backfills pre-feature installs,
+  // and self-heals against lockout). Membership in it gates the whole admin console.
+  await repos.teams
+    .reconcilePlatformAdmins()
+    .catch((err) => log.error({ err }, 'platform-admin reconciliation failed (admins keep console access via role)'));
   const sso = new SsoService(repos, encryptor, jwt, settings, log);
   const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins);

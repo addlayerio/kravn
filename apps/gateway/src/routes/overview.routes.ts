@@ -7,7 +7,9 @@ import type { Services } from '../services.js';
  * The DB queries double as a liveness probe: if they throw, the database is reported as not connected.
  */
 export function overviewRoutes(app: FastifyInstance, s: Services): void {
-  app.get('/api/overview', { preHandler: [app.authenticate] }, async (): Promise<PlatformOverview> => {
+  // Control-plane dashboard data → must go through authorize() so the Platform-Administrator-Team gate
+  // applies (servers.read is held by every console role: admin/editor/viewer).
+  app.get('/api/overview', { preHandler: [app.authenticate, app.authorize('servers.read')] }, async (): Promise<PlatformOverview> => {
     let connected = true;
     let servers: Awaited<ReturnType<typeof s.repos.servers.list>> = [];
     let vservers: Awaited<ReturnType<typeof s.repos.virtualServers.list>> = [];
