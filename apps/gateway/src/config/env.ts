@@ -35,6 +35,12 @@ const envSchema = z.object({
   KRAVN_CLIENT_URL: z.string().default(''),
   /** Build all tables inside this DB schema (PostgreSQL + SQL Server). Empty -> the default schema. */
   KRAVN_DB_SCHEMA: z.string().default(''),
+  /** Bearer token that /metrics requires (for Prometheus). Empty -> /metrics needs a signed-in Kravn user. */
+  KRAVN_METRICS_TOKEN: z.string().default(''),
+  /** Allow stdio upstream servers (spawn a local process). Admin-only anyway; set 'false' to forbid entirely. */
+  KRAVN_ALLOW_STDIO: z.enum(['true', 'false']).default('true'),
+  /** How Fastify trusts proxy headers for req.ip: 'false' (direct), 'true', a hop count, or a CIDR/IP list. */
+  KRAVN_TRUST_PROXY: z.string().default('1'),
 });
 
 export type RawEnv = z.infer<typeof envSchema>;
@@ -72,6 +78,12 @@ export interface Env {
   role: AppRole;
   /** Base URL of the end-user client SPA (SSO return target); '' if not configured. */
   clientUrl: string;
+  /** Bearer token required by /metrics (Prometheus); '' -> /metrics requires a signed-in user. */
+  metricsToken: string;
+  /** Whether stdio upstream servers (local process spawn) may be created (admin-only regardless). */
+  allowStdio: boolean;
+  /** Fastify trustProxy value (false | true | hop count | CIDR/IP list). */
+  trustProxy: boolean | number | string;
 }
 
 function sqlite(file: string): DbConfig {
@@ -188,5 +200,17 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     pluginsDir: raw.KRAVN_PLUGINS_DIR ? path.resolve(raw.KRAVN_PLUGINS_DIR) : path.resolve(dataDir, 'plugins'),
     role: raw.KRAVN_ROLE,
     clientUrl: absoluteUrlOrEmpty('KRAVN_CLIENT_URL', raw.KRAVN_CLIENT_URL),
+    metricsToken: raw.KRAVN_METRICS_TOKEN,
+    allowStdio: raw.KRAVN_ALLOW_STDIO === 'true',
+    trustProxy: parseTrustProxy(raw.KRAVN_TRUST_PROXY),
   };
+}
+
+/** 'false'|'true' -> boolean; a bare number -> hop count; anything else -> a CIDR/IP allowlist string. */
+function parseTrustProxy(v: string): boolean | number | string {
+  const t = v.trim();
+  if (t === 'false') return false;
+  if (t === 'true') return true;
+  if (/^\d+$/.test(t)) return Number(t);
+  return t;
 }

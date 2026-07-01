@@ -102,6 +102,30 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     }
   });
 
+  // Exchange a one-time SSO 'handoff' code (delivered in the post-login redirect URL) for a real session
+  // token. Keeps a full session bearer out of the redirect URL (browser history / proxy logs).
+  app.post('/api/auth/exchange', async (req, reply) => {
+    const code = (req.body as { code?: string })?.code ?? '';
+    if (!code) return sendError(reply, 400, 'invalid_request', 'Missing code.');
+    try {
+      const claims = await s.jwt.verify(code);
+      if (claims.scope !== 'handoff') return sendError(reply, 401, 'invalid_code', 'Invalid handoff code.');
+      if (await s.repos.tokens.isRevoked(claims.jti)) return sendError(reply, 401, 'invalid_code', 'Code already used.');
+      await s.repos.tokens.revoke(claims.jti); // single-use
+      const user = await s.repos.users.getById(claims.sub);
+      if (!user) return sendError(reply, 401, 'invalid_code', 'Account no longer exists.');
+      const token = await s.jwt.sign(
+        { userId: user.id, email: user.email, role: user.role },
+        s.settings.get().auth.sessionTtlMinutes,
+      );
+      const teams = await s.repos.teams.teamIdsForUser(user.id);
+      const body: AuthResponse = { token, user: toAuthUser(user, teams) };
+      return reply.send(body);
+    } catch {
+      return sendError(reply, 401, 'invalid_code', 'Invalid or expired handoff code.');
+    }
+  });
+
   app.get('/api/auth/me', { preHandler: [app.authenticate] }, async (req) => {
     return { user: currentUser(req) };
   });

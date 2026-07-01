@@ -47,9 +47,9 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
     try {
       const claims = await deps.jwt.verify(extracted.token);
 
-      // MCP-scoped tokens (issued via OAuth) authenticate MCP endpoints only — never the control-plane API
-      // that this `authenticate` preHandler guards. The MCP routes use authenticateToken() instead.
-      if (claims.scope === 'mcp') {
+      // Only an UNSCOPED session token authenticates the control-plane API. Any scoped token — 'mcp' (OAuth),
+      // 'logstream' (SSE ticket) or 'handoff' (SSO one-time code) — is restricted to its own narrow endpoint.
+      if (claims.scope) {
         return reply.code(403).send({ error: { code: 'wrong_scope', message: 'This token cannot access the control-plane API.' } });
       }
 

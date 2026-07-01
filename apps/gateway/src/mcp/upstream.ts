@@ -7,6 +7,25 @@ import type { McpCallContext } from '@kravn/plugin-sdk';
 import type { Logger } from 'pino';
 import type { PluginManager } from '../plugins/manager.js';
 
+// Env vars that could turn a spawned stdio server into code execution in the gateway process's shell/loader.
+const DANGEROUS_ENV = new Set([
+  'PATH', 'NODE_OPTIONS', 'LD_PRELOAD', 'LD_LIBRARY_PATH', 'LD_AUDIT', 'DYLD_INSERT_LIBRARIES',
+  'DYLD_LIBRARY_PATH', 'BASH_ENV', 'ENV', 'IFS', 'PYTHONSTARTUP', 'PERL5OPT',
+]);
+
+/** Minimal, safe environment for a stdio child: host PATH/HOME/LANG only, plus the server's own non-dangerous vars. */
+function sanitizeChildEnv(serverEnv: Record<string, string>): Record<string, string> {
+  const base: Record<string, string> = {
+    PATH: process.env.PATH ?? '/usr/local/bin:/usr/bin:/bin',
+    HOME: process.env.HOME ?? '/tmp',
+    LANG: process.env.LANG ?? 'C.UTF-8',
+  };
+  for (const [k, v] of Object.entries(serverEnv ?? {})) {
+    if (!DANGEROUS_ENV.has(k)) base[k] = v;
+  }
+  return base;
+}
+
 /** Minimal surface the manager uses — satisfied by the MCP SDK Client and by plugin shims. */
 interface ClientLike {
   listTools(): Promise<any>;
@@ -113,7 +132,9 @@ export class UpstreamManager {
       transport = new StdioClientTransport({
         command: server.command,
         args: server.args,
-        env: { ...process.env, ...server.env } as Record<string, string>,
+        // Do NOT inherit the full host env (it holds KRAVN_SECRET, DATABASE_URL, etc.) into a child process,
+        // and never let server env inject a loader/interpreter override or hijack PATH.
+        env: sanitizeChildEnv(server.env),
       });
     } else if (server.transport === 'sse') {
       transport = new SSEClientTransport(new URL(server.url), {

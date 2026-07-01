@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue';
-import { getToken } from '../api/client';
+import { api } from '../api/client';
 
 interface LogEntry {
   ts: string;
@@ -28,26 +28,46 @@ async function scrollToBottom() {
   if (container.value) container.value.scrollTop = container.value.scrollHeight;
 }
 
-onMounted(() => {
-  const token = getToken();
-  source = new EventSource(`/api/logs/stream?token=${encodeURIComponent(token ?? '')}`);
-  source.onopen = () => (connected.value = true);
-  source.onerror = () => (connected.value = false);
-  source.onmessage = (ev) => {
-    try {
-      const entry = JSON.parse(ev.data) as LogEntry;
-      if (entry && entry.msg) {
-        logs.value.push(entry);
-        if (logs.value.length > 1000) logs.value.shift();
-        void scrollToBottom();
+let closed = false;
+let retry: ReturnType<typeof setTimeout> | null = null;
+
+/** (Re)connect the log stream. Each connection exchanges the session for a fresh short-lived ticket, so no
+ *  session token ever appears in the SSE URL and the ticket only needs to be valid for the handshake. */
+async function connect(): Promise<void> {
+  if (closed) return;
+  try {
+    const { ticket } = await api.post<{ ticket: string }>('/api/logs/stream-ticket', {});
+    if (closed) return;
+    source = new EventSource(`/api/logs/stream?ticket=${encodeURIComponent(ticket)}`);
+    source.onopen = () => (connected.value = true);
+    source.onmessage = (ev) => {
+      try {
+        const entry = JSON.parse(ev.data) as LogEntry;
+        if (entry && entry.msg) {
+          logs.value.push(entry);
+          if (logs.value.length > 1000) logs.value.shift();
+          void scrollToBottom();
+        }
+      } catch {
+        /* keepalive or non-JSON */
       }
-    } catch {
-      /* keepalive or non-JSON */
-    }
-  };
-});
+    };
+    source.onerror = () => {
+      connected.value = false;
+      source?.close();
+      if (!closed) retry = setTimeout(() => void connect(), 3000); // reconnect with a fresh ticket
+    };
+  } catch {
+    connected.value = false;
+    if (!closed) retry = setTimeout(() => void connect(), 5000);
+  }
+}
+
+onMounted(connect);
 
 onBeforeUnmount(() => {
+  closed = true;
+  if (retry) clearTimeout(retry);
   source?.close();
 });
 </script>

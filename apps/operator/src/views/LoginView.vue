@@ -3,7 +3,7 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
-import { ApiError, setToken } from '../api/client';
+import { api, ApiError, setToken } from '../api/client';
 import RavenLogo from '../components/RavenLogo.vue';
 
 const auth = useAuthStore();
@@ -48,25 +48,31 @@ onMounted(async () => {
   }
 
   // Capture an SSO redirect (?token=) or surface an SSO error.
-  const token = route.query.token as string | undefined;
+  // SSO returns a one-time ?code= (not a token). Exchange it for a session token.
+  const code = route.query.code as string | undefined;
   const ssoError = route.query.sso_error as string | undefined;
   if (ssoError) error.value = ssoError;
-  if (token) {
-    setToken(token);
-    auth.token = token;
-    await auth.loadMe();
-    if (auth.isAuthenticated) {
-      const target = postLoginTarget();
-      try {
-        sessionStorage.removeItem(POST_LOGIN_KEY);
-      } catch {
-        /* ignore */
+  if (code) {
+    try {
+      const { token } = await api.post<{ token: string }>('/api/auth/exchange', { code });
+      setToken(token);
+      auth.token = token;
+      await auth.loadMe();
+      if (auth.isAuthenticated) {
+        const target = postLoginTarget();
+        try {
+          sessionStorage.removeItem(POST_LOGIN_KEY);
+        } catch {
+          /* ignore */
+        }
+        router.replace(target);
+        return;
       }
-      router.replace(target);
-      return;
+      setToken(null);
+      auth.token = null;
+    } catch (e) {
+      error.value = e instanceof ApiError ? e.message : 'Single sign-on failed. Please try again.';
     }
-    setToken(null);
-    auth.token = null;
   }
 });
 

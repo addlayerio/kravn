@@ -46,18 +46,65 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   const app = Fastify({
     logger: {
       level: process.env.LOG_LEVEL || 'info',
+      // Strip the query string from request logs so a token/ticket carried as ?param= never lands in logs.
+      serializers: {
+        req(req: { method: string; url?: string; ip?: string }) {
+          return { method: req.method, url: (req.url || '').split('?')[0], remoteAddress: req.ip };
+        },
+      },
       ...(services.env.isProd
         ? {}
         : { transport: { target: 'pino-pretty', options: { colorize: true, translateTime: 'SYS:HH:MM:ss' } } }),
     },
     bodyLimit: 5 * 1024 * 1024,
-    trustProxy: true,
+    // NOT `true` (which trusts a client-forgeable X-Forwarded-For, defeating IP rate limits). Default trusts
+    // exactly one proxy hop (KRAVN_TRUST_PROXY); set 'false' for direct exposure or a CIDR list behind a CDN.
+    trustProxy: services.env.trustProxy,
   });
 
   app.decorate('services', services);
 
   await app.register(cookie);
-  await app.register(cors, { origin: true });
+
+  // CORS: reflect ONLY the configured app origins (public URL + separate client SPA), never an arbitrary
+  // Origin. Same-origin and server-to-server requests (no Origin header) are always allowed; the API is
+  // Bearer-based with credentials:false, so a cross-origin site can't attach a victim's token.
+  const allowedOrigins = new Set<string>();
+  const addOrigin = (u: string) => {
+    try {
+      if (u) allowedOrigins.add(new URL(u).origin);
+    } catch {
+      /* ignore malformed */
+    }
+  };
+  addOrigin(services.env.publicUrl);
+  addOrigin(services.env.clientUrl);
+  if (!services.env.isProd) {
+    allowedOrigins.add('http://localhost:5173');
+    allowedOrigins.add('http://localhost:5174');
+  }
+  await app.register(cors, {
+    credentials: false,
+    origin(origin, cb) {
+      if (!origin || allowedOrigins.has(origin)) return cb(null, true);
+      cb(null, false); // no Access-Control-Allow-Origin -> browser blocks the cross-origin read
+    },
+  });
+
+  // Security headers on every response (defense-in-depth — the product must be safe without a CDN/WAF). Set
+  // at onRequest (not onSend) so they're already staged before a streamed/hijacked response flushes headers.
+  app.addHook('onRequest', async (_req, reply) => {
+    reply.header('X-Content-Type-Options', 'nosniff');
+    reply.header('X-Frame-Options', 'DENY');
+    reply.header('Referrer-Policy', 'no-referrer');
+    reply.header('Permissions-Policy', 'geolocation=(), microphone=(), camera=(), payment=()');
+    reply.header('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    reply.header(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; " +
+        "font-src 'self' data:; connect-src 'self'; object-src 'none'; base-uri 'self'; frame-ancestors 'none'; form-action 'self'",
+    );
+  });
   // Parse application/x-www-form-urlencoded — the SAML HTTP-POST binding posts SAMLResponse/RelayState
   // as form fields to the ACS callback; without this Fastify rejects it with 415 Unsupported Media Type.
   await app.register(formbody);
@@ -75,6 +122,11 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     if (err instanceof AuthError) return reply.code(err.status).send({ error: { code: err.code, message: err.message } });
     if (err instanceof ZodError) {
       return reply.code(400).send({ error: { code: 'validation', message: 'Invalid request.', details: err.issues } });
+    }
+    // Client errors (e.g. malformed JSON body -> Fastify 400) should surface as 4xx, not a generic 500.
+    const status = (err as { statusCode?: number }).statusCode;
+    if (typeof status === 'number' && status >= 400 && status < 500) {
+      return reply.code(status).send({ error: { code: 'bad_request', message: 'Malformed or invalid request.' } });
     }
     req.log.error({ err }, 'unhandled error');
     return reply.code(500).send({ error: { code: 'internal', message: 'Internal server error.' } });

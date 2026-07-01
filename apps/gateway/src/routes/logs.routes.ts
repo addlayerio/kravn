@@ -1,15 +1,19 @@
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import { permissionMatches, permissionsForRole } from '@kravn/contracts';
 import type { Services } from '../services.js';
+import { currentUser } from '../auth/plugin.js';
 
-/** EventSource cannot send Authorization headers, so the stream authenticates via a query token. */
-async function authViaQuery(req: FastifyRequest, s: Services): Promise<boolean> {
-  const q = req.query as { token?: string };
-  const header = req.headers.authorization;
-  const token = q.token || (header?.startsWith('Bearer ') ? header.slice(7) : '');
-  if (!token) return false;
+/**
+ * EventSource can't send an Authorization header, so the stream authenticates via a query PARAMETER. To keep
+ * a full session bearer out of the URL (server/proxy access logs, browser history), the SPA first exchanges
+ * its session for a short-lived, purpose-scoped 'logstream' TICKET (below) and passes THAT as ?ticket=.
+ */
+async function verifyStreamTicket(req: FastifyRequest, s: Services): Promise<boolean> {
+  const ticket = (req.query as { ticket?: string })?.ticket ?? '';
+  if (!ticket) return false;
   try {
-    const claims = await s.jwt.verify(token);
+    const claims = await s.jwt.verify(ticket);
+    if (claims.scope !== 'logstream') return false; // never accept a session/mcp token here
     if (await s.repos.tokens.isRevoked(claims.jti)) return false;
     const user = await s.repos.users.getById(claims.sub);
     if (!user) return false;
@@ -25,8 +29,15 @@ export function logRoutes(app: FastifyInstance, s: Services): void {
     return { logs: s.logstore.recent(Number.isFinite(limit) ? limit : 200) };
   });
 
+  // Exchange the session for a 60s, logs-scoped ticket the EventSource can carry in the URL safely.
+  app.post('/api/logs/stream-ticket', { preHandler: [app.authenticate, app.authorize('logs.read')] }, async (req) => {
+    const u = currentUser(req);
+    const ticket = await s.jwt.sign({ userId: u.id, email: u.email, role: u.role, scope: 'logstream' }, 1);
+    return { ticket };
+  });
+
   app.get('/api/logs/stream', async (req, reply) => {
-    if (!(await authViaQuery(req, s))) {
+    if (!(await verifyStreamTicket(req, s))) {
       return reply.code(401).send({ error: { code: 'unauthenticated', message: 'Authentication required.' } });
     }
     reply.hijack();

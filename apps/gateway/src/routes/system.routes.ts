@@ -1,6 +1,14 @@
+import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import { KRAVN_VERSION, type BootstrapInfo } from '@kravn/contracts';
 import type { Services } from '../services.js';
+import { bearerToken, authenticateToken } from '../auth/plugin.js';
+
+function tokenMatches(a: string, b: string): boolean {
+  const ab = Buffer.from(a);
+  const bb = Buffer.from(b);
+  return ab.length === bb.length && crypto.timingSafeEqual(ab, bb);
+}
 
 export function systemRoutes(app: FastifyInstance, s: Services): void {
   // Public boot state — lets the SPA decide setup vs login without authentication.
@@ -22,6 +30,14 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
   app.get('/metrics', async (req, reply) => {
     if (!s.settings.get().observability.metricsEnabled) {
       return reply.code(404).send({ error: { code: 'disabled', message: 'Metrics are disabled.' } });
+    }
+    // Never public: require the configured Prometheus token, or a signed-in Kravn user if no token is set.
+    const token = bearerToken(req);
+    const ok = s.env.metricsToken
+      ? !!token && tokenMatches(token, s.env.metricsToken)
+      : !!token && !!(await authenticateToken(token, s.jwt, s.repos));
+    if (!ok) {
+      return reply.code(401).send({ error: { code: 'unauthenticated', message: 'Metrics require authentication.' } });
     }
     const { contentType, body } = await s.metrics.expose();
     reply.header('content-type', contentType).send(body);

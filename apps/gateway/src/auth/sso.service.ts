@@ -68,6 +68,34 @@ export interface SsoLoginResult {
   returnTo: string;
 }
 
+/** Reject a non-https or private/loopback/link-local/metadata host for a server-side OIDC discovery fetch (SSRF). */
+function assertPublicHttpsUrl(raw: string): void {
+  let u: URL;
+  try {
+    u = new URL(raw);
+  } catch {
+    throw new AuthError('bad_discovery', 'Invalid OIDC discovery URL.', 400);
+  }
+  if (u.protocol !== 'https:') throw new AuthError('bad_discovery', 'OIDC discovery URL must be https.', 400);
+  const h = u.hostname.toLowerCase().replace(/^\[|\]$/g, '');
+  const blocked =
+    h === 'localhost' ||
+    h.endsWith('.localhost') ||
+    h.endsWith('.internal') ||
+    h.endsWith('.local') ||
+    h === '::1' ||
+    h.startsWith('fc') ||
+    h.startsWith('fd') ||
+    h.startsWith('fe80:') ||
+    h === '0.0.0.0' ||
+    /^127\./.test(h) ||
+    /^10\./.test(h) ||
+    /^192\.168\./.test(h) ||
+    /^169\.254\./.test(h) ||
+    /^172\.(1[6-9]|2\d|3[01])\./.test(h);
+  if (blocked) throw new AuthError('bad_discovery', 'OIDC discovery URL host is not allowed.', 400);
+}
+
 export class SsoService {
   private issuerCache = new Map<string, Issuer<Client>>();
   private pending = new Map<string, PendingOAuth>();
@@ -203,6 +231,7 @@ export class SsoService {
   private async oidcClient(p: StoredOAuthProvider, redirectUri: string): Promise<Client> {
     let issuer = this.issuerCache.get(p.discoveryUrl);
     if (!issuer) {
+      assertPublicHttpsUrl(p.discoveryUrl); // block SSRF to loopback/private/metadata via a crafted discovery URL
       issuer = await Issuer.discover(p.discoveryUrl);
       this.issuerCache.set(p.discoveryUrl, issuer);
     }
@@ -254,6 +283,11 @@ export class SsoService {
     const info = await client.userinfo(tokenSet);
     const email = (info.email as string) || '';
     if (!email) throw new AuthError('no_email', 'The identity provider did not return an email.', 400);
+    // Only trust a VERIFIED email — account linking + adminEmails promotion key off the email string, so an
+    // IdP that lets a user set an arbitrary unverified email must not be able to claim someone else's account.
+    if (info.email_verified === false) {
+      throw new AuthError('email_unverified', 'Your identity provider has not verified this email address.', 403);
+    }
 
     const user = await this.findOrCreate(c, email, (info.name as string) || email);
     return this.issue(user, pend.returnTo);

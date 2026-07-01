@@ -76,7 +76,7 @@ export function ssoRoutes(app: FastifyInstance, s: Services): void {
     const { id } = req.params as { id: string };
     try {
       const result = await s.sso.oauthCallback(id, req.query as Record<string, unknown>);
-      return redirectWithToken(reply, s, result);
+      return await redirectWithToken(reply, s, result);
     } catch (err) {
       return ssoError(reply, req, s, err);
     }
@@ -97,7 +97,7 @@ export function ssoRoutes(app: FastifyInstance, s: Services): void {
   app.post('/api/auth/sso/saml/callback', async (req, reply) => {
     try {
       const result = await s.sso.samlCallback(deriveBaseUrl(req, s.settings, s.env), req.body as { SAMLResponse?: string; RelayState?: string });
-      return redirectWithToken(reply, s, result);
+      return await redirectWithToken(reply, s, result);
     } catch (err) {
       return ssoError(reply, req, s, err);
     }
@@ -128,9 +128,14 @@ function loginRedirect(reply: FastifyReply, s: Services, returnTo: 'operator' | 
   return reply.redirect(`/login?${query}`);
 }
 
-function redirectWithToken(reply: FastifyReply, s: Services, result: SsoLoginResult) {
-  // Hand the token to the SPA, which captures it on the login route.
-  return loginRedirect(reply, s, resolveReturnTo(result.returnTo), 'token', result.token);
+async function redirectWithToken(reply: FastifyReply, s: Services, result: SsoLoginResult) {
+  // Never put a full session token in the redirect URL (it lands in browser history / proxy logs). Hand the
+  // SPA a short-lived, single-use, 'handoff'-scoped code; the SPA POSTs it to /api/auth/exchange for the token.
+  const code = await s.jwt.sign(
+    { userId: result.user.id, email: result.user.email, role: result.user.role, scope: 'handoff' },
+    2,
+  );
+  return loginRedirect(reply, s, resolveReturnTo(result.returnTo), 'code', code);
 }
 
 function ssoError(reply: FastifyReply, req: any, s: Services, err: unknown) {
