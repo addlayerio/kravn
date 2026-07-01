@@ -83,7 +83,7 @@ async function invoke() {
           </td>
           <td>
             <div class="btn-row">
-              <button class="btn" @click="openPlayground(t)">Test</button>
+              <button v-if="auth.user?.role === 'admin'" class="btn" @click="openPlayground(t)">Test</button>
               <button v-if="auth.can('registry.write')" class="btn" @click="toggle(t)">
                 {{ t.enabled ? 'Disable' : 'Enable' }}
               </button>

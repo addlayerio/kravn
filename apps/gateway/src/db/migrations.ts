@@ -370,8 +370,30 @@ const oauth: Migration = {
   },
 };
 
+/**
+ * 005 — Per-team, per-tool entitlements. Level 1 (which teams can use a virtual server) stays on
+ * `virtual_servers.allowed_teams`. This table is level 2: when a team has rows here for a virtual server,
+ * its members may only use THOSE tools of that server; no rows for a (team, virtual_server) pair means the
+ * team gets ALL of that server's tools. Rows are inert unless the team is also in the VS's allowed_teams.
+ */
+const teamServerTools: Migration = {
+  name: '005_team_server_tools',
+  async up(knex) {
+    await createIfMissing(knex, 'team_server_tools', (t) => {
+      t.string('team_id', 64).notNullable();
+      t.string('virtual_server_id', 64).notNullable();
+      t.string('tool_id', 64).notNullable();
+      t.primary(['team_id', 'virtual_server_id', 'tool_id']);
+      t.index(['team_id', 'virtual_server_id']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('team_server_tools');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

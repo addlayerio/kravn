@@ -107,12 +107,17 @@ executable code", enforced in code — not "the code is sandboxed" (it isn't).
 
 ## 4. Known residual risk (accepted / tracked — revisit on relevant change)
 
-1. **Per-MCP entitlement is opt-in and coarse.** A virtual server with `access:'authenticated'` is usable
-   by the **whole signed-in org**; only `access:'restricted'` checks `allowedRoles`/`allowedTeams`. The
-   OAuth `mcp` token is a **global** MCP pass (not bound to specific server ids). **Until the team-scoped
-   model is implemented, mark every sensitive server `restricted`.** Design (owner + `public/team/private`
-   visibility + `server_teams` join + `srv` claim on the OAuth token, enforced in `mcp.routes.ts`) is
-   captured and ready to build. **This is the top open item.**
+1. **Team entitlements cover MCPs + tools, but not resources/prompts (by design).** Per-team access is
+   enforced at two levels: level 1 = which virtual servers a team may use (`virtual_servers.allowed_teams`,
+   only when `access:'restricted'`); level 2 = which of that server's TOOLS (`team_server_tools`, empty ⇒
+   all). Enforcement narrows `scope.tools` in `mcp.routes.ts` + `chat.service.ts` (covers tools/list &
+   tools/call); the raw `/api/tools/:id/invoke` playground and the global `/mcp` catalog are admin-only so
+   neither bypasses it; membership is loaded **live** from the DB on every request (revoking a member cuts
+   an existing OAuth token's access immediately). **Limitation:** a granted team member sees ALL of that
+   server's **resources and prompts** — the subset is tools-only. To scope resources/prompts, put them in a
+   separate virtual server. Note also `access:'authenticated'` remains open to the whole org; use
+   `restricted` (granting a team auto-flips to it) for anything sensitive. Extending level 2 to
+   resources/prompts (mirror `team_server_tools`) is a tracked follow-up.
 2. **HSTS / `X-Content-Type-Options` at the edge.** The app emits both; they did not surface through
    Cloudflare in a live probe. Confirm at the origin and check Cloudflare Transform/Managed-Headers rules.
    Enable "Always Use HTTPS" + HSTS at the ingress regardless (the app cannot force TLS it doesn't
@@ -184,5 +189,6 @@ actually live (a git push is not a deploy).
 | v0.1.17 | Plugin secret fields encrypted at rest (idempotent, write-only masking). |
 | v0.1.20 | White-box audit: editor→stdio **RCE** closed (admin-gate + `sanitizeChildEnv`); **JWT-in-URL** removed (logstream ticket + handoff exchange + scope rejection); `trustProxy` configurable; OIDC SSRF guard; `email_verified` check; security headers (`onRequest`); `/metrics` auth; CORS allowlist; 4xx passthrough; query-string stripped from logs. |
 | v0.1.21 | Re-audit: **TOCTOU** in handoff exchange (**critical**) and logstream ticket (**high**) fixed with atomic `consume(jti)` (jti-PK first-wins, fail-closed); team-roster **IDOR** fixed (membership/admin check); `ZodError` detail leak removed. |
+| v0.1.22 | Per-team MCP + tool entitlements (`team_server_tools`, `allowedToolIdsForUser`, enforced by narrowing `scope.tools` in mcp.routes + chat). Corollaries: `viewer` gains `mcp.invoke` (the WHICH is now decided by team policy, not role); global `/mcp` made **admin-only**; admin bypasses the restricted gate. Adversarial review found + fixed a **critical** invocation bypass — the raw `/api/tools/:id/invoke` playground ignored VS/team gating; now admin-only (UI button gated too). |
 
 Keep this table current: every release that touches security adds a row.

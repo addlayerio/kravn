@@ -71,6 +71,18 @@ export const addTeamMemberSchema = z.object({
 });
 export type AddTeamMemberRequest = z.infer<typeof addTeamMemberSchema>;
 
+/**
+ * Grant/revoke a team's access to a virtual server (MCP), plus the optional per-tool subset.
+ *  - granted:false        → the team loses access to this MCP (any tool subset is cleared).
+ *  - granted:true, toolIds null/omitted → the team gets the FULL MCP (all its tools).
+ *  - granted:true, toolIds [...]        → the team gets ONLY those tools of this MCP.
+ */
+export const setTeamServerAccessSchema = z.object({
+  granted: z.boolean(),
+  toolIds: z.array(z.string()).nullable().optional(),
+});
+export type SetTeamServerAccessRequest = z.infer<typeof setTeamServerAccessSchema>;
+
 // ─── Chat (end-user client) ────────────────────────────────────────────────────────────────────────
 
 export const createChatProjectSchema = z.object({

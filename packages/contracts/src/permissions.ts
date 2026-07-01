@@ -55,6 +55,10 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'settings.read',
     'teams.read',
     'logs.read',
+    // A viewer is a read-only operator AND an MCP consumer. `mcp.invoke` no longer decides WHICH MCP a
+    // user may use — the per-virtual-server access policy + per-team tool grants do. So a "consumer" user
+    // (e.g. a partner) can be a viewer: able to invoke, but only the servers/tools they've been granted.
+    'mcp.invoke',
   ],
 };
 

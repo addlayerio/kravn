@@ -707,6 +707,7 @@ export class TeamsRepo {
   }
   async delete(id: string): Promise<void> {
     await this.store.run('DELETE FROM team_members WHERE team_id = ?', [id]);
+    await this.store.run('DELETE FROM team_server_tools WHERE team_id = ?', [id]);
     await this.store.run('DELETE FROM teams WHERE id = ?', [id]);
   }
 
@@ -735,6 +736,61 @@ export class TeamsRepo {
   async teamIdsForUser(userId: string): Promise<string[]> {
     const rows = await this.store.all<{ team_id: string }>('SELECT team_id FROM team_members WHERE user_id = ?', [userId]);
     return rows.map((r) => r.team_id);
+  }
+
+  // ─── Per-team virtual-server tool grants (level 2) ───────────────────────────────────────────────
+  // Level 1 (which teams can use a VS) lives in virtual_servers.allowed_teams. These methods manage the
+  // optional per-(team, VS) tool subset: rows present ⇒ team is restricted to those tools; no rows ⇒ ALL.
+
+  /** Tool ids a team is restricted to on a virtual server. Empty array ⇒ no subset stored ⇒ ALL tools. */
+  async serverToolSubset(teamId: string, vsId: string): Promise<string[]> {
+    const rows = await this.store.all<{ tool_id: string }>(
+      'SELECT tool_id FROM team_server_tools WHERE team_id = ? AND virtual_server_id = ?',
+      [teamId, vsId],
+    );
+    return rows.map((r) => r.tool_id);
+  }
+
+  /** Replace a team's tool subset for a virtual server. null/empty ⇒ clear (team gets ALL tools). */
+  async setServerToolSubset(teamId: string, vsId: string, toolIds: string[] | null): Promise<void> {
+    await this.store.run('DELETE FROM team_server_tools WHERE team_id = ? AND virtual_server_id = ?', [teamId, vsId]);
+    if (!toolIds || toolIds.length === 0) return;
+    for (const toolId of new Set(toolIds)) {
+      await this.store.run(
+        'INSERT INTO team_server_tools (team_id, virtual_server_id, tool_id) VALUES (?,?,?)',
+        [teamId, vsId, toolId],
+      );
+    }
+  }
+
+  async clearTeamGrants(teamId: string): Promise<void> {
+    await this.store.run('DELETE FROM team_server_tools WHERE team_id = ?', [teamId]);
+  }
+  async clearServerGrants(vsId: string): Promise<void> {
+    await this.store.run('DELETE FROM team_server_tools WHERE virtual_server_id = ?', [vsId]);
+  }
+
+  /**
+   * The set of tool ids a user may use on a virtual server, or `null` = ALL tools allowed. `null` when:
+   * the user is admin, qualifies by role (allowedRoles = full server), or no granting team narrows the
+   * tools (a granting team with no subset = the whole server). Otherwise a Set = the UNION of the tool
+   * subsets of the teams through which this user is granted the server.
+   */
+  async allowedToolIdsForUser(
+    actor: { role: string; teams: readonly string[] },
+    vs: { id: string; allowedRoles: readonly string[]; allowedTeams: readonly string[] },
+  ): Promise<Set<string> | null> {
+    if (actor.role === 'admin') return null;
+    if (vs.allowedRoles.includes(actor.role)) return null; // role grant = full server
+    const grantingTeams = vs.allowedTeams.filter((t) => actor.teams.includes(t));
+    if (grantingTeams.length === 0) return null; // not team-based access (public/authenticated) → no narrowing
+    const union = new Set<string>();
+    for (const teamId of grantingTeams) {
+      const subset = await this.serverToolSubset(teamId, vs.id);
+      if (subset.length === 0) return null; // this team grants the whole server → all tools
+      for (const id of subset) union.add(id);
+    }
+    return union;
   }
 }
 

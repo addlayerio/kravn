@@ -23,13 +23,19 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
     return { tool };
   });
 
-  // Invoke a tool from the UI playground.
-  app.post('/api/tools/:id/invoke', { preHandler: [app.authenticate, app.authorize('mcp.invoke')] }, async (req, reply) => {
+  // Invoke a tool from the UI playground. ADMIN ONLY: this invokes a tool by id with NO virtual-server
+  // context, so it bypasses the per-VS access policy AND the per-team tool subset. Non-admins must invoke
+  // through a virtual server (/servers/:slug/mcp) or chat, where both entitlement levels are enforced.
+  app.post('/api/tools/:id/invoke', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const actor = currentUser(req);
+    if (actor.role !== 'admin') {
+      return sendError(reply, 403, 'forbidden', 'The raw tool playground is admin-only; invoke via a virtual server.');
+    }
     const { id } = req.params as { id: string };
     const dto = parse(reply, invokeToolSchema, req.body ?? {});
     if (!dto) return;
     try {
-      const result = await s.registry.invokeTool(id, dto.arguments, currentUser(req));
+      const result = await s.registry.invokeTool(id, dto.arguments, actor);
       return { result };
     } catch (err) {
       return sendError(reply, 400, 'invoke_failed', err instanceof Error ? err.message : 'Tool invocation failed.');
@@ -87,6 +93,7 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
 
   app.delete('/api/virtual-servers/:id', { preHandler: [app.authenticate, app.authorize('virtualservers.delete')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    await s.repos.teams.clearServerGrants(id); // drop any per-team tool grants for this server
     await s.repos.virtualServers.delete(id);
     return reply.code(204).send();
   });

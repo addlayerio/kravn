@@ -240,8 +240,8 @@ export class ChatService {
     const vs = await this.repos.virtualServers.getBySlug(conv.vserverSlug);
     if (!vs || !vs.enabled) return { tools, toolIndex };
 
-    // Enforce the virtual server's access policy for this user.
-    if (vs.access === 'restricted') {
+    // Enforce the virtual server's access policy for this user (admins may use any server).
+    if (vs.access === 'restricted' && actor.role !== 'admin') {
       const roleOk = vs.allowedRoles.includes(actor.role as any);
       const teamOk = vs.allowedTeams.some((t) => actor.teams.includes(t));
       if (!roleOk && !teamOk) throw new Error('You do not have access to this virtual server.');
@@ -251,8 +251,11 @@ export class ChatService {
 
     const allTools = await this.repos.registry.listTools();
     const set = new Set(vs.toolIds);
+    // Level-2 entitlement: narrow to the tools this user's team grant allows (null = all).
+    const allowed = await this.repos.teams.allowedToolIdsForUser(actor, vs);
     for (const t of allTools) {
       if (!set.has(t.id) || !t.enabled) continue;
+      if (allowed && !allowed.has(t.id)) continue;
       toolIndex.set(t.name, t.id);
       tools.push({
         type: 'function',
