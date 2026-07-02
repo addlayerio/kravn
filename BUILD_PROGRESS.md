@@ -583,10 +583,20 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   Entra, at a clamped non-admin role, never touching admins. Complements SAML (auth) with provisioning.
   Content-type `application/scim+json` accepted (Entra's 415 fix).
 
+## ✅ PASS 27 — Caching: Anthropic prompt caching + registry read cache (v0.1.28)
+- **Token/cost:** the chat runtime now adds `cache_control: {ephemeral}` to the Anthropic request — on the
+  system prompt (Project instructions + docs) and the last tool schema — so repeated turns AND every tool-call
+  loop iteration read the stable prefix at ~0.1× instead of full input price. OpenAI auto-caches (no change);
+  Gemini 2.5 auto-caches. Validated by capturing the real outgoing request body (cache_control present on
+  `system[0]` and the last tool).
+- **Performance/DB:** `DownstreamMcp.buildScope()` (runs on every `tools/list`) now serves the four registry
+  lists from a 10s in-memory snapshot instead of 4 full-table reads per call; invalidated immediately on plugin
+  change. Filtering logic unchanged (regression-checked: tools/list returns the same VS-scoped tools).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: shared cache + distributed rate-limit + last-admin lock are the follow-ups (single-replica is fine;
-MCP is stateless so no session-affinity backplane needed) · registry in-memory cache for `buildScope` (planned) ·
+MCP is stateless so no session-affinity backplane needed) · Anthropic conversation-history caching (system+tools done) ·
 per-team entitlements for **resources/prompts** (tools done) · SCIM **Groups**→teams sync (Users done) ·
 gRPC-to-MCP reflection · OpenTelemetry export · resources/prompts test playground (tools playground is done) ·
 live smoke against real pg/mysql/mssql servers · project-document RAG/embeddings · agents/knowledge-bases port ·

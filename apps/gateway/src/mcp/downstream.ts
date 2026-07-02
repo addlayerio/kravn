@@ -39,6 +39,14 @@ export type JsonRpcResponse =
   | { jsonrpc: '2.0'; id: string | number | null; result: unknown }
   | { jsonrpc: '2.0'; id: string | number | null; error: { code: number; message: string; data?: unknown } };
 
+interface RegistrySnapshot {
+  at: number;
+  tools: Tool[];
+  resources: Resource[];
+  prompts: Prompt[];
+  localPrompts: LocalPrompt[];
+}
+
 export class DownstreamMcp {
   constructor(
     private repos: Repos,
@@ -47,14 +55,36 @@ export class DownstreamMcp {
     private plugins: PluginManager,
   ) {}
 
-  /** Resolve the catalog slice exposed at a given endpoint. */
-  async buildScope(virtualServerSlug?: string | null): Promise<McpScope | null> {
-    const [allTools, allResources, allPrompts, allLocalPrompts] = await Promise.all([
+  // Short-lived in-memory cache of the full registry lists. buildScope() runs on EVERY tools/list and
+  // reads all four tables; the registry changes only on server sync / plugin enable-disable / VS edits.
+  // Read-mostly + write-rarely + tolerates a few seconds of staleness → cache with a small TTL, and
+  // invalidate explicitly on plugin change (wired in services.ts) so toggles reflect immediately.
+  private registryCache?: RegistrySnapshot;
+  private static readonly REGISTRY_TTL_MS = 10_000;
+
+  /** Drop the cached registry snapshot (call after a mutation that changes tools/resources/prompts). */
+  invalidateRegistryCache(): void {
+    this.registryCache = undefined;
+  }
+
+  private async loadRegistry(): Promise<RegistrySnapshot> {
+    const c = this.registryCache;
+    if (c && Date.now() - c.at < DownstreamMcp.REGISTRY_TTL_MS) return c;
+    const [tools, resources, prompts, localPrompts] = await Promise.all([
       this.repos.registry.listTools(),
       this.repos.registry.listResources(),
       this.repos.registry.listPrompts(),
       this.repos.localPrompts.listEnabled(),
     ]);
+    const fresh: RegistrySnapshot = { at: Date.now(), tools, resources, prompts, localPrompts };
+    this.registryCache = fresh;
+    return fresh;
+  }
+
+  /** Resolve the catalog slice exposed at a given endpoint. */
+  async buildScope(virtualServerSlug?: string | null): Promise<McpScope | null> {
+    const { tools: allTools, resources: allResources, prompts: allPrompts, localPrompts: allLocalPrompts } =
+      await this.loadRegistry();
     const enabled = <T extends { enabled: boolean }>(xs: T[]) => xs.filter((x) => x.enabled);
 
     if (!virtualServerSlug) {

@@ -277,10 +277,21 @@ export class ChatService {
     if (!model) throw new Error('Conversation has no model.');
 
     if (p.type === 'anthropic') {
-      const system = messages.find((m) => m.role === 'system')?.content ?? '';
-      const body: Record<string, unknown> = { model, max_tokens: 4096, system, messages: toAnthropicMessages(messages) };
+      const systemText = messages.find((m) => m.role === 'system')?.content ?? '';
+      const body: Record<string, unknown> = { model, max_tokens: 4096, messages: toAnthropicMessages(messages) };
+      // Prompt caching: cache the STABLE prefix — the system prompt (which for a Project carries the injected
+      // instructions + documents) and the tool schemas. Anthropic caching is NOT automatic (unlike OpenAI), so
+      // without this Kravn pays full input price on every turn AND on every iteration of the tool-call loop
+      // below (each iteration re-sends the same tools+system). With it, those repeats read at ~0.1x. The prefix
+      // is byte-stable within a conversation (same VS tools + same project context); below the model's minimum
+      // cacheable size it simply no-ops. `cache_control` is GA — no beta header needed.
+      if (systemText) {
+        body.system = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }];
+      }
       if (tools.length) {
-        body.tools = tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+        const mapped: any[] = tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+        mapped[mapped.length - 1].cache_control = { type: 'ephemeral' }; // breakpoint on the last (tools render first)
+        body.tools = mapped;
       }
       const res = await safeFetch(`${base}/v1/messages`, {
         method: 'POST',
@@ -289,6 +300,13 @@ export class ChatService {
       }, 60_000);
       if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data: any = await res.json();
+      const u = data.usage ?? {};
+      if (u.cache_read_input_tokens || u.cache_creation_input_tokens) {
+        this.log.debug(
+          { cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, input: u.input_tokens ?? 0 },
+          'anthropic prompt cache',
+        );
+      }
       const blocks: any[] = Array.isArray(data.content) ? data.content : [];
       const text = blocks.filter((b) => b.type === 'text').map((b) => b.text).join('');
       const toolUses = blocks.filter((b) => b.type === 'tool_use');

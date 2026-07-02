@@ -125,8 +125,10 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   upstream.setPluginManager(plugins);
   const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins });
   const downstream = new DownstreamMcp(repos, registry, settings, plugins);
-  plugins.onChange = () =>
+  plugins.onChange = () => {
+    downstream.invalidateRegistryCache(); // a plugin toggle changes the tool/resource/prompt set — reflect now
     registry.syncPluginServers().catch((err) => log.warn({ err }, 'plugin-server sync failed'));
+  };
   await plugins.scan();
 
   const scim = new ScimService(store);
