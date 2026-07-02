@@ -110,6 +110,18 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   // as form fields to the ACS callback; without this Fastify rejects it with 415 Unsupported Media Type.
   await app.register(formbody);
   await app.register(multipart, { limits: { fileSize: 10 * 1024 * 1024, files: 8 } });
+  // SCIM clients (Entra ID) send `Content-Type: application/scim+json`; Fastify only parses
+  // `application/json` by default, so SCIM POST/PUT/PATCH bodies would 415 ("UnsupportedMediaType").
+  // Parse it as JSON, tolerating an empty body (→ {}), which also avoids the empty-JSON-body 400.
+  app.addContentTypeParser('application/scim+json', { parseAs: 'string' }, (_req, body, done) => {
+    try {
+      const s = typeof body === 'string' ? body.trim() : '';
+      done(null, s ? JSON.parse(s) : {});
+    } catch (err) {
+      (err as { statusCode?: number }).statusCode = 400;
+      done(err as Error, undefined);
+    }
+  });
 
   registerAuth(app, {
     jwt: services.jwt,
