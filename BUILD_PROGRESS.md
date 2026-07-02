@@ -677,6 +677,22 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   redacted (JWT+AWS), self-harm redacted + violent request blocked, deny-list blocks+redacts, HTML→Markdown
   correct, SafeHTML strips script/onclick/javascript:, TOON tabular encoding. Gateway typecheck + build green.
 
+## ✅ PASS 32 — Compliance plugins (injection/audit/PII) + marketplace Plugins UI (v0.1.34)
+- **3 more native hook plugins** (disabled by default), turning Kravn from "gateway with plugins" toward
+  "compliance gateway for AI":
+  - **Prompt-Injection Guard** — detects indirect prompt injection in tool/resource/prompt results and
+    redacts / annotates / fences it as untrusted data. The #1 MCP-specific risk.
+  - **Audit / Compliance Logger** — tamper-evident hash-chained audit record per tool call (actor, VS, tool,
+    clipped preview, timestamp) → Logs view. Durable store + SIEM export are a follow-up.
+  - **PII Tokenizer** — emails/IPs/cards(Luhn)/phones → stable deterministic tokens (⟦EMAIL_ab12⟧) so the
+    model reasons consistently without the real value. Reversible restore-to-user is a follow-up.
+  - Now 9 built-in hook plugins total. Regexes reviewed for ReDoS (linear); each inside per-step try/catch.
+  - Validated 11/11 (injection redact/annotate, PII tokenize + determinism + Luhn, audit hash-chain in Logs,
+    all composable in the pipeline).
+- **Marketplace Plugins screen** — the flat table becomes a card grid with a **search** box, **Type** filter
+  (Hook / MCP Server), **Hook-point** filter (per junction), and a **Catalog / Installed** segment (Installed =
+  enabled). Preserves config editor / import / delete. Design-system tokens (light/dark). Presentation-only.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

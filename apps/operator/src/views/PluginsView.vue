@@ -113,11 +113,35 @@ function applyList(res: { plugins: PluginView[]; loadErrors: { source: string; e
   loadErrors.value = res.loadErrors ?? [];
 }
 
-const hookSummary = computed(() => {
-  const m: Record<string, number> = {};
-  for (const p of plugins.value) for (const hp of p.hookPoints ?? []) m[hp] = (m[hp] || 0) + 1;
-  return Object.entries(m).sort((a, b) => b[1] - a[1]);
+// ─── Marketplace: search + filters ──────────────────────────────────────────────────────────────
+const search = ref('');
+const filterType = ref<'all' | 'hook' | 'mcp-server'>('all');
+const filterHook = ref('all');
+const tab = ref<'catalog' | 'installed'>('catalog');
+
+/** Distinct hook-point labels across all plugins (for the hook-point filter). */
+const hookOptions = computed(() => {
+  const s = new Set<string>();
+  for (const p of plugins.value) for (const hp of p.hookPoints ?? []) s.add(hp);
+  return [...s].sort();
 });
+const enabledCount = computed(() => plugins.value.filter((p) => p.enabled).length);
+
+const filtered = computed(() => {
+  const q = search.value.trim().toLowerCase();
+  return plugins.value.filter((p) => {
+    if (tab.value === 'installed' && !p.enabled) return false;
+    if (filterType.value !== 'all' && p.type !== filterType.value) return false;
+    if (filterHook.value !== 'all' && !(p.hookPoints ?? []).includes(filterHook.value)) return false;
+    if (q && !`${p.name} ${p.description} ${p.author} ${p.id}`.toLowerCase().includes(q)) return false;
+    return true;
+  });
+});
+function resetFilters() {
+  search.value = '';
+  filterType.value = 'all';
+  filterHook.value = 'all';
+}
 
 async function load() {
   loading.value = true;
@@ -279,45 +303,55 @@ async function saveConfig() {
     <div v-for="(e, i) in loadErrors" :key="i"><code>{{ e.source }}</code>: {{ e.error }}</div>
   </div>
 
-  <div v-if="hookSummary.length" class="card">
-    <h3>Hook points</h3>
-    <div class="btn-row">
-      <span v-for="[hp, n] in hookSummary" :key="hp" class="badge online" style="text-transform: none">{{ hp }} · {{ n }}</span>
-    </div>
+  <!-- Marketplace: Catalog / Installed + search + filters -->
+  <div class="seg">
+    <button class="seg-btn" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog · {{ plugins.length }}</button>
+    <button class="seg-btn" :class="{ active: tab === 'installed' }" @click="tab = 'installed'">Installed · {{ enabledCount }}</button>
   </div>
 
-  <div class="card">
-    <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="plugins.length === 0" class="empty">No plugins installed yet. Import one to get started.</div>
-    <table v-else>
-      <thead>
-        <tr><th>Plugin</th><th>Type</th><th>Version</th><th>Enabled</th><th></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in plugins" :key="p.id">
-          <td>
-            <div style="font-weight: 600">{{ p.name }}</div>
-            <small class="muted">{{ p.description }}</small>
-            <div v-if="p.error"><small style="color: var(--danger)">{{ p.error }}</small></div>
-            <div v-if="p.hookPoints && p.hookPoints.length" style="margin-top: 4px; display: flex; gap: 4px; flex-wrap: wrap">
-              <span v-for="hp in p.hookPoints" :key="hp" class="badge" style="text-transform: none">{{ hp }}</span>
-            </div>
-          </td>
-          <td><span class="badge">{{ p.type }}</span></td>
-          <td><small class="muted">{{ p.version }}</small></td>
-          <td><span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? 'on' : 'off' }}</span></td>
-          <td>
-            <div class="btn-row" v-if="canWrite">
-              <button class="btn" @click="openConfig(p)">Config</button>
-              <button class="btn" @click="toggle(p)">{{ p.enabled ? 'Disable' : 'Enable' }}</button>
-              <!-- Built-in (native) plugins can't be removed — only disabled. -->
-              <button v-if="p.source !== 'native'" class="btn danger" @click="remove(p)">Delete</button>
-              <span v-else class="badge" title="Built-in plugin">built-in</span>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+  <div class="card filter-bar">
+    <input class="search" v-model="search" placeholder="Search plugins by name, description, author…" />
+    <select v-model="filterType">
+      <option value="all">All types</option>
+      <option value="hook">Hook</option>
+      <option value="mcp-server">MCP Server</option>
+    </select>
+    <select v-model="filterHook">
+      <option value="all">All hook points</option>
+      <option v-for="h in hookOptions" :key="h" :value="h">{{ h }}</option>
+    </select>
+  </div>
+
+  <div v-if="loading" class="card"><p class="muted">Loading…</p></div>
+  <div v-else-if="plugins.length === 0" class="card empty">No plugins installed yet. Import one to get started.</div>
+  <div v-else-if="filtered.length === 0" class="card empty">
+    No plugins match your filters. <button class="btn" @click="resetFilters">Clear filters</button>
+  </div>
+  <div v-else class="plugin-grid">
+    <div v-for="p in filtered" :key="p.id" class="plugin-card" :class="{ off: !p.enabled }">
+      <div class="pc-head">
+        <div class="pc-title">
+          <span class="pc-name">{{ p.name }}</span>
+          <span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? 'on' : 'off' }}</span>
+        </div>
+        <div class="pc-meta">
+          <span class="badge type" :class="p.type">{{ p.type === 'hook' ? 'Hook' : 'MCP Server' }}</span>
+          <small class="muted">v{{ p.version }}</small>
+          <small class="muted" v-if="p.author">· {{ p.author }}</small>
+          <span v-if="p.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+        </div>
+      </div>
+      <p class="pc-desc muted">{{ p.description }}</p>
+      <div v-if="p.hookPoints && p.hookPoints.length" class="pc-hooks">
+        <span v-for="hp in p.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
+      </div>
+      <div v-if="p.error" class="pc-err"><small>{{ p.error }}</small></div>
+      <div class="pc-actions btn-row" v-if="canWrite">
+        <button class="btn" @click="openConfig(p)">Config</button>
+        <button class="btn" :class="{ primary: !p.enabled }" @click="toggle(p)">{{ p.enabled ? 'Disable' : 'Enable' }}</button>
+        <button v-if="p.source !== 'native'" class="btn danger" @click="remove(p)">Delete</button>
+      </div>
+    </div>
   </div>
 
   <!-- Import modal -->
@@ -405,3 +439,30 @@ async function saveConfig() {
     </div>
   </div>
 </template>
+
+<style scoped>
+.muted { color: var(--text-muted); }
+.seg { display: inline-flex; gap: 2px; padding: 3px; background: var(--hover); border: 1px solid var(--border); border-radius: var(--radius-md); margin-bottom: 1rem; }
+.seg-btn { border: 0; background: transparent; color: var(--text-muted); padding: 0.35rem 0.9rem; border-radius: var(--radius-sm); cursor: pointer; font: inherit; }
+.seg-btn.active { background: var(--bg-surface); color: var(--text); box-shadow: var(--shadow-sm); }
+
+.filter-bar { display: flex; gap: 0.5rem; flex-wrap: wrap; align-items: center; }
+.filter-bar .search { flex: 1; min-width: 220px; padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text); }
+.filter-bar select { padding: 0.45rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--bg-surface); color: var(--text); }
+
+.plugin-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(320px, 1fr)); gap: 1rem; }
+.plugin-card { display: flex; flex-direction: column; gap: 0.5rem; padding: 1rem; border: 1px solid var(--border); border-radius: var(--radius-lg); background: var(--bg-surface); box-shadow: var(--shadow-sm); }
+.plugin-card.off { opacity: 0.72; }
+.pc-head { display: flex; flex-direction: column; gap: 0.3rem; }
+.pc-title { display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; }
+.pc-name { font-weight: 600; color: var(--text); }
+.pc-meta { display: flex; align-items: center; gap: 0.4rem; flex-wrap: wrap; }
+.badge.type { text-transform: none; }
+.badge.type.hook { background: var(--info-bg); color: var(--info); }
+.badge.type.mcp-server { background: var(--accent-bg); color: var(--accent); }
+.pc-desc { margin: 0; font-size: 0.88rem; line-height: 1.4; min-height: 2.4em; }
+.pc-hooks { display: flex; flex-wrap: wrap; gap: 4px; }
+.pc-hooks .badge.hook { text-transform: none; background: var(--hover); color: var(--text-muted); }
+.pc-err { color: var(--danger); }
+.pc-actions { margin-top: auto; padding-top: 0.25rem; }
+</style>
