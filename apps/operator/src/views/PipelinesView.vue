@@ -352,47 +352,51 @@ function pretty(v: unknown): string {
 </template>
 
 <style scoped>
-.muted { color: var(--text-muted, #6b7280); }
+/* Uses the design-system tokens (packages/ui) so it adapts to light/dark. */
+.muted { color: var(--text-muted); }
 .small { font-size: 0.85rem; }
 .scope-picker { margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
 .scope-picker label { font-weight: 600; }
-.scope-picker select, .add-step select { padding: 0.35rem 0.5rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); }
+.scope-picker select, .add-step select, .trace-inputs textarea, .trace-hints input {
+  padding: 0.35rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-md);
+  background: var(--bg-surface); color: var(--text);
+}
 .scope-flow { margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
-.scope-flow .node { padding: 0.15rem 0.5rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); }
+.scope-flow .node { padding: 0.15rem 0.5rem; border: 1px solid var(--border); border-radius: var(--radius-md); color: var(--text); }
 .scope-flow .arrow { opacity: 0.6; }
 
 .junction { margin-bottom: 1rem; }
 .junction-head { display: flex; justify-content: space-between; gap: 1rem; align-items: flex-start; flex-wrap: wrap; }
-.junction-head h3 { margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.4rem; }
+.junction-head h3 { margin: 0 0 0.25rem; display: flex; align-items: center; gap: 0.4rem; color: var(--text); }
 
 .badge.kind { text-transform: capitalize; }
-.badge.kind.pre { background: var(--warning-bg, #fef3c7); }
-.badge.kind.post { background: var(--brand-bg, #e0e7ff); }
-.badge.deny { background: var(--danger-bg, #fee2e2); }
+.badge.kind.pre { background: var(--warning-bg); color: var(--warning); }
+.badge.kind.post { background: var(--info-bg); color: var(--info); }
+.badge.deny { background: var(--danger-bg); color: var(--danger); }
 
-.inherited { margin: 0.5rem 0; padding: 0.5rem; border: 1px dashed var(--border, #e5e7eb); border-radius: var(--radius, 6px); background: var(--surface-2, #fafafa); }
+.inherited { margin: 0.5rem 0; padding: 0.5rem; border: 1px dashed var(--border-strong); border-radius: var(--radius-md); background: var(--hover); }
 .inherited-step { background: transparent; border-style: dashed; }
 
 .steps { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
-.step { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.6rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); background: var(--surface-2, #fafafa); }
+.step { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.6rem; border: 1px solid var(--border); border-radius: var(--radius-md); background: var(--hover); color: var(--text); }
 .step.off { opacity: 0.55; }
-.step .pos { min-width: 1.6rem; height: 1.4rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand, #4f46e5); color: #fff; font-size: 0.75rem; }
-.step .pos.muted { background: var(--border, #d1d5db); color: var(--text-muted, #4b5563); }
+.step .pos { min-width: 1.6rem; height: 1.4rem; display: inline-flex; align-items: center; justify-content: center; border-radius: var(--radius-pill); background: var(--brand); color: var(--brand-fg); font-size: 0.75rem; }
+.step .pos.muted { background: var(--border-strong); color: var(--text); }
 .reorder { display: flex; flex-direction: column; gap: 2px; }
 .btn.tiny { padding: 0 0.4rem; line-height: 1.2; font-size: 0.75rem; }
 .step-main { flex: 1; min-width: 0; }
-.step-name { font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
+.step-name { font-weight: 600; display: flex; align-items: center; gap: 0.4rem; color: var(--text); }
 .step-toggle { margin: 0; white-space: nowrap; }
 .add-step { margin-top: 0.5rem; }
 
-.trace { margin-top: 1rem; border-top: 1px dashed var(--border, #e5e7eb); padding-top: 0.75rem; }
+.trace { margin-top: 1rem; border-top: 1px dashed var(--border-strong); padding-top: 0.75rem; }
 .trace-inputs { display: flex; flex-direction: column; gap: 0.5rem; }
-.trace-inputs textarea { width: 100%; font-family: ui-monospace, monospace; font-size: 0.8rem; }
+.trace-inputs textarea { width: 100%; font-family: var(--font-mono); font-size: 0.8rem; }
 .trace-hints { display: flex; gap: 0.5rem; }
 .trace-hints input { flex: 1; }
 .trace-out { margin-top: 0.75rem; display: flex; flex-direction: column; gap: 0.5rem; }
-.trace-step { border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); padding: 0.5rem; }
+.trace-step { border: 1px solid var(--border); border-radius: var(--radius-md); padding: 0.5rem; }
 .trace-step-head { display: flex; align-items: center; gap: 0.4rem; }
 .diff { display: grid; grid-template-columns: 1fr 1fr; gap: 0.5rem; margin-top: 0.4rem; }
-.diff pre, .trace-final pre { margin: 0.2rem 0 0; padding: 0.5rem; background: var(--surface-2, #f6f6f6); border-radius: var(--radius, 6px); overflow: auto; font-size: 0.75rem; max-height: 220px; }
+.diff pre, .trace-final pre { margin: 0.2rem 0 0; padding: 0.5rem; background: var(--code-bg); color: var(--text); border-radius: var(--radius-md); overflow: auto; font-size: 0.75rem; max-height: 220px; }
 </style>
