@@ -64,3 +64,28 @@ Keeps both in sync so the Job migrates the exact database the pods connect to.
   {{- end }}
 {{- end }}
 {{- end -}}
+
+{{/*
+Cross-replica shared-store env (KRAVN_REDIS_URL). When redis.enabled, point at the in-cluster Dragonfly
+Service; otherwise fall back to a BYO external URL (existingSecret first, then a literal). Unset -> the app
+runs its in-process memory store (single replica).
+*/}}
+{{- define "kravn.dragonflyFullname" -}}
+{{- printf "%s-dragonfly" (include "kravn.fullname" .) -}}
+{{- end -}}
+
+{{- define "kravn.redisEnv" -}}
+{{- if .Values.redis.enabled }}
+- name: KRAVN_REDIS_URL
+  value: {{ printf "redis://%s:6379" (include "kravn.dragonflyFullname" .) | quote }}
+{{- else if .Values.redis.existingSecret }}
+- name: KRAVN_REDIS_URL
+  valueFrom:
+    secretKeyRef:
+      name: {{ .Values.redis.existingSecret }}
+      key: {{ .Values.redis.existingSecretKey }}
+{{- else if .Values.redis.externalUrl }}
+- name: KRAVN_REDIS_URL
+  value: {{ .Values.redis.externalUrl | quote }}
+{{- end }}
+{{- end -}}

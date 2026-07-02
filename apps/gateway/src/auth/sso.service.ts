@@ -12,6 +12,7 @@ import { normalizeCerts } from './saml-metadata.js';
 import { AuthError, type AuthUser, toAuthUser } from './auth.service.js';
 import type { JwtService } from './jwt.js';
 import type { Repos, UserRecord } from '../db/repos.js';
+import type { SharedStore } from '../cluster/shared-store.js';
 import type { SettingsService } from '../settings/settings.service.js';
 import type { Logger } from 'pino';
 
@@ -52,14 +53,19 @@ function defaultConfig(): StoredAuthConfig {
   };
 }
 
+/** In-flight OIDC login state, stored server-side in the SharedStore keyed by `state` (TTL-expiring, single-use). */
 interface PendingOAuth {
   providerId: string;
   verifier: string;
   redirectUri: string;
-  expires: number;
   /** Which SPA initiated the login, so the callback returns the token to the right origin. */
   returnTo: string;
 }
+
+/** SharedStore key for a pending OIDC login. `state` is an unguessable random value; the entry is single-use. */
+const ssoPendingKey = (state: string): string => `sso:pending:${state}`;
+/** OIDC login state lifetime: matches the previous 10-minute in-memory window. */
+const SSO_PENDING_TTL_SEC = 10 * 60;
 
 export interface SsoLoginResult {
   user: AuthUser;
@@ -98,7 +104,6 @@ function assertPublicHttpsUrl(raw: string): void {
 
 export class SsoService {
   private issuerCache = new Map<string, Issuer<Client>>();
-  private pending = new Map<string, PendingOAuth>();
 
   constructor(
     private repos: Repos,
@@ -106,6 +111,9 @@ export class SsoService {
     private jwt: JwtService,
     private settings: SettingsService,
     private log: Logger,
+    // Cross-replica store for in-flight OIDC login state (PKCE verifier + returnTo), keyed by `state`.
+    // TTL-expiring and single-use (deleted on callback). Memory-backed on a single replica.
+    private store: SharedStore,
   ) {}
 
   // ─── Config ──────────────────────────────────────────────────────────────────────────────────
@@ -254,9 +262,9 @@ export class SsoService {
     const verifier = generators.codeVerifier();
     const challenge = generators.codeChallenge(verifier);
 
-    this.gc();
     // returnTo rides in the SERVER-stored state (never the browser/IdP), so it can't be tampered with.
-    this.pending.set(state, { providerId, verifier, redirectUri, expires: nowMs() + 10 * 60_000, returnTo });
+    const pend: PendingOAuth = { providerId, verifier, redirectUri, returnTo };
+    await this.store.set(ssoPendingKey(state), JSON.stringify(pend), SSO_PENDING_TTL_SEC);
 
     return client.authorizationUrl({
       scope: (p.scopes.length ? p.scopes : ['openid', 'email', 'profile']).join(' '),
@@ -269,9 +277,11 @@ export class SsoService {
 
   async oauthCallback(providerId: string, query: Record<string, unknown>): Promise<SsoLoginResult> {
     const state = String(query.state ?? '');
-    const pend = this.pending.get(state);
-    this.pending.delete(state);
-    if (!pend || pend.providerId !== providerId || pend.expires < nowMs()) {
+    // Atomic single-use claim (GETDEL): exactly one concurrent/replayed callback for a given state can win.
+    // Expiry is enforced by the store TTL (an expired key reads back as null).
+    const raw = state ? await this.store.take(ssoPendingKey(state)) : null;
+    const pend = raw ? (JSON.parse(raw) as PendingOAuth) : null;
+    if (!pend || pend.providerId !== providerId) {
       throw new AuthError('invalid_state', 'Login session expired, please retry.', 400);
     }
     const c = await this.load();
@@ -393,13 +403,4 @@ export class SsoService {
     );
     return { user: toAuthUser(user), token, returnTo };
   }
-
-  private gc(): void {
-    const t = nowMs();
-    for (const [k, v] of this.pending) if (v.expires < t) this.pending.delete(k);
-  }
-}
-
-function nowMs(): number {
-  return Date.now();
 }

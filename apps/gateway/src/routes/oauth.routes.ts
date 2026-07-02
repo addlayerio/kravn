@@ -22,11 +22,11 @@ const FLOW_MAX = 240;
  * the well-known / root paths clients expect; the consent endpoints the SPA drives live under /api (bearer).
  */
 export function oauthRoutes(app: FastifyInstance, s: Services): void {
-  const limiter = new LoginRateLimiter();
-  const rateLimited = (req: FastifyRequest, reply: FastifyReply, bucket: string, max: number): boolean => {
+  const limiter = new LoginRateLimiter(s.sharedStore, 'oauth');
+  const rateLimited = async (req: FastifyRequest, reply: FastifyReply, bucket: string, max: number): Promise<boolean> => {
     const key = `${bucket}:${req.ip}`;
-    limiter.recordFailure(key, OAUTH_WINDOW_SEC);
-    const wait = limiter.blockedFor(key, max);
+    await limiter.recordFailure(key, OAUTH_WINDOW_SEC);
+    const wait = await limiter.blockedFor(key, max);
     if (wait > 0) {
       reply.header('Retry-After', String(wait));
       reply.code(429).send({ error: 'temporarily_unavailable', error_description: 'Too many requests.' });
@@ -53,7 +53,7 @@ export function oauthRoutes(app: FastifyInstance, s: Services): void {
 
   // ─── Dynamic Client Registration (RFC 7591) — public, rate-limited, absolute-capped in the service ──
   app.post('/oauth/register', async (req, reply) => {
-    if (rateLimited(req, reply, 'oreg', REGISTER_MAX)) return reply;
+    if (await rateLimited(req, reply, 'oreg', REGISTER_MAX)) return reply;
     try {
       const out = await s.oauth.registerClient((req.body ?? {}) as Record<string, unknown>);
       return reply.code(201).send(out);
@@ -64,7 +64,7 @@ export function oauthRoutes(app: FastifyInstance, s: Services): void {
 
   // ─── Authorize (browser): validate, set the anti-fixation binding cookie, then hand off to login ─────
   app.get('/oauth/authorize', async (req, reply) => {
-    if (rateLimited(req, reply, 'oflow', FLOW_MAX)) return reply;
+    if (await rateLimited(req, reply, 'oflow', FLOW_MAX)) return reply;
     void s.oauth.gc();
     const result = await s.oauth.startAuthorize((req.query ?? {}) as Record<string, string>);
     if (result.kind === 'redirect') return reply.redirect(result.url);
@@ -92,7 +92,7 @@ export function oauthRoutes(app: FastifyInstance, s: Services): void {
   // ─── Token endpoint — public, PKCE-protected ────────────────────────────────────────────────────
   app.post('/oauth/token', async (req, reply) => {
     reply.header('Cache-Control', 'no-store');
-    if (rateLimited(req, reply, 'oflow', FLOW_MAX)) return reply;
+    if (await rateLimited(req, reply, 'oflow', FLOW_MAX)) return reply;
     try {
       return reply.send(await s.oauth.token((req.body ?? {}) as Record<string, unknown>));
     } catch (err) {

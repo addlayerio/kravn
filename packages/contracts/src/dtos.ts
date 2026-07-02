@@ -18,8 +18,10 @@ export interface ApiError {
 
 // ─── Auth / setup ─────────────────────────────────────────────────────────────────────────────────
 
+// Email is capped at the RFC 5321 maximum (254). Besides being correct, it bounds the size of the
+// rate-limit key derived from it (email:<addr>) so a spray of giant emails can't bloat the shared store.
 export const setupRequestSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().max(254),
   password: z.string().min(8).max(200),
   name: z.string().max(120).default(''),
   instanceName: z.string().min(1).max(80).optional(),
@@ -27,13 +29,13 @@ export const setupRequestSchema = z.object({
 export type SetupRequest = z.infer<typeof setupRequestSchema>;
 
 export const loginRequestSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().max(254),
   password: z.string().min(1).max(200),
 });
 export type LoginRequest = z.infer<typeof loginRequestSchema>;
 
 export const registerRequestSchema = z.object({
-  email: z.string().email(),
+  email: z.string().email().max(254),
   password: z.string().min(8).max(200),
   name: z.string().max(120).default(''),
 });

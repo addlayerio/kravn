@@ -92,6 +92,45 @@ secret: ""
 existingSecret: ""        # secret containing key KRAVN_SECRET
 existingSecretKey: KRAVN_SECRET
 
+# Cross-replica shared store for the brute-force rate limiter and in-flight OIDC login state.
+# NEEDED when replicaCount > 1: without it each pod limits brute force independently, and an OIDC login
+# started on one pod can fail its callback on another. A single replica works fine without this.
+#
+# Kravn speaks the Redis wire protocol, but enabling this deploys **Dragonfly** (RESP-compatible, single
+# in-memory node) — not Redis — and wires the app to it at redis://<release>-dragonfly:6379.
+# To use your OWN managed Redis / Valkey / Dragonfly instead, leave enabled=false and set externalUrl
+# (or existingSecret). The store is best-effort: if it's unreachable the app degrades to per-pod limiting,
+# it never crashes.
+redis:
+  enabled: false
+  image:
+    repository: docker.dragonflydb.io/dragonflydb/dragonfly
+    tag: "v1.36.0"
+    pullPolicy: IfNotPresent
+  # Dragonfly starts one io-thread per CPU by default and refuses to boot unless maxMemory >=
+  # proactorThreads x 256MiB. The shared state is tiny, so we pin ONE thread and a small cap — keep the
+  # invariant (maxMemory >= proactorThreads x 256MiB) if you raise threads for a heavier workload.
+  proactorThreads: 1
+  maxMemory: "256mb"
+  # Give RSS headroom ABOVE the data cap (proactor stacks, allocator arenas, connection buffers) so the pod
+  # isn't OOMKilled while Dragonfly is still under its own maxMemory. Rule of thumb: limit ≈ 2x maxMemory.
+  resources:
+    requests:
+      cpu: 50m
+      memory: 256Mi
+    limits:
+      memory: 512Mi
+  # Defense-in-depth: restrict who may reach the bundled Dragonfly (it holds PKCE verifiers + rate-limit
+  # state) to the Kravn app pods only. No-op on clusters whose CNI doesn't enforce NetworkPolicy. The bundled
+  # instance has no password; for stronger auth use an external managed store via externalUrl/existingSecret
+  # (a redis://:password@host URL).
+  networkPolicy:
+    enabled: true
+  # BYO external Redis-protocol URL (redis:// or rediss://). Used ONLY when enabled=false.
+  externalUrl: ""
+  existingSecret: ""       # secret containing key KRAVN_REDIS_URL (overrides externalUrl when enabled=false)
+  existingSecretKey: KRAVN_REDIS_URL
+
 # Extra environment (advanced; most config lives in the app UI, not here).
 extraEnv: []
 #  - name: KRAVN_PUBLIC_URL

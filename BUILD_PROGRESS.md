@@ -593,10 +593,33 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   lists from a 10s in-memory snapshot instead of 4 full-table reads per call; invalidated immediately on plugin
   change. Filtering logic unchanged (regression-checked: tools/list returns the same VS-scoped tools).
 
+## ✅ PASS 28 — License (BSL 1.1) + multi-replica prep with Dragonfly (v0.1.29)
+- **License:** adopted **Business Source License 1.1** (© 2026 AddLayer) — source-available, free to self-host in
+  production, blocks reselling Kravn as a competing hosted service, auto-converts to Apache-2.0 on 2030-07-01.
+  `LICENSE` + `package.json` (`BUSL-1.1`) + README note. (Committed separately: `license:` commit.)
+- **Cross-replica shared store** (`apps/gateway/src/cluster/shared-store.ts`): a tiny `SharedStore` (fixed-window
+  `incr`/`peek` counter + TTL `get`/`set`/`take`/`del`) with two backends — `MemoryStore` (default, single-replica,
+  keeps the bounded-map + no-wipe eviction hardening) and `RedisStore` (ioredis; atomic INCR+PEXPIRE+PTTL Lua;
+  **degrades to an internal MemoryStore on outage** — never fail-open, never crash; event-driven `ready`/`degraded`
+  gate so a sustained outage costs no per-call timeout). Opt-in via `KRAVN_REDIS_URL`; unset ⇒ memory (unchanged).
+- **Wiring:** `LoginRateLimiter` is now async + store-backed + namespaced (`rl:login:*` vs `rl:oauth:*`), used by
+  login/register + the public OAuth endpoints; OIDC in-flight login state (PKCE verifier + `state`) moved from a
+  per-process Map to the store with an **atomic single-use** claim (`take()` = `GETDEL`).
+- **Helm:** `redis.enabled` deploys **Dragonfly** (RESP-compatible, `docker.dragonflydb.io/dragonflydb/dragonfly`),
+  ClusterIP-only, non-root, `--proactor_threads=1 --maxmemory=256mb`, and wires `KRAVN_REDIS_URL` to it; BYO external
+  Redis/Valkey/Dragonfly via `redis.externalUrl`/`existingSecret` (with `enabled:false`).
+- **Validated:** 38/38 store unit checks (memory + real Dragonfly incl. `GETDEL`, TTL, degrade); end-to-end **two-pod**
+  HTTP test sharing one Dragonfly — a login lockout raised on pod A returns 429 on pod B (counter confirmed in
+  Dragonfly with the right PTTL), fresh IP+email still 401 (no over-block), 0 spurious degrades. Full monorepo
+  typecheck + build green. Found+fixed during validation: Dragonfly crash-loops unless `maxmemory ≥ threads×256MiB`
+  (pinned threads); an initial-connect race that spuriously degraded (fixed with offline-queue + health gate); and
+  the OIDC state double-use window (fixed with `take()`).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
-**multi-replica**: shared cache + distributed rate-limit + last-admin lock are the follow-ups (single-replica is fine;
-MCP is stateless so no session-affinity backplane needed) · Anthropic conversation-history caching (system+tools done) ·
+**multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
+per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
+Anthropic conversation-history caching (system+tools done) ·
 per-team entitlements for **resources/prompts** (tools done) · SCIM **Groups**→teams sync (Users done) ·
 gRPC-to-MCP reflection · OpenTelemetry export · resources/prompts test playground (tools playground is done) ·
 live smoke against real pg/mysql/mssql servers · project-document RAG/embeddings · agents/knowledge-bases port ·

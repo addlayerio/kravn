@@ -7,7 +7,7 @@ import { LoginRateLimiter } from '../auth/rate-limit.js';
 import { parse, sendError } from './_helpers.js';
 
 export function authRoutes(app: FastifyInstance, s: Services): void {
-  const limiter = new LoginRateLimiter();
+  const limiter = new LoginRateLimiter(s.sharedStore, 'login');
 
   app.post('/api/auth/login', async (req, reply) => {
     const auth = s.settings.get().auth;
@@ -25,7 +25,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     // password must always succeed — otherwise a third party could lock a victim out by spraying their
     // email. The email key is consulted only AFTER a failed attempt (below), so the success path bypasses it.
     if (rl.enabled) {
-      const wait = limiter.blockedFor(ipKey, rl.maxAttempts);
+      const wait = await limiter.blockedFor(ipKey, rl.maxAttempts);
       if (wait > 0) {
         reply.header('Retry-After', String(wait));
         return sendError(reply, 429, 'too_many_attempts', `Too many login attempts. Try again in ${wait}s.`);
@@ -35,8 +35,8 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     try {
       const user = await s.auth.login(dto.email, dto.password);
       if (rl.enabled) {
-        limiter.clear(ipKey);
-        limiter.clear(emailKey);
+        await limiter.clear(ipKey);
+        await limiter.clear(emailKey);
       }
       const token = await s.jwt.sign({ userId: user.id, email: user.email, role: user.role }, auth.sessionTtlMinutes);
       const teams = await s.repos.teams.teamIdsForUser(user.id);
@@ -46,11 +46,11 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
       if (err instanceof AuthError) {
         // Count only credential failures (401); never on the disabled/validation paths.
         if (rl.enabled && err.status === 401) {
-          limiter.recordFailure(ipKey, rl.windowSeconds);
-          limiter.recordFailure(emailKey, rl.windowSeconds);
+          await limiter.recordFailure(ipKey, rl.windowSeconds);
+          await limiter.recordFailure(emailKey, rl.windowSeconds);
           // After a wrong password, throttle further guessing on this IP or this account. A legitimate
           // user never reaches here (their correct password returns above), so this can't lock them out.
-          const wait = Math.max(limiter.blockedFor(ipKey, rl.maxAttempts), limiter.blockedFor(emailKey, rl.maxAttempts));
+          const wait = Math.max(await limiter.blockedFor(ipKey, rl.maxAttempts), await limiter.blockedFor(emailKey, rl.maxAttempts));
           if (wait > 0) {
             reply.header('Retry-After', String(wait));
             return sendError(reply, 429, 'too_many_attempts', `Too many login attempts. Try again in ${wait}s.`);
@@ -71,7 +71,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     // Separate key namespace so registration pressure can never consume the login budget (and vice versa).
     const regKey = `reg:${req.ip}`;
     if (rl.enabled) {
-      const wait = limiter.blockedFor(regKey, rl.maxAttempts);
+      const wait = await limiter.blockedFor(regKey, rl.maxAttempts);
       if (wait > 0) {
         reply.header('Retry-After', String(wait));
         return sendError(reply, 429, 'too_many_attempts', `Too many attempts. Try again in ${wait}s.`);
@@ -95,7 +95,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
       return reply.code(201).send(body);
     } catch (err) {
       if (err instanceof AuthError) {
-        if (rl.enabled) limiter.recordFailure(regKey, rl.windowSeconds);
+        if (rl.enabled) await limiter.recordFailure(regKey, rl.windowSeconds);
         return sendError(reply, err.status, err.code, err.message);
       }
       throw err;

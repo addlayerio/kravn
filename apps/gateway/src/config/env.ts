@@ -41,6 +41,12 @@ const envSchema = z.object({
   KRAVN_ALLOW_STDIO: z.enum(['true', 'false']).default('true'),
   /** How Fastify trusts proxy headers for req.ip: 'false' (direct), 'true', a hop count, or a CIDR/IP list. */
   KRAVN_TRUST_PROXY: z.string().default('1'),
+  /**
+   * Optional Redis-protocol URL (redis:// or rediss://) for cross-replica shared state — brute-force
+   * rate-limit counters and in-flight OIDC login state. Empty -> in-process memory (single-replica).
+   * The wire protocol is Redis; the Helm chart provisions Dragonfly (RESP-compatible) for this.
+   */
+  KRAVN_REDIS_URL: z.string().default(''),
 });
 
 export type RawEnv = z.infer<typeof envSchema>;
@@ -84,6 +90,8 @@ export interface Env {
   allowStdio: boolean;
   /** Fastify trustProxy value (false | true | hop count | CIDR/IP list). */
   trustProxy: boolean | number | string;
+  /** Redis-protocol URL for the cross-replica shared store; '' -> in-process memory (single-replica). */
+  redisUrl: string;
 }
 
 function sqlite(file: string): DbConfig {
@@ -203,6 +211,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     metricsToken: raw.KRAVN_METRICS_TOKEN,
     allowStdio: raw.KRAVN_ALLOW_STDIO === 'true',
     trustProxy: parseTrustProxy(raw.KRAVN_TRUST_PROXY),
+    redisUrl: raw.KRAVN_REDIS_URL.trim(),
   };
 }
 

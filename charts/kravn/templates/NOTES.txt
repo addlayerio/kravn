@@ -25,6 +25,12 @@ Data:
 ⚠️  replicaCount > 1 without a shared `secret` is unsafe: each pod will generate its own
     signing key. Set `secret` (or `existingSecret`) so all replicas share one key.
 {{- end }}
+{{- if and (gt (int .Values.replicaCount) 1) (not .Values.redis.enabled) (not .Values.redis.externalUrl) (not .Values.redis.existingSecret) }}
+
+⚠️  replicaCount > 1 without a shared store: brute-force rate limits will be enforced per-pod and
+    an OIDC login can fail its callback on a different pod. Set `redis.enabled: true` (deploys Dragonfly)
+    or point `redis.externalUrl` at your own Redis/Valkey/Dragonfly.
+{{- end }}
 
 Everything else (security, transports, federation, auth providers, observability) is configured
 at runtime from the Settings page — no redeploy required.

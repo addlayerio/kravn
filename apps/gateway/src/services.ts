@@ -25,6 +25,7 @@ import { PluginManager } from './plugins/manager.js';
 import { ChatService } from './chat/chat.service.js';
 import { PyodideExecutor, type CodeExecutor } from './interpreter/executor.js';
 import { nativePlugins } from './plugins/native.js';
+import { createSharedStore, type SharedStore } from './cluster/shared-store.js';
 
 export interface Services {
   env: Env;
@@ -47,6 +48,8 @@ export interface Services {
   interpreter: CodeExecutor;
   logstore: LogStore;
   metrics: Metrics;
+  /** Cross-replica shared state (rate-limit counters, in-flight OIDC login); memory-backed when no Redis URL. */
+  sharedStore: SharedStore;
 }
 
 declare module 'fastify' {
@@ -114,6 +117,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
 
   const logstore = new LogStore();
   const metrics = new Metrics();
+  const sharedStore = await createSharedStore(env, log);
 
   const ssrf = new SsrfGuard(settings, log);
   installGlobalSsrfDispatcher(ssrf);
@@ -139,13 +143,13 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   await repos.teams
     .reconcilePlatformAdmins()
     .catch((err) => log.error({ err }, 'platform-admin reconciliation failed (admins keep console access via role)'));
-  const sso = new SsoService(repos, encryptor, jwt, settings, log);
+  const sso = new SsoService(repos, encryptor, jwt, settings, log, sharedStore);
   const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins);
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */
@@ -156,5 +160,6 @@ export function startBackground(services: Services): void {
 export async function shutdownServices(services: Services): Promise<void> {
   await services.upstream.disconnectAll().catch(() => {});
   await services.interpreter.dispose().catch(() => {});
+  await services.sharedStore.close().catch(() => {});
   await services.store.close().catch(() => {});
 }

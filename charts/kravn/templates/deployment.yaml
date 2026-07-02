@@ -51,6 +51,7 @@ spec:
               value: {{ .Values.clientUrl | quote }}
             {{- end }}
             {{- include "kravn.dbEnv" . | nindent 12 }}
+            {{- include "kravn.redisEnv" . | nindent 12 }}
             {{- if or .Values.secret .Values.existingSecret }}
             - name: KRAVN_SECRET
               valueFrom:

@@ -1,0 +1,117 @@
+{{- if .Values.redis.enabled }}
+# Dragonfly — a Redis-wire-compatible, single-node in-memory store used as Kravn's cross-replica shared
+# state (rate-limit counters + in-flight OIDC login tickets). Ephemeral by design: no persistence volume,
+# and the app tolerates it restarting (it just repopulates). Deployed only when redis.enabled=true.
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: {{ include "kravn.dragonflyFullname" . }}
+  labels:
+    {{- include "kravn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dragonfly
+spec:
+  replicas: 1
+  strategy:
+    type: Recreate   # a single in-memory node; never run two at once
+  selector:
+    matchLabels:
+      {{- include "kravn.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: dragonfly
+  template:
+    metadata:
+      labels:
+        {{- include "kravn.selectorLabels" . | nindent 8 }}
+        app.kubernetes.io/component: dragonfly
+    spec:
+      {{- with .Values.imagePullSecrets }}
+      imagePullSecrets:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 1000
+        fsGroup: 1000
+      containers:
+        - name: dragonfly
+          image: "{{ .Values.redis.image.repository }}:{{ .Values.redis.image.tag }}"
+          imagePullPolicy: {{ .Values.redis.image.pullPolicy }}
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: false
+            capabilities:
+              drop: ["ALL"]
+          args:
+            - "--logtostderr"
+            - "--proactor_threads={{ .Values.redis.proactorThreads }}"
+            - "--maxmemory={{ .Values.redis.maxMemory }}"
+          ports:
+            - name: redis
+              containerPort: 6379
+          readinessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 3
+            periodSeconds: 10
+          livenessProbe:
+            tcpSocket:
+              port: redis
+            initialDelaySeconds: 10
+            periodSeconds: 20
+          resources:
+            {{- toYaml .Values.redis.resources | nindent 12 }}
+      {{- with .Values.nodeSelector }}
+      nodeSelector:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.affinity }}
+      affinity:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+      {{- with .Values.tolerations }}
+      tolerations:
+        {{- toYaml . | nindent 8 }}
+      {{- end }}
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kravn.dragonflyFullname" . }}
+  labels:
+    {{- include "kravn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dragonfly
+spec:
+  type: ClusterIP
+  ports:
+    - name: redis
+      port: 6379
+      targetPort: redis
+  selector:
+    {{- include "kravn.selectorLabels" . | nindent 4 }}
+    app.kubernetes.io/component: dragonfly
+{{- if .Values.redis.networkPolicy.enabled }}
+---
+# Only the Kravn app pods (same release) may reach Dragonfly:6379. Everything else in the namespace is denied
+# ingress to it. No-op where the CNI doesn't enforce NetworkPolicy.
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: {{ include "kravn.dragonflyFullname" . }}
+  labels:
+    {{- include "kravn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: dragonfly
+spec:
+  podSelector:
+    matchLabels:
+      {{- include "kravn.selectorLabels" . | nindent 6 }}
+      app.kubernetes.io/component: dragonfly
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - podSelector:
+            matchLabels:
+              {{- include "kravn.selectorLabels" . | nindent 14 }}
+      ports:
+        - port: redis
+          protocol: TCP
+{{- end }}
+{{- end }}
