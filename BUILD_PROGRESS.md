@@ -528,12 +528,67 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   `helm install kravn oci://ghcr.io/<owner>/charts/kravn --version 0.1.0` (make the GHCR packages public or add an
   imagePullSecret). Docker build not locally verifiable here (no Docker in this env); the CI runs it.
 
+## ✅ PASS 19 — DB portability & first-deploy fixes (v0.1.2–v0.1.8)
+- SQLAlchemy-style `DATABASE_URL` schemes (`postgresql+psycopg://`, etc.) normalized; unknown scheme throws early.
+- PG 15+/Azure: create the app schema only if genuinely missing (checks `information_schema.schemata` first,
+  since `CREATE SCHEMA IF NOT EXISTS` needs CREATE-on-DB); documented the least-privilege grants.
+- `value too long for varchar(64)`: registry composite ids bounded ≤64 w/ hash suffix; DB errors sanitized
+  (`describeSyncError`); zod + maxlength form validation so the UI shows handled errors, not raw DB errors.
+- Replaced a `KRAVN_MIGRATE` env with a `migrate` CLI subcommand + an automatic Helm pre-install/upgrade Job.
+
+## ✅ PASS 20 — Local-auth hardening, SSO-only, EntraID admin, SAML fixes (v0.1.10–v0.1.13)
+- Login rate-limit + progressive lockout; ability to disable local password login (SSO-only); designate an
+  EntraID user as admin (`adminEmails`, promotes/creates on SSO login). 12-finding review fixed.
+- SAML: `@fastify/formbody` for the POST binding (415 fix); real signature fix = `wantAuthnResponseSigned:false`
+  keeping `wantAssertionsSigned:true` (EntraID signs the assertion, not the response).
+
+## ✅ PASS 21 — OAuth 2.1 Authorization Server (v0.1.14–v0.1.15)
+- Kravn is an OAuth AS so Claude connectors connect: DCR (RFC 7591), PKCE S256, atomic single-use auth codes +
+  rotating hashed refresh tokens, consent screen with an anti-fixation binding cookie, `/.well-known/*`. Review
+  fixed 7 findings. Consent-page-404 fixed (`/oauth` is an SPA route, not an API prefix).
+
+## ✅ PASS 22 — Change user role + SharePoint native plugin (v0.1.16–v0.1.19)
+- Change an existing user's role. SharePoint native mcp-server plugin (Microsoft Graph app-only): search /
+  list-sites / list-documents / read-document with docx/pdf/xlsx text extraction; `region` for Sites.Selected;
+  `secret:true` client secret encrypted at rest.
+
+## ✅ PASS 23 — App-level security hardening + the SECURITY.md contract (v0.1.20–v0.1.21)
+- White-box audit (product must be safe without Cloudflare): closed an editor→stdio **RCE** (admin-gate +
+  sanitized child env), removed **JWT-in-URL** (logstream ticket + SSO handoff code + scope confinement),
+  configurable `trustProxy`, OIDC SSRF guard, `email_verified` check, security headers, `/metrics` auth, CORS
+  allowlist, 4xx passthrough, query-string stripped from logs. Re-audit fixed 3 more: **TOCTOU** in the handoff
+  exchange (atomic `consume(jti)`) + logstream ticket, and a team-roster **IDOR**.
+- **SECURITY.md** created: trust boundaries, invariants, control inventory, residual risk, per-change checklist,
+  re-validation process, and the security change-log. Referenced from AGENTS.md §5 (revalidate on every change).
+
+## ✅ PASS 24 — Per-team MCP + tool entitlements (v0.1.22–v0.1.23)
+- Two levels of access per Team: which virtual servers (level 1, `allowed_teams`) and which of their tools
+  (level 2, `team_server_tools`; empty = all). Enforced by narrowing `scope.tools` in `mcp.routes` + chat.
+  `viewer` gained `mcp.invoke`; global `/mcp` catalog is admin-only; the raw tool-invoke playground is
+  admin-only (both close per-team bypasses). Operator: per-team "MCP access" panel (+ tool-mode toggle fix).
+
+## ✅ PASS 25 — Platform Administrator Team console gate (v0.1.24)
+- Access to the whole control-plane requires role admin OR membership in the well-known "Platform Administrator
+  Team" (seeded at setup, reconciled at boot, promote↔demote syncs it). Closes the hole where any authenticated
+  MCP consumer could reach the admin web. Enforced in `authorize()` (one choke point). Operator shows a clear
+  "no console access" screen for non-members. `/api/overview` gated (was a dashboard leak).
+
+## ✅ PASS 26 — Jira + Confluence plugins, user ABM, SCIM 2.0 (v0.1.25–v0.1.27)
+- Native **Jira** + **Confluence** plugins (Atlassian Cloud REST; shared `plugins/atlassian.ts` with one
+  SSRF-hardened base-URL guard, Basic auth, `secret:true` token, redirect/size/timeout limits).
+- **User ABM**: edit name/email/role/password + a `disabled` flag (migration 006). `login`/`authenticate`/
+  `authenticateToken`/token-issuance (exchange, OAuth) reject disabled → deactivation cuts access live.
+  Anti-lockout + email uniqueness. Operator Users edit modal.
+- **SCIM 2.0** provisioning (`/scim/v2/*`, bearer token stored hashed): create/update/deactivate/delete from
+  Entra, at a clamped non-admin role, never touching admins. Complements SAML (auth) with provisioning.
+  Content-type `application/scim+json` accepted (Entra's 415 fix).
+
 ### Deferred to later phases (intentional, not missing)
-ZIP plugin bundles (manifest+entry+assets, e.g. for advanced plugins) — part C of the plugin extension, designed not built ·
-multi-replica session affinity & durable event store · gRPC-to-MCP reflection · OpenTelemetry export ·
-dedicated API tokens for external MCP clients · resources/prompts test playground (tools playground is done) ·
-live smoke against real pg/mysql/mssql servers · SSO one-time-code (vs token-in-URL) hardening ·
-project-document RAG/embeddings · agents/knowledge-bases port from old kravn ·
-Gemini/Anthropic tool-calling (incl. interpreter for them) — currently OpenAI-family only ·
-interpreter pandas/numpy bundle + WASM memory cap + dedicated interpreter pod (if usage grows) ·
-attachment image/vision support · object-storage for attachment bytes (currently base64 in DB).
+ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+**multi-replica**: shared cache + distributed rate-limit + last-admin lock are the follow-ups (single-replica is fine;
+MCP is stateless so no session-affinity backplane needed) · registry in-memory cache for `buildScope` (planned) ·
+per-team entitlements for **resources/prompts** (tools done) · SCIM **Groups**→teams sync (Users done) ·
+gRPC-to-MCP reflection · OpenTelemetry export · resources/prompts test playground (tools playground is done) ·
+live smoke against real pg/mysql/mssql servers · project-document RAG/embeddings · agents/knowledge-bases port ·
+Gemini/Anthropic tool-calling (currently OpenAI-family only) · interpreter pandas/numpy + WASM cap ·
+attachment image/vision · object-storage for attachment bytes (currently base64 in DB).
