@@ -21,6 +21,8 @@ const DEFAULT_PROTOCOL_VERSION = '2025-06-18';
 export interface McpScope {
   /** null = the global catalog; otherwise a virtual server's curated slice. */
   label: string;
+  /** The virtual server's id when this is a VS slice (drives per-VS hook overlays); undefined = global catalog. */
+  virtualServerId?: string;
   tools: Tool[];
   resources: Resource[];
   prompts: Prompt[];
@@ -103,6 +105,7 @@ export class DownstreamMcp {
     const pset = new Set(vs.promptIds);
     return {
       label: vs.name,
+      virtualServerId: vs.id,
       tools: enabled(allTools).filter((t) => tset.has(t.id)),
       resources: enabled(allResources).filter((r) => rset.has(r.id)),
       prompts: enabled(allPrompts).filter((p) => pset.has(p.id)),
@@ -141,7 +144,7 @@ export class DownstreamMcp {
             inputSchema: t.inputSchema ?? {},
             server: t.serverId,
           }));
-          const filtered = await this.plugins.applyListTools(enriched, actor);
+          const filtered = await this.plugins.applyListTools(enriched, actor, scope.virtualServerId);
           return ok({
             tools: filtered.map((t) => ({ name: t.name, description: t.description, inputSchema: t.inputSchema ?? {} })),
           });
@@ -152,7 +155,7 @@ export class DownstreamMcp {
           const args = (msg.params?.arguments ?? {}) as Record<string, unknown>;
           const tool = scope.tools.find((t) => t.name === name);
           if (!tool) return fail(-32602, `Unknown tool: ${name}`);
-          const result = await this.registry.invokeTool(tool.id, args, actor);
+          const result = await this.registry.invokeTool(tool.id, args, actor, { virtualServerId: scope.virtualServerId });
           return ok(result);
         }
 
@@ -164,7 +167,7 @@ export class DownstreamMcp {
             mimeType: r.mimeType,
             server: r.serverId,
           }));
-          const filtered = await this.plugins.applyListResources(enriched, actor);
+          const filtered = await this.plugins.applyListResources(enriched, actor, scope.virtualServerId);
           return ok({
             resources: filtered.map((r: any) => ({ uri: r.uri, name: r.name, description: r.description, mimeType: r.mimeType })),
           });
@@ -174,7 +177,7 @@ export class DownstreamMcp {
           const uri = msg.params?.uri;
           const res = scope.resources.find((r) => r.uri === uri);
           if (!res) return fail(-32602, `Unknown resource: ${uri}`);
-          const result = await this.registry.readResourceFrom(res.serverId, res.uri, actor);
+          const result = await this.registry.readResourceFrom(res.serverId, res.uri, actor, scope.virtualServerId);
           return ok(result);
         }
 
@@ -183,7 +186,7 @@ export class DownstreamMcp {
             ...scope.localPrompts.map((p) => ({ name: p.name, description: p.description, arguments: p.arguments ?? [], server: 'local' })),
             ...scope.prompts.map((p) => ({ name: p.name, description: p.description, arguments: p.arguments ?? [], server: p.serverId })),
           ];
-          const filtered = await this.plugins.applyListPrompts(enriched, actor);
+          const filtered = await this.plugins.applyListPrompts(enriched, actor, scope.virtualServerId);
           return ok({
             prompts: filtered.map((p: any) => ({ name: p.name, description: p.description, arguments: p.arguments ?? [] })),
           });
@@ -196,7 +199,7 @@ export class DownstreamMcp {
           // Local (Kravn-authored) prompts take precedence and are rendered here.
           const local = scope.localPrompts.find((p) => p.name === name);
           if (local) {
-            const args2 = await this.plugins.applyPromptPre('local', local.name, args, actor);
+            const args2 = await this.plugins.applyPromptPre('local', local.name, args, actor, scope.virtualServerId);
             const missing = missingRequiredArgs(local.arguments, args2);
             if (missing.length) return fail(-32602, `Missing required argument(s): ${missing.join(', ')}`);
             const text = renderTemplate(local.template, args2);
@@ -204,13 +207,13 @@ export class DownstreamMcp {
               description: local.description,
               messages: [{ role: local.role, content: { type: 'text', text } }],
             };
-            result = await this.plugins.applyPromptPost('local', local.name, result, actor);
+            result = await this.plugins.applyPromptPost('local', local.name, result, actor, scope.virtualServerId);
             return ok(result);
           }
 
           const prompt = scope.prompts.find((p) => p.name === name);
           if (!prompt) return fail(-32602, `Unknown prompt: ${name}`);
-          const result = await this.registry.getPromptFrom(prompt.serverId, prompt.name, args, actor);
+          const result = await this.registry.getPromptFrom(prompt.serverId, prompt.name, args, actor, scope.virtualServerId);
           return ok(result);
         }
 

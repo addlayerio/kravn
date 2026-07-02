@@ -443,7 +443,12 @@ export interface PipelineStepView {
   pluginEnabled: boolean;
 }
 export interface PipelinePointView extends HookPointMeta {
+  /** This scope's own editable chain at the junction. */
   steps: PipelineStepView[];
+  /** For a VS scope: the global base steps that ALSO run here (read-only). Empty for the global scope. */
+  inherited?: PipelineStepView[];
+  /** Hook plugins implementing this junction that aren't in `steps` yet (the "add to this scope" picker). */
+  available?: Array<{ pluginId: string; name: string }>;
 }
 export interface PipelineScopeView {
   key: PipelineScopeMeta['key'];
@@ -452,6 +457,9 @@ export interface PipelineScopeView {
   points: PipelinePointView[];
 }
 export interface PipelineView {
+  /** 'global' (the mandatory base) or a virtualServerId (an overlay for that virtual server). */
+  scope: string;
+  global: boolean;
   scopes: PipelineScopeView[];
 }
 

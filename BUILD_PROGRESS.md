@@ -636,6 +636,25 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   BROU→XXXX**; a per-junction toggle-off skipped that step; an unknown plugin in a PUT was rejected (400).
   Full monorepo typecheck + operator vite build green.
 
+## ✅ PASS 30 — Per-virtual-server pipeline overlays (v0.1.31)
+- **What:** hook chains are now composed **per scope** — a mandatory **Global** base (runs for all traffic) +
+  opt-in **per-virtual-server overlays** that run, in addition to global, only for calls routed through that VS.
+  Answers "I want a plugin to do something for one virtual server but not another." Layered on purpose: a VS
+  overlay can only ADD steps, never disable/bypass a global (compliance/security) step.
+- **Threading:** `virtualServerId` now flows server-side from `buildScope` (the resolved VS) → `dispatch` →
+  `invokeTool`/`readResourceFrom`/`getPromptFrom` → the hook context (also exposed to plugins as
+  `ctx.virtualServerId`). Not caller-supplied.
+- **Model:** `pipeline_steps.scope` ('global' | virtualServerId), migration 008 (rebuild PK to include scope,
+  copying existing rows as 'global'). `enabledHooks(method, vsId)` = global chain (always) + VS overlay (opt-in),
+  deduped. `pipelineView(scope)` shows a VS's own steps + inherited global (read-only) + available-to-add;
+  `setPipeline(scope,…)` validates scope+hook (auth is global-only); `trace(scope,…)` dry-runs the effective
+  chain. VS deletion clears its overlay.
+- **Frontend:** the Pipelines screen gains a scope selector (Global | each virtual server); a VS view shows the
+  inherited global steps read-only, an add-plugin picker, and per-step reorder/toggle/remove for the overlay.
+- **Validated 19/19 HTTP:** a plugin disabled in Global but added to VS-A's overlay runs ONLY for VS-A (trace of
+  VS-A includes it + tags output with the VS id; VS-B and Global do not); global base always runs; auth-as-VS and
+  unknown-VS PUTs rejected (400). Full monorepo typecheck + operator vite build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

@@ -431,8 +431,45 @@ const pipelineSteps: Migration = {
   },
 };
 
+/**
+ * 008 — Per-virtual-server pipeline overlays. Add a `scope` to pipeline_steps ('global' = the base chain,
+ * a virtualServerId = an overlay that runs only for that VS) and fold it into the primary key. Existing rows
+ * (created by 007) are preserved as scope='global'. Rebuilds the table because the PK changes.
+ */
+const pipelineScope: Migration = {
+  name: '008_pipeline_scope',
+  async up(knex) {
+    const build = (t: Knex.CreateTableBuilder) => {
+      t.string('scope', 64).notNullable().defaultTo('global');
+      t.string('hook_point', 48).notNullable();
+      t.string('plugin_id', 64).notNullable();
+      t.integer('position').notNullable().defaultTo(0);
+      t.integer('enabled').notNullable().defaultTo(1);
+      t.primary(['scope', 'hook_point', 'plugin_id']);
+      t.index(['scope', 'hook_point']);
+    };
+    if (!(await knex.schema.hasTable('pipeline_steps'))) {
+      await createIfMissing(knex, 'pipeline_steps', build); // fresh install (defensive; 007 normally precedes)
+      return;
+    }
+    const rows = await knex('pipeline_steps').select('hook_point', 'plugin_id', 'position', 'enabled');
+    await knex.schema.dropTableIfExists('pipeline_steps_new');
+    await createIfMissing(knex, 'pipeline_steps_new', build);
+    if (rows.length) {
+      await knex('pipeline_steps_new').insert(
+        rows.map((r: any) => ({ scope: 'global', hook_point: r.hook_point, plugin_id: r.plugin_id, position: r.position, enabled: r.enabled })),
+      );
+    }
+    await knex.schema.dropTable('pipeline_steps');
+    await knex.schema.renameTable('pipeline_steps_new', 'pipeline_steps');
+  },
+  async down() {
+    /* no-op: keep the scoped table */
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

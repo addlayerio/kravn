@@ -62,6 +62,11 @@ function traceEqual(a: unknown, b: unknown): boolean {
   }
 }
 
+/** Reserved scope key for the mandatory base chain (vs. a virtualServerId for an overlay). */
+const PIPELINE_GLOBAL = 'global';
+/** Hooks that are global-only (auth runs at sign-in, before any virtual server is chosen). */
+const GLOBAL_ONLY_HOOKS = new Set(['onResolveUser']);
+
 /**
  * Discovers, persists, loads and runs plugins.
  *
@@ -76,8 +81,12 @@ function traceEqual(a: unknown, b: unknown): boolean {
 export class PluginManager {
   private loaded = new Map<string, KravnPlugin>();
   private records = new Map<string, PluginRecord>();
-  /** Per-hook-point ordered chain: hookPoint → [{pluginId, enabled}] in run order. Composed in the UI. */
-  private pipeline = new Map<string, Array<{ pluginId: string; enabled: boolean }>>();
+  /**
+   * Composed hook chains, keyed scope → hookPoint → ordered [{pluginId, enabled}]. Scope is `'global'`
+   * (the mandatory base that runs for all traffic) or a virtualServerId (an opt-in overlay that runs, in
+   * addition to global, only for calls routed through that virtual server).
+   */
+  private pipeline = new Map<string, Map<string, Array<{ pluginId: string; enabled: boolean }>>>();
   private loadErrors: LoadError[] = [];
   /** Native (in-code, privileged) plugins, keyed by id — not loaded from stored source. */
   private native: Map<string, McpServerPlugin>;
@@ -309,25 +318,39 @@ export class PluginManager {
     return Object.keys(p.hooks).filter((k) => typeof (p.hooks as any)[k] === 'function' && HOOK_POINTS[k]);
   }
 
-  /** Every loaded hook plugin gets a step row at each junction it implements (appended at the end). Idempotent. */
+  /** Seed the GLOBAL base: every loaded hook plugin gets a step at each junction it implements. Idempotent.
+   *  Per-VS overlays are opt-in (never auto-seeded) — the admin explicitly adds plugins to a VS. */
   private async ensurePipelineSteps(): Promise<void> {
     for (const r of this.records.values()) {
       if (r.type !== 'hook') continue;
       for (const method of this.hookMethodsOf(r.id)) {
-        await this.repos.pipeline.ensureStep(method, r.id);
+        await this.repos.pipeline.ensureStep(PIPELINE_GLOBAL, method, r.id);
       }
     }
   }
 
   private async loadPipeline(): Promise<void> {
-    const steps = await this.repos.pipeline.list(); // ordered by hook_point, position
-    const map = new Map<string, Array<{ pluginId: string; enabled: boolean }>>();
+    const steps = await this.repos.pipeline.list(); // ordered by scope, hook_point, position
+    const map = new Map<string, Map<string, Array<{ pluginId: string; enabled: boolean }>>>();
     for (const s of steps) {
-      const arr = map.get(s.hookPoint) ?? [];
+      let byMethod = map.get(s.scope);
+      if (!byMethod) map.set(s.scope, (byMethod = new Map()));
+      const arr = byMethod.get(s.hookPoint) ?? [];
       arr.push({ pluginId: s.pluginId, enabled: s.enabled });
-      map.set(s.hookPoint, arr);
+      byMethod.set(s.hookPoint, arr);
     }
     this.pipeline = map;
+  }
+
+  /** Reload the in-memory pipeline chains from the DB (call after external mutations, e.g. a VS removal). */
+  async reloadPipeline(): Promise<void> {
+    await this.loadPipeline();
+  }
+
+  /** Enabled step records for one scope+method, in stored order (or [] if that scope has no chain there). */
+  private scopeChain(scope: string, method: string): Array<PluginRecord | undefined> {
+    const order = this.pipeline.get(scope)?.get(method);
+    return order ? order.filter((s) => s.enabled).map((s) => this.records.get(s.pluginId)) : [];
   }
 
   private logger(id: string): (m: string) => void {
@@ -336,19 +359,21 @@ export class PluginManager {
 
   // ─── Hook execution ──────────────────────────────────────────────────────────────────────────
 
-  private enabledHooks(method: string) {
-    const order = this.pipeline.get(method);
-    // Rows present for this junction → honor them (skipping steps toggled off here). Rows ABSENT: only fall
-    // back to legacy global priority when NOTHING has been seeded yet (fresh first boot, `pipeline.size===0`);
-    // if other junctions are seeded, an absent junction means the admin cleared it on purpose → run nothing
-    // (never resurrect cleared steps by falling back).
-    const recs: Array<PluginRecord | undefined> = order
-      ? order.filter((s) => s.enabled).map((s) => this.records.get(s.pluginId))
-      : this.pipeline.size === 0
+  private enabledHooks(method: string, vsId?: string) {
+    // GLOBAL base (mandatory, all traffic). Absent rows: fall back to legacy global priority ONLY on a fresh
+    // boot before anything is seeded; if global is otherwise seeded, an absent junction means "cleared" → none.
+    const globalHas = this.pipeline.get(PIPELINE_GLOBAL)?.get(method);
+    const globalRecs: Array<PluginRecord | undefined> = globalHas
+      ? this.scopeChain(PIPELINE_GLOBAL, method)
+      : (this.pipeline.get(PIPELINE_GLOBAL)?.size ?? 0) === 0
         ? [...this.records.values()].sort((a, b) => a.priority - b.priority)
         : [];
-    return recs
+    // Per-VS OVERLAY (opt-in): runs AFTER the global base, only for calls routed through this virtual server.
+    const vsRecs = vsId && !GLOBAL_ONLY_HOOKS.has(method) ? this.scopeChain(vsId, method) : [];
+    const seen = new Set<string>();
+    return [...globalRecs, ...vsRecs]
       .filter((r): r is PluginRecord => !!r && r.enabled && r.type === 'hook') // r.enabled = global master switch
+      .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true))) // a plugin runs at most once per junction
       .map((r) => ({ r, plugin: this.loaded.get(r.id) as HookPlugin | undefined }))
       .filter((x) => x.plugin && x.plugin.hooks && typeof (x.plugin.hooks as any)[method] === 'function')
       .map((x) => ({ id: x.r.id, plugin: x.plugin as HookPlugin, config: this.decryptConfig(x.r) }));
@@ -360,47 +385,72 @@ export class PluginManager {
 
   // ─── Pipeline composition (per-hook-point ordering) ────────────────────────────────────────────
 
-  /** The full pipeline view: for every lifecycle junction, its ordered chain of hook-plugin steps. */
-  pipelineView(): PipelineView {
-    return {
-      scopes: HOOK_LIFECYCLE.map((scope) => ({
-        key: scope.key,
-        label: scope.label,
-        spine: scope.spine,
-        points: scope.points.map((pt) => ({ ...pt, steps: this.stepsForPoint(pt.method) })),
-      })),
-    };
+  /**
+   * The pipeline view for one scope: `'global'` (the base) or a virtualServerId (an overlay). For a VS scope,
+   * each junction also carries the `inherited` global steps (read-only) and the `available` plugins you can add.
+   * The global-only auth junction is omitted under a VS scope.
+   */
+  pipelineView(scope: string = PIPELINE_GLOBAL): PipelineView {
+    const isGlobal = scope === PIPELINE_GLOBAL;
+    const scopes = HOOK_LIFECYCLE.map((sc) => ({
+      key: sc.key,
+      label: sc.label,
+      spine: sc.spine,
+      points: sc.points
+        .filter((pt) => isGlobal || !GLOBAL_ONLY_HOOKS.has(pt.method))
+        .map((pt) => ({
+          ...pt,
+          steps: this.stepsForScope(scope, pt.method),
+          inherited: isGlobal ? [] : this.stepsForScope(PIPELINE_GLOBAL, pt.method),
+          available: this.availableFor(scope, pt.method),
+        })),
+    })).filter((sc) => sc.points.length > 0);
+    return { scope, global: isGlobal, scopes };
   }
 
-  /** Ordered steps for one junction: pipeline order first, then any implementer not yet placed. */
-  private stepsForPoint(method: string): PipelineStepView[] {
+  private stepView = (r: PluginRecord, enabled: boolean): PipelineStepView => ({
+    pluginId: r.id,
+    name: r.name,
+    description: r.description,
+    enabled,
+    pluginEnabled: r.enabled,
+  });
+
+  /** Ordered steps for one scope+junction (global auto-includes every implementer; a VS shows only its own). */
+  private stepsForScope(scope: string, method: string): PipelineStepView[] {
     const implementers = new Set(
       [...this.records.values()].filter((r) => r.type === 'hook' && this.hookMethodsOf(r.id).includes(method)).map((r) => r.id),
     );
     const out: PipelineStepView[] = [];
     const seen = new Set<string>();
-    const view = (r: PluginRecord, enabled: boolean): PipelineStepView => ({
-      pluginId: r.id,
-      name: r.name,
-      description: r.description,
-      enabled,
-      pluginEnabled: r.enabled,
-    });
-    for (const s of this.pipeline.get(method) ?? []) {
+    for (const s of this.pipeline.get(scope)?.get(method) ?? []) {
       if (!implementers.has(s.pluginId) || seen.has(s.pluginId)) continue;
-      out.push(view(this.records.get(s.pluginId)!, s.enabled));
+      out.push(this.stepView(this.records.get(s.pluginId)!, s.enabled));
       seen.add(s.pluginId);
     }
-    for (const id of implementers) {
-      if (seen.has(id)) continue;
-      out.push(view(this.records.get(id)!, true));
+    if (scope === PIPELINE_GLOBAL) {
+      for (const id of implementers) if (!seen.has(id)) out.push(this.stepView(this.records.get(id)!, true));
     }
     return out;
   }
 
-  /** Replace the ordered chain at one junction. Validates every plugin actually implements that hook. */
-  async setPipeline(hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
+  /** Hook plugins that implement this junction but aren't in this scope's chain yet (the "add" picker). */
+  private availableFor(scope: string, method: string): Array<{ pluginId: string; name: string }> {
+    if (scope === PIPELINE_GLOBAL) return []; // global already lists every implementer
+    const inScope = new Set((this.pipeline.get(scope)?.get(method) ?? []).map((s) => s.pluginId));
+    return [...this.records.values()]
+      .filter((r) => r.type === 'hook' && !inScope.has(r.id) && this.hookMethodsOf(r.id).includes(method))
+      .map((r) => ({ pluginId: r.id, name: r.name }));
+  }
+
+  /** Replace the ordered chain at one junction, for one scope. Validates the scope and that plugins fit. */
+  async setPipeline(scope: string, hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
     if (!Object.prototype.hasOwnProperty.call(HOOK_POINTS, hookPoint)) throw new Error('Unknown hook point.');
+    const isGlobal = scope === PIPELINE_GLOBAL;
+    if (!isGlobal) {
+      if (GLOBAL_ONLY_HOOKS.has(hookPoint)) throw new Error(`${hookPoint} runs globally and cannot be overlaid per virtual server.`);
+      if (!(await this.repos.virtualServers.getById(scope))) throw new Error('Unknown virtual server.');
+    }
     const seen = new Set<string>();
     const clean: Array<{ pluginId: string; enabled: boolean }> = [];
     for (const s of steps) {
@@ -411,25 +461,28 @@ export class PluginManager {
       seen.add(s.pluginId);
       clean.push({ pluginId: s.pluginId, enabled: s.enabled });
     }
-    await this.repos.pipeline.replaceHook(hookPoint, clean);
-    // Invariant: every implementer keeps a row. Any implementer omitted from the submitted list is recorded
-    // present-but-OFF, so a partial/empty PUT means "don't run these here" (not "reset to default") and the
-    // view stays consistent with what actually runs.
-    for (const r of this.records.values()) {
-      if (r.type !== 'hook' || seen.has(r.id)) continue;
-      if (this.hookMethodsOf(r.id).includes(hookPoint)) await this.repos.pipeline.ensureStep(hookPoint, r.id, false);
+    await this.repos.pipeline.replaceHook(scope, hookPoint, clean);
+    // GLOBAL base only: keep every implementer present (omitted → present-but-OFF) so clearing means "don't run
+    // here", not "reset". A VS overlay is opt-in, so omitted plugins simply aren't part of it.
+    if (isGlobal) {
+      for (const r of this.records.values()) {
+        if (r.type !== 'hook' || seen.has(r.id)) continue;
+        if (this.hookMethodsOf(r.id).includes(hookPoint)) await this.repos.pipeline.ensureStep(PIPELINE_GLOBAL, hookPoint, r.id, false);
+      }
     }
     await this.loadPipeline();
     await this.onChange?.();
   }
 
   /**
-   * Dry-run a junction's chain on a sample payload, capturing each step's before/after (and any deny).
-   * Runs the REAL plugin code on the provided sample — admin-only, synthetic input, may have side effects.
+   * Dry-run a junction's EFFECTIVE chain (global base + the given scope's overlay) on a sample payload,
+   * capturing each step's before/after (and any deny). Runs the REAL plugin code on synthetic admin input.
    */
-  async trace(hookPoint: string, payload: unknown, hints: { server?: string; tool?: string } = {}): Promise<PipelineTraceResult> {
+  async trace(scope: string, hookPoint: string, payload: unknown, hints: { server?: string; tool?: string } = {}): Promise<PipelineTraceResult> {
     const spec = Object.prototype.hasOwnProperty.call(HOOK_TRACE_SPEC, hookPoint) ? HOOK_TRACE_SPEC[hookPoint] : undefined;
     if (!spec) throw new Error('Unknown hook point.');
+    const vsId = scope === PIPELINE_GLOBAL ? undefined : scope;
+    if (vsId && GLOBAL_ONLY_HOOKS.has(hookPoint)) throw new Error(`${hookPoint} runs globally, not per virtual server.`);
     const extra: Record<string, unknown> =
       spec.kind === 'list' || hookPoint === 'onResolveUser'
         ? {}
@@ -440,12 +493,12 @@ export class PluginManager {
     const steps: PipelineTraceStep[] = [];
     let denied: { pluginId: string; reason: string } | undefined;
 
-    for (const h of this.enabledHooks(hookPoint)) {
+    for (const h of this.enabledHooks(hookPoint, vsId)) {
       const before = traceClone(current);
       const name = this.records.get(h.id)?.name ?? h.id;
       let denyReason: string | null = null;
       let error: string | undefined;
-      const ctx: any = { ...extra, [spec.key]: current, actor, config: h.config, log: this.logger(h.id), deny: (r: string) => { denyReason = r; } };
+      const ctx: any = { ...extra, [spec.key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denyReason = r; } };
       try {
         await (h.plugin.hooks as any)[hookPoint](ctx);
       } catch (err) {
@@ -464,10 +517,10 @@ export class PluginManager {
   }
 
   /** List filter (tools/resources/prompts): plugins may filter/annotate the array. */
-  private async applyList(method: string, key: string, items: any[], actor?: any): Promise<any[]> {
+  private async applyList(method: string, key: string, items: any[], actor?: any, vsId?: string): Promise<any[]> {
     let current = items;
-    for (const h of this.enabledHooks(method)) {
-      const ctx: any = { [key]: current, actor, config: h.config, log: this.logger(h.id) };
+    for (const h of this.enabledHooks(method, vsId)) {
+      const ctx: any = { [key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id) };
       try {
         await (h.plugin.hooks as any)[method](ctx);
         current = ctx[key];
@@ -479,11 +532,11 @@ export class PluginManager {
   }
 
   /** Pre hook: plugins may mutate `value` or deny. */
-  private async applyPre(method: string, key: string, extra: object, value: any, actor?: any): Promise<any> {
+  private async applyPre(method: string, key: string, extra: object, value: any, actor?: any, vsId?: string): Promise<any> {
     let current = value;
-    for (const h of this.enabledHooks(method)) {
+    for (const h of this.enabledHooks(method, vsId)) {
       let denied: string | null = null;
-      const ctx: any = { ...extra, [key]: current, actor, config: h.config, log: this.logger(h.id), deny: (r: string) => { denied = r; } };
+      const ctx: any = { ...extra, [key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denied = r; } };
       try {
         await (h.plugin.hooks as any)[method](ctx);
       } catch (err) {
@@ -497,10 +550,10 @@ export class PluginManager {
   }
 
   /** Post hook: plugins may mutate the result. */
-  private async applyPost(method: string, extra: object, result: any, actor?: any): Promise<any> {
+  private async applyPost(method: string, extra: object, result: any, actor?: any, vsId?: string): Promise<any> {
     let current = result;
-    for (const h of this.enabledHooks(method)) {
-      const ctx: any = { ...extra, result: current, actor, config: h.config, log: this.logger(h.id) };
+    for (const h of this.enabledHooks(method, vsId)) {
+      const ctx: any = { ...extra, result: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id) };
       try {
         await (h.plugin.hooks as any)[method](ctx);
         current = ctx.result;
@@ -512,30 +565,30 @@ export class PluginManager {
   }
 
   // Tools
-  applyListTools(tools: any[], actor?: any) { return this.applyList('onListTools', 'tools', tools, actor); }
-  applyToolPre(server: string, tool: string, args: Record<string, unknown>, actor?: any) {
-    return this.applyPre('onToolCall', 'arguments', { server, tool }, args, actor) as Promise<Record<string, unknown>>;
+  applyListTools(tools: any[], actor?: any, vsId?: string) { return this.applyList('onListTools', 'tools', tools, actor, vsId); }
+  applyToolPre(server: string, tool: string, args: Record<string, unknown>, actor?: any, vsId?: string) {
+    return this.applyPre('onToolCall', 'arguments', { server, tool }, args, actor, vsId) as Promise<Record<string, unknown>>;
   }
-  applyToolPost(server: string, tool: string, result: any, actor?: any) {
-    return this.applyPost('onToolResult', { server, tool }, result, actor);
+  applyToolPost(server: string, tool: string, result: any, actor?: any, vsId?: string) {
+    return this.applyPost('onToolResult', { server, tool }, result, actor, vsId);
   }
 
   // Resources
-  applyListResources(resources: any[], actor?: any) { return this.applyList('onListResources', 'resources', resources, actor); }
-  applyResourcePre(server: string, uri: string, actor?: any) {
-    return this.applyPre('onResourceRead', 'uri', { server }, uri, actor) as Promise<string>;
+  applyListResources(resources: any[], actor?: any, vsId?: string) { return this.applyList('onListResources', 'resources', resources, actor, vsId); }
+  applyResourcePre(server: string, uri: string, actor?: any, vsId?: string) {
+    return this.applyPre('onResourceRead', 'uri', { server }, uri, actor, vsId) as Promise<string>;
   }
-  applyResourcePost(server: string, uri: string, result: any, actor?: any) {
-    return this.applyPost('onResourceResult', { server, uri }, result, actor);
+  applyResourcePost(server: string, uri: string, result: any, actor?: any, vsId?: string) {
+    return this.applyPost('onResourceResult', { server, uri }, result, actor, vsId);
   }
 
   // Prompts
-  applyListPrompts(prompts: any[], actor?: any) { return this.applyList('onListPrompts', 'prompts', prompts, actor); }
-  applyPromptPre(server: string, prompt: string, args: Record<string, unknown>, actor?: any) {
-    return this.applyPre('onPromptGet', 'arguments', { server, prompt }, args, actor) as Promise<Record<string, unknown>>;
+  applyListPrompts(prompts: any[], actor?: any, vsId?: string) { return this.applyList('onListPrompts', 'prompts', prompts, actor, vsId); }
+  applyPromptPre(server: string, prompt: string, args: Record<string, unknown>, actor?: any, vsId?: string) {
+    return this.applyPre('onPromptGet', 'arguments', { server, prompt }, args, actor, vsId) as Promise<Record<string, unknown>>;
   }
-  applyPromptPost(server: string, prompt: string, result: any, actor?: any) {
-    return this.applyPost('onPromptResult', { server, prompt }, result, actor);
+  applyPromptPost(server: string, prompt: string, result: any, actor?: any, vsId?: string) {
+    return this.applyPost('onPromptResult', { server, prompt }, result, actor, vsId);
   }
 
   // Auth

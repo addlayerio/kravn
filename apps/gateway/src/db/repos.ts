@@ -682,6 +682,8 @@ export class PluginsRepo {
 // ─── Hook pipelines ─────────────────────────────────────────────────────────────────────────────────
 
 export interface PipelineStep {
+  /** 'global' (the base chain) or a virtualServerId (an overlay that runs only for that virtual server). */
+  scope: string;
   hookPoint: string;
   pluginId: string;
   position: number;
@@ -689,43 +691,54 @@ export interface PipelineStep {
 }
 
 function mapPipelineStep(r: any): PipelineStep {
-  return { hookPoint: r.hook_point, pluginId: r.plugin_id, position: Number(r.position ?? 0), enabled: bool(r.enabled) };
+  return {
+    scope: r.scope ?? 'global',
+    hookPoint: r.hook_point,
+    pluginId: r.plugin_id,
+    position: Number(r.position ?? 0),
+    enabled: bool(r.enabled),
+  };
 }
 
 export class PipelineRepo {
   constructor(private store: Store) {}
 
-  /** Every step across all hook points, ordered so callers can group by hook_point in position order. */
+  /** Every step across all scopes + hook points, ordered so callers can group by (scope, hook_point). */
   async list(): Promise<PipelineStep[]> {
-    return (await this.store.all('SELECT * FROM pipeline_steps ORDER BY hook_point ASC, position ASC')).map(mapPipelineStep);
+    return (await this.store.all('SELECT * FROM pipeline_steps ORDER BY scope ASC, hook_point ASC, position ASC')).map(mapPipelineStep);
   }
 
-  /** Replace the ordered chain for one hook point. `steps` is in the desired order (index → position). */
-  async replaceHook(hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
-    await this.store.run('DELETE FROM pipeline_steps WHERE hook_point = ?', [hookPoint]);
+  /** Replace the ordered chain for one (scope, hook point). `steps` is in the desired order (index → position). */
+  async replaceHook(scope: string, hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
+    await this.store.run('DELETE FROM pipeline_steps WHERE scope = ? AND hook_point = ?', [scope, hookPoint]);
     for (let i = 0; i < steps.length; i++) {
       await this.store.run(
-        'INSERT INTO pipeline_steps (hook_point, plugin_id, position, enabled) VALUES (?,?,?,?)',
-        [hookPoint, steps[i].pluginId, i, steps[i].enabled ? 1 : 0],
+        'INSERT INTO pipeline_steps (scope, hook_point, plugin_id, position, enabled) VALUES (?,?,?,?,?)',
+        [scope, hookPoint, steps[i].pluginId, i, steps[i].enabled ? 1 : 0],
       );
     }
   }
 
-  /** Append a (hook_point, plugin) step at the end if it doesn't exist yet (auto-seed on plugin discovery). */
-  async ensureStep(hookPoint: string, pluginId: string, enabled = true): Promise<void> {
-    const existing = await this.store.get('SELECT 1 FROM pipeline_steps WHERE hook_point = ? AND plugin_id = ?', [hookPoint, pluginId]);
+  /** Append a (scope, hook_point, plugin) step at the end if it doesn't exist yet (auto-seed the global base). */
+  async ensureStep(scope: string, hookPoint: string, pluginId: string, enabled = true): Promise<void> {
+    const existing = await this.store.get('SELECT 1 FROM pipeline_steps WHERE scope = ? AND hook_point = ? AND plugin_id = ?', [scope, hookPoint, pluginId]);
     if (existing) return;
-    const max = await this.store.get('SELECT MAX(position) AS m FROM pipeline_steps WHERE hook_point = ?', [hookPoint]);
+    const max = await this.store.get('SELECT MAX(position) AS m FROM pipeline_steps WHERE scope = ? AND hook_point = ?', [scope, hookPoint]);
     const next = (max && max.m != null ? Number(max.m) : -1) + 1;
     await this.store.run(
-      'INSERT INTO pipeline_steps (hook_point, plugin_id, position, enabled) VALUES (?,?,?,?)',
-      [hookPoint, pluginId, next, enabled ? 1 : 0],
+      'INSERT INTO pipeline_steps (scope, hook_point, plugin_id, position, enabled) VALUES (?,?,?,?,?)',
+      [scope, hookPoint, pluginId, next, enabled ? 1 : 0],
     );
   }
 
-  /** Drop every step for a plugin (on plugin removal), across all hook points. */
+  /** Drop every step for a plugin (on plugin removal), across all scopes + hook points. */
   async deleteByPlugin(pluginId: string): Promise<void> {
     await this.store.run('DELETE FROM pipeline_steps WHERE plugin_id = ?', [pluginId]);
+  }
+
+  /** Drop every overlay step for a virtual server (on VS removal). */
+  async deleteByScope(scope: string): Promise<void> {
+    await this.store.run('DELETE FROM pipeline_steps WHERE scope = ?', [scope]);
   }
 }
 

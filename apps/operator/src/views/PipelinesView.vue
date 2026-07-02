@@ -19,21 +19,28 @@ const loading = ref(true);
 const activeScope = ref<string>('tools');
 const saving = ref<string | null>(null);
 
-// Local editable copy of each junction's ordered steps, keyed by hook method. Persisted on Save.
+// Pipeline scope: 'global' (base) or a virtualServerId (overlay).
+const pipelineScope = ref<string>('global');
+const virtualServers = ref<Array<{ id: string; name: string }>>([]);
+const isGlobal = computed(() => pipelineScope.value === 'global');
+
+// Local editable copy of each junction's own steps, keyed by hook method. Persisted on Save.
 const edited = reactive<Record<string, PipelineStepView[]>>({});
 
 const scopes = computed(() => view.value?.scopes ?? []);
-const scope = computed(() => scopes.value.find((s) => s.key === activeScope.value) ?? null);
+const scope = computed(() => scopes.value.find((s) => s.key === activeScope.value) ?? scopes.value[0] ?? null);
 
 function rebuildEdited(v: PipelineView): void {
   for (const k of Object.keys(edited)) delete edited[k];
   for (const s of v.scopes) for (const p of s.points) edited[p.method] = p.steps.map((x) => ({ ...x }));
+  // If the active lifecycle tab vanished (e.g. Auth under a VS scope), fall back to the first.
+  if (!v.scopes.some((s) => s.key === activeScope.value)) activeScope.value = v.scopes[0]?.key ?? 'tools';
 }
 
-async function load(): Promise<void> {
+async function loadPipeline(): Promise<void> {
   loading.value = true;
   try {
-    const v = await api.get<PipelineView>('/api/pipeline');
+    const v = await api.get<PipelineView>(`/api/pipeline?scope=${encodeURIComponent(pipelineScope.value)}`);
     view.value = v;
     rebuildEdited(v);
   } catch (e) {
@@ -42,11 +49,34 @@ async function load(): Promise<void> {
     loading.value = false;
   }
 }
-onMounted(load);
 
+async function loadVirtualServers(): Promise<void> {
+  try {
+    const r = await api.get<{ virtualServers: Array<{ id: string; name: string }> }>('/api/virtual-servers');
+    virtualServers.value = r.virtualServers.map((v) => ({ id: v.id, name: v.name }));
+  } catch {
+    virtualServers.value = []; // needs virtualservers.read; degrade to Global-only
+  }
+}
+
+onMounted(async () => {
+  await loadVirtualServers();
+  await loadPipeline();
+});
+
+function selectScope(s: string): void {
+  if (pipelineScope.value === s) return;
+  pipelineScope.value = s;
+  traceFor.value = null;
+  loadPipeline();
+}
+
+function pointOf(method: string): PipelinePointView | undefined {
+  for (const s of scopes.value) for (const p of s.points) if (p.method === method) return p;
+  return undefined;
+}
 function serverSteps(method: string): PipelineStepView[] {
-  for (const s of scopes.value) for (const p of s.points) if (p.method === method) return p.steps;
-  return [];
+  return pointOf(method)?.steps ?? [];
 }
 function isDirty(method: string): boolean {
   return JSON.stringify(edited[method] ?? []) !== JSON.stringify(serverSteps(method));
@@ -61,6 +91,20 @@ function toggleStep(method: string, i: number): void {
   const s = edited[method]?.[i];
   if (s) s.enabled = !s.enabled;
 }
+function removeStep(method: string, i: number): void {
+  edited[method]?.splice(i, 1);
+}
+function addStep(method: string, pluginId: string): void {
+  if (!pluginId) return;
+  const p = pointOf(method);
+  const avail = p?.available?.find((a) => a.pluginId === pluginId);
+  if (!avail || edited[method]?.some((s) => s.pluginId === pluginId)) return;
+  edited[method].push({ pluginId, name: avail.name, description: '', enabled: true, pluginEnabled: true });
+}
+function availableToAdd(p: PipelinePointView): Array<{ pluginId: string; name: string }> {
+  const inChain = new Set((edited[p.method] ?? []).map((s) => s.pluginId));
+  return (p.available ?? []).filter((a) => !inChain.has(a.pluginId));
+}
 function resetPoint(method: string): void {
   edited[method] = serverSteps(method).map((x) => ({ ...x }));
 }
@@ -68,7 +112,7 @@ async function save(method: string): Promise<void> {
   saving.value = method;
   try {
     const steps = (edited[method] ?? []).map((s) => ({ pluginId: s.pluginId, enabled: s.enabled }));
-    const v = await api.put<PipelineView>(`/api/pipeline/${method}`, { steps });
+    const v = await api.put<PipelineView>(`/api/pipeline/${encodeURIComponent(pipelineScope.value)}/${method}`, { steps });
     view.value = v;
     rebuildEdited(v);
     toast.success('Pipeline saved.');
@@ -94,8 +138,6 @@ const traceTool = ref('');
 const tracing = ref(false);
 const traceResult = ref<PipelineTraceResult | null>(null);
 
-// The sample is the RAW payload at that junction (the value the hook mutates): the list array for `list`,
-// the arguments object for `pre`, the tool/resource/prompt result for `post`.
 const SAMPLE: Record<string, string> = {
   list: '[\n  { "name": "getDoc", "description": "Fetch a document" }\n]',
   pre: '{\n  "query": "BROU quarterly report"\n}',
@@ -117,9 +159,11 @@ async function runTrace(p: PipelinePointView): Promise<void> {
       toast.error('Sample payload is not valid JSON.');
       return;
     }
-    // Unwrap the key the hook mutates so the sample maps to the right slot.
     const body: Record<string, unknown> = { payload, server: traceServer.value || undefined, tool: traceTool.value || undefined };
-    traceResult.value = await api.post<PipelineTraceResult>(`/api/pipeline/${p.method}/trace`, body);
+    traceResult.value = await api.post<PipelineTraceResult>(
+      `/api/pipeline/${encodeURIComponent(pipelineScope.value)}/${p.method}/trace`,
+      body,
+    );
   } catch (e) {
     toast.error(e instanceof ApiError ? e.message : 'Trace failed.');
   } finally {
@@ -141,16 +185,37 @@ function pretty(v: unknown): string {
       <div>
         <h1>Pipelines</h1>
         <p class="muted">
-          Compose the order in which hook plugins run at each MCP lifecycle junction. A request flows through
-          these steps top-to-bottom; each can transform the payload or (where allowed) deny it.
+          Compose the order in which hook plugins run at each MCP lifecycle junction. The <strong>Global</strong>
+          chain runs for all traffic; a <strong>virtual server</strong> overlay adds plugins that run only for
+          calls routed through it, after the global base.
         </p>
       </div>
+    </div>
+
+    <!-- Pipeline scope: Global | a virtual server overlay -->
+    <div class="card scope-picker">
+      <label>Scope</label>
+      <div class="btn-row">
+        <button class="btn" :class="{ primary: isGlobal }" @click="selectScope('global')">Global</button>
+        <select
+          v-if="virtualServers.length"
+          :value="isGlobal ? '' : pipelineScope"
+          @change="selectScope(($event.target as HTMLSelectElement).value)"
+        >
+          <option value="" disabled>Virtual server overlay…</option>
+          <option v-for="vs in virtualServers" :key="vs.id" :value="vs.id">{{ vs.name }}</option>
+        </select>
+      </div>
+      <p v-if="!isGlobal" class="muted small">
+        Overlay for <strong>{{ virtualServers.find((v) => v.id === pipelineScope)?.name ?? pipelineScope }}</strong>.
+        Global steps are shown as inherited (read-only); add plugins below to run them only for this virtual server.
+      </p>
     </div>
 
     <div v-if="loading" class="card"><p class="muted">Loading…</p></div>
 
     <template v-else>
-      <!-- Scope tabs -->
+      <!-- Lifecycle scope tabs -->
       <div class="btn-row" style="margin-bottom: 1rem">
         <button
           v-for="s in scopes"
@@ -189,18 +254,31 @@ function pretty(v: unknown): string {
               :disabled="!isDirty(p.method) || saving === p.method"
               @click="save(p.method)"
             >
-              {{ saving === p.method ? 'Saving…' : 'Save order' }}
+              {{ saving === p.method ? 'Saving…' : 'Save' }}
             </button>
           </div>
         </div>
 
+        <!-- Inherited (global) steps, read-only, when viewing a VS overlay -->
+        <div v-if="!isGlobal && p.inherited && p.inherited.length" class="inherited">
+          <div class="muted small">Inherited from Global (always runs first):</div>
+          <ol class="steps">
+            <li v-for="(step, i) in p.inherited" :key="'inh-' + step.pluginId" class="step inherited-step" :class="{ off: !step.enabled || !step.pluginEnabled }">
+              <span class="pos muted">G{{ i + 1 }}</span>
+              <div class="step-main"><div class="step-name">{{ step.name }}</div></div>
+              <span class="badge" :class="step.enabled && step.pluginEnabled ? 'online' : 'disabled'">{{ step.enabled && step.pluginEnabled ? 'On' : 'Off' }}</span>
+            </li>
+          </ol>
+        </div>
+
         <div v-if="!(edited[p.method]?.length)" class="empty small">
-          No plugin implements this hook yet. Install or enable a hook plugin to add steps here.
+          <template v-if="isGlobal">No plugin implements this hook yet. Install or enable a hook plugin to add steps here.</template>
+          <template v-else>No plugins added for this virtual server here. Use “Add plugin” below to run one only for this VS.</template>
         </div>
 
         <ol v-else class="steps">
           <li v-for="(step, i) in edited[p.method]" :key="step.pluginId" class="step" :class="{ off: !step.enabled || !step.pluginEnabled }">
-            <span class="pos">{{ i + 1 }}</span>
+            <span class="pos">{{ (isGlobal ? '' : 'V') }}{{ i + 1 }}</span>
             <div class="reorder" v-if="canWrite">
               <button class="btn tiny" :disabled="i === 0" title="Move up" @click="move(p.method, i, -1)">▲</button>
               <button class="btn tiny" :disabled="i === edited[p.method].length - 1" title="Move down" @click="move(p.method, i, 1)">▼</button>
@@ -212,18 +290,27 @@ function pretty(v: unknown): string {
               </div>
               <div class="muted small" v-if="step.description">{{ step.description }}</div>
             </div>
-            <label class="checkbox step-toggle" :title="'Run this plugin at this junction'">
+            <label class="checkbox step-toggle">
               <input type="checkbox" :checked="step.enabled" :disabled="!canWrite" @change="toggleStep(p.method, i)" />
               <span>{{ step.enabled ? 'On' : 'Off' }}</span>
             </label>
+            <button v-if="!isGlobal && canWrite" class="btn tiny danger" title="Remove from this overlay" @click="removeStep(p.method, i)">✕</button>
           </li>
         </ol>
+
+        <!-- Add plugin to a VS overlay -->
+        <div v-if="!isGlobal && canWrite && availableToAdd(p).length" class="add-step">
+          <select @change="addStep(p.method, ($event.target as HTMLSelectElement).value); ($event.target as HTMLSelectElement).value = ''">
+            <option value="">+ Add plugin to this virtual server…</option>
+            <option v-for="a in availableToAdd(p)" :key="a.pluginId" :value="a.pluginId">{{ a.name }}</option>
+          </select>
+        </div>
 
         <!-- Trace panel -->
         <div v-if="traceFor === p.method" class="trace">
           <p class="muted small">
-            Runs the actual enabled steps on a sample payload you paste (synthetic input, admin-only). Note: a
-            step may have side effects if the plugin does I/O.
+            Runs the EFFECTIVE chain (global{{ isGlobal ? '' : ' + this VS overlay' }}) on a sample payload you paste
+            (synthetic input, admin-only). A step may have side effects if its plugin does I/O.
           </p>
           <div class="trace-inputs">
             <textarea v-model="tracePayload" rows="4" spellcheck="false" placeholder="Sample payload (JSON)"></textarea>
@@ -267,6 +354,9 @@ function pretty(v: unknown): string {
 <style scoped>
 .muted { color: var(--text-muted, #6b7280); }
 .small { font-size: 0.85rem; }
+.scope-picker { margin-bottom: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+.scope-picker label { font-weight: 600; }
+.scope-picker select, .add-step select { padding: 0.35rem 0.5rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); }
 .scope-flow { margin: 0 0 1rem; display: flex; flex-wrap: wrap; gap: 0.25rem; align-items: center; }
 .scope-flow .node { padding: 0.15rem 0.5rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); }
 .scope-flow .arrow { opacity: 0.6; }
@@ -280,15 +370,20 @@ function pretty(v: unknown): string {
 .badge.kind.post { background: var(--brand-bg, #e0e7ff); }
 .badge.deny { background: var(--danger-bg, #fee2e2); }
 
-.steps { list-style: none; margin: 0.75rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
+.inherited { margin: 0.5rem 0; padding: 0.5rem; border: 1px dashed var(--border, #e5e7eb); border-radius: var(--radius, 6px); background: var(--surface-2, #fafafa); }
+.inherited-step { background: transparent; border-style: dashed; }
+
+.steps { list-style: none; margin: 0.5rem 0 0; padding: 0; display: flex; flex-direction: column; gap: 0.4rem; }
 .step { display: flex; align-items: center; gap: 0.75rem; padding: 0.5rem 0.6rem; border: 1px solid var(--border, #e5e7eb); border-radius: var(--radius, 6px); background: var(--surface-2, #fafafa); }
 .step.off { opacity: 0.55; }
-.step .pos { min-width: 1.4rem; height: 1.4rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand, #4f46e5); color: #fff; font-size: 0.8rem; }
+.step .pos { min-width: 1.6rem; height: 1.4rem; display: inline-flex; align-items: center; justify-content: center; border-radius: 999px; background: var(--brand, #4f46e5); color: #fff; font-size: 0.75rem; }
+.step .pos.muted { background: var(--border, #d1d5db); color: var(--text-muted, #4b5563); }
 .reorder { display: flex; flex-direction: column; gap: 2px; }
 .btn.tiny { padding: 0 0.4rem; line-height: 1.2; font-size: 0.75rem; }
 .step-main { flex: 1; min-width: 0; }
 .step-name { font-weight: 600; display: flex; align-items: center; gap: 0.4rem; }
 .step-toggle { margin: 0; white-space: nowrap; }
+.add-step { margin-top: 0.5rem; }
 
 .trace { margin-top: 1rem; border-top: 1px dashed var(--border, #e5e7eb); padding-top: 0.75rem; }
 .trace-inputs { display: flex; flex-direction: column; gap: 0.5rem; }

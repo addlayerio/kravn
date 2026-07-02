@@ -96,7 +96,9 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
   app.delete('/api/virtual-servers/:id', { preHandler: [app.authenticate, app.authorize('virtualservers.delete')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
     await s.repos.teams.clearServerGrants(id); // drop any per-team tool grants for this server
+    await s.repos.pipeline.deleteByScope(id); // drop this VS's hook-pipeline overlay
     await s.repos.virtualServers.delete(id);
+    await s.plugins.reloadPipeline(); // refresh the in-memory chains so the removed overlay is gone
     return reply.code(204).send();
   });
 }
