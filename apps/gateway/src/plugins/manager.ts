@@ -88,8 +88,8 @@ export class PluginManager {
    */
   private pipeline = new Map<string, Map<string, Array<{ pluginId: string; enabled: boolean }>>>();
   private loadErrors: LoadError[] = [];
-  /** Native (in-code, privileged) plugins, keyed by id — not loaded from stored source. */
-  private native: Map<string, McpServerPlugin>;
+  /** Native (in-code, privileged) plugins, keyed by id — not loaded from stored source. Hook OR mcp-server. */
+  private native: Map<string, KravnPlugin>;
   onChange?: () => void | Promise<void>;
 
   constructor(
@@ -97,7 +97,7 @@ export class PluginManager {
     private repos: Repos,
     private log: Logger,
     private logstore: LogStore,
-    nativePlugins: McpServerPlugin[] = [],
+    nativePlugins: KravnPlugin[] = [],
     private encryptor?: Encryptor,
   ) {
     this.native = new Map(nativePlugins.map((p) => [p.manifest.id, p]));
@@ -105,6 +105,11 @@ export class PluginManager {
 
   private isNative(id: string): boolean {
     return this.native.has(id);
+  }
+
+  /** Resolve a plugin object by id from either the native (in-code) set or the loaded (DB source) set. */
+  private pluginFor(id: string): KravnPlugin | undefined {
+    return this.native.get(id) ?? this.loaded.get(id);
   }
 
   // ─── Config secrets ──────────────────────────────────────────────────────────────────────────
@@ -260,7 +265,9 @@ export class PluginManager {
         // stays disabled until the operator fills it in, so unconfigured tools don't pollute the catalog.
         const req = (n.manifest as { configSchema?: { required?: unknown[] } })?.configSchema?.required;
         const needsConfig = Array.isArray(req) && req.length > 0;
-        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, !needsConfig);
+        // Native mcp-servers (tools) enable on first install unless they need config; native HOOK plugins
+        // (content interceptors) start DISABLED — they change behaviour, so the operator opts in + composes them.
+        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, m.type === 'mcp-server' && !needsConfig);
       } catch (err) {
         this.log.warn({ err, plugin: n.manifest.id }, 'failed to seed native plugin');
       }
@@ -313,7 +320,7 @@ export class PluginManager {
 
   /** Raw hook method keys a loaded hook plugin implements (e.g. ['onToolCall','onToolResult']). */
   private hookMethodsOf(id: string): string[] {
-    const p = this.loaded.get(id) as HookPlugin | undefined;
+    const p = this.pluginFor(id) as HookPlugin | undefined;
     if (!p || !('hooks' in p) || !p.hooks) return [];
     return Object.keys(p.hooks).filter((k) => typeof (p.hooks as any)[k] === 'function' && HOOK_POINTS[k]);
   }
@@ -374,7 +381,7 @@ export class PluginManager {
     return [...globalRecs, ...vsRecs]
       .filter((r): r is PluginRecord => !!r && r.enabled && r.type === 'hook') // r.enabled = global master switch
       .filter((r) => (seen.has(r.id) ? false : (seen.add(r.id), true))) // a plugin runs at most once per junction
-      .map((r) => ({ r, plugin: this.loaded.get(r.id) as HookPlugin | undefined }))
+      .map((r) => ({ r, plugin: this.pluginFor(r.id) as HookPlugin | undefined }))
       .filter((x) => x.plugin && x.plugin.hooks && typeof (x.plugin.hooks as any)[method] === 'function')
       .map((x) => ({ id: x.r.id, plugin: x.plugin as HookPlugin, config: this.decryptConfig(x.r) }));
   }
@@ -609,9 +616,9 @@ export class PluginManager {
     return current;
   }
 
-  /** Human labels of the hook points a loaded hook plugin implements (for the admin UI). */
+  /** Human labels of the hook points a hook plugin implements (for the admin UI). Resolves native ∪ loaded. */
   private hookPointsOf(id: string): string[] {
-    const p = this.loaded.get(id) as HookPlugin | undefined;
+    const p = this.pluginFor(id) as HookPlugin | undefined;
     if (!p || !('hooks' in p) || !p.hooks) return [];
     return Object.keys(p.hooks)
       .filter((k) => typeof (p.hooks as any)[k] === 'function' && HOOK_POINTS[k])

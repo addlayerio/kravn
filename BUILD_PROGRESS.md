@@ -655,6 +655,28 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   VS-A includes it + tags output with the VS id; VS-B and Global do not); global base always runs; auth-as-VS and
   unknown-VS PUTs rejected (400). Full monorepo typecheck + operator vite build green.
 
+## ✅ PASS 31 — Six built-in content hook plugins (v0.1.33)
+- **What:** shipped 6 ready-to-compose hook plugins (disabled by default) so the Pipelines screen has real
+  building blocks beyond Tool Guard:
+  - **Secrets Redactor** — regex-detects private keys, AWS/GitHub/Slack/Stripe/Google keys, JWTs, bearer
+    tokens, URL credentials (+ optional high-entropy) in results and replaces them before the model sees them.
+  - **Content Safety Filter** — lexicon-based self-harm/violence/hate detection; redact or annotate results,
+    and optionally block a tool CALL whose args are flagged. Honest caveat: pair with a classifier for prod.
+  - **Deny List Filter** — block requests / redact results matching a phrase or `/regex/`.
+  - **HTML → Markdown** — convert HTML results to Markdown (cleaner + fewer tokens).
+  - **SafeHTML Sanitizer** — strip script/style/iframe/on*/js: URLs (or text-only). Defense-in-depth.
+  - **TOON Encoder** — re-encode JSON results as TOON (per the official spec) for 30–70% token savings on
+    uniform arrays; best placed last.
+- **Architecture:** shipped as **native HOOK plugins** (in-code, dependency-free) rather than DB seeds — so
+  they appear on existing installs too (seeds skip new ids on a non-empty DB), are re-seeded if removed, and
+  stay clean/testable. Small manager change: `native` is now a `KravnPlugin` map; `pluginFor()` resolves a
+  hook from native ∪ loaded; native hooks seed DISABLED (they change behaviour) while native mcp-servers keep
+  auto-enable. Regexes written linear to avoid ReDoS on untrusted content; each hook is inside the pipeline's
+  per-step try/catch.
+- **Validated 17/17 HTTP:** all 6 appear as hook plugins (disabled) in Plugins + the pipeline; secrets
+  redacted (JWT+AWS), self-harm redacted + violent request blocked, deny-list blocks+redacts, HTML→Markdown
+  correct, SafeHTML strips script/onclick/javascript:, TOON tabular encoding. Gateway typecheck + build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
