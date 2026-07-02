@@ -1,15 +1,36 @@
 # Kravn
 
-A **seamless, self-configuring MCP gateway, registry and proxy** — built in Node.js + Vue,
-inspired by IBM/mcp-context-forge but designed to **boot first try** and keep its configuration
-**inside the app** instead of in a wall of environment variables.
+**A self-hostable MCP gateway, registry and proxy, built for the enterprise.** Bring the Model
+Context Protocol to your organization on your own infrastructure — integrated with your identity
+stack, governed by your own policies, with no data ever leaving your perimeter.
 
-- **Boots of one.** `docker compose up` or `helm install` with zero overrides → it's running.
+## Why Kravn
+
+The rise of AI has brought a wave of new tooling, and almost all of it is SaaS-first: your prompts,
+your context and your data leave your network for someone else's cloud. For regulated and
+compliance-bound organizations that is a non-starter — information cannot cross the corporate
+boundary. Yet the self-hostable alternatives tend to fall short exactly where the enterprise needs
+them most: corporate identity and governance — SAML, OAuth2/OIDC, SCIM provisioning, role-based
+access, teams and per-team entitlements.
+
+Kravn was created to close that gap. Born out of the compliance world, it lets any company adopt MCP
+and AI tooling **entirely within its own infrastructure** — plugged into its own identity provider,
+governed by its own access policies, with nothing leaving the perimeter and no integration
+compromises. The goal is maximum flexibility for the corporate world: every organization runs and
+integrates Kravn on its own terms, without restrictions.
+
+## Highlights
+
+- **Runs entirely on your infrastructure.** Self-hosted by design — Docker or Helm, on your servers,
+  in your network. No data egress, no third-party dependency.
+- **Enterprise identity out of the box.** SAML and OAuth2/OIDC single sign-on, SCIM 2.0 provisioning,
+  role-based access control, teams, and per-team MCP + tool entitlements.
+- **Boots on one command.** `docker compose up` or `helm install` with zero overrides → it's running.
   Embedded SQLite, auto-generated signing key, first-run setup wizard.
 - **Config lives in the app.** SSRF policy, CSRF, rate limits, transports, federation, auth and
   observability are edited at runtime from the **Settings** page and applied without a redeploy.
   Only true infrastructure (DB, secret, port) is environment config.
-- **Real MCP gateway.** Connects to upstream MCP servers (streamable-HTTP / SSE / stdio), imports
+- **A real MCP gateway.** Connects to upstream MCP servers (streamable-HTTP / SSE / stdio), imports
   their tools / resources / prompts, and re-exposes them — globally or as composed **virtual
   servers** — over a single MCP endpoint.
 
