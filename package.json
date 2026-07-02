@@ -4,7 +4,7 @@
   "version": "0.1.0",
   "description": "Kravn — a seamless MCP gateway, registry and proxy + operator/client apps.",
   "type": "module",
-  "license": "Apache-2.0",
+  "license": "BUSL-1.1",
   "packageManager": "pnpm@9.15.0",
   "engines": {
     "node": ">=22"

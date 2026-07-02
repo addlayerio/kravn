@@ -147,4 +147,11 @@ See [BUILD_PROGRESS.md](BUILD_PROGRESS.md).
 
 ## License
 
-Apache-2.0.
+**Business Source License 1.1** (BUSL-1.1) — © 2026 AddLayer. See [LICENSE](LICENSE).
+
+Kravn is **source-available**, not OSI "open source": you may use, run, modify and **self-host it in
+production for free**, for any purpose, within your own organization. The one restriction is that you may
+**not** offer Kravn to third parties as a hosted/managed commercial service that competes with the Licensor
+(an "MCP gateway as a service") — that requires a commercial license. Each version automatically converts to
+the **Apache License 2.0** on its Change Date (4 years after release). For commercial/hosted-service licensing,
+contact AddLayer.
