@@ -408,8 +408,31 @@ const userDisabled: Migration = {
   },
 };
 
+/**
+ * 007 — Hook pipelines. The order (and per-junction on/off) in which hook plugins run at each MCP
+ * lifecycle point (onToolCall, onToolResult, …) is composed here instead of by a single global plugin
+ * priority. One row per (hook_point, plugin_id): `position` orders the chain at that junction, `enabled`
+ * toggles the plugin AT that junction. No rows for a hook point ⇒ fall back to global plugin priority.
+ */
+const pipelineSteps: Migration = {
+  name: '007_pipeline_steps',
+  async up(knex) {
+    await createIfMissing(knex, 'pipeline_steps', (t) => {
+      t.string('hook_point', 48).notNullable(); // raw hook method key, e.g. 'onToolResult'
+      t.string('plugin_id', 64).notNullable();
+      t.integer('position').notNullable().defaultTo(0);
+      t.integer('enabled').notNullable().defaultTo(1);
+      t.primary(['hook_point', 'plugin_id']);
+      t.index(['hook_point']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('pipeline_steps');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

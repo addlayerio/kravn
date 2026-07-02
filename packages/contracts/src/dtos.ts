@@ -369,6 +369,128 @@ export const updatePluginSchema = z.object({
 });
 export type UpdatePluginRequest = z.infer<typeof updatePluginSchema>;
 
+// ─── Hook pipelines ─────────────────────────────────────────────────────────────────────────────
+// The fixed MCP lifecycle junctions where hook plugins can run, grouped by scope. This is presentation
+// metadata shared by the gateway and the operator's Pipelines screen — the actual ordered chain per
+// junction lives in the DB (pipeline_steps).
+
+export type HookKind = 'list' | 'pre' | 'post';
+
+export interface HookPointMeta {
+  /** Raw hook method key, e.g. 'onToolResult'. */
+  method: string;
+  label: string;
+  kind: HookKind;
+  /** Whether a step at this junction can block the request (pre/auth hooks). */
+  canDeny: boolean;
+}
+
+export interface PipelineScopeMeta {
+  key: 'tools' | 'resources' | 'prompts' | 'auth';
+  label: string;
+  /** Spine node labels for the flow diagram, in order (source → … → sink). */
+  spine: string[];
+  points: HookPointMeta[];
+}
+
+export const HOOK_LIFECYCLE: PipelineScopeMeta[] = [
+  {
+    key: 'tools',
+    label: 'Tools',
+    spine: ['Client / Chat', 'Upstream MCP server', 'Client / LLM'],
+    points: [
+      { method: 'onListTools', label: 'Tools List', kind: 'list', canDeny: false },
+      { method: 'onToolCall', label: 'Tool Pre-Invoke', kind: 'pre', canDeny: true },
+      { method: 'onToolResult', label: 'Tool Post-Invoke', kind: 'post', canDeny: false },
+    ],
+  },
+  {
+    key: 'resources',
+    label: 'Resources',
+    spine: ['Client / Chat', 'Upstream MCP server', 'Client / LLM'],
+    points: [
+      { method: 'onListResources', label: 'Resources List', kind: 'list', canDeny: false },
+      { method: 'onResourceRead', label: 'Resource Pre-Fetch', kind: 'pre', canDeny: true },
+      { method: 'onResourceResult', label: 'Resource Post-Fetch', kind: 'post', canDeny: false },
+    ],
+  },
+  {
+    key: 'prompts',
+    label: 'Prompts',
+    spine: ['Client / Chat', 'Upstream MCP server', 'Client / LLM'],
+    points: [
+      { method: 'onListPrompts', label: 'Prompts List', kind: 'list', canDeny: false },
+      { method: 'onPromptGet', label: 'Prompt Pre-Fetch', kind: 'pre', canDeny: true },
+      { method: 'onPromptResult', label: 'Prompt Post-Fetch', kind: 'post', canDeny: false },
+    ],
+  },
+  {
+    key: 'auth',
+    label: 'Auth',
+    spine: ['Sign-in', 'Session'],
+    points: [{ method: 'onResolveUser', label: 'Auth Resolve User', kind: 'pre', canDeny: true }],
+  },
+];
+
+/** One plugin's slot in a junction's ordered chain. */
+export interface PipelineStepView {
+  pluginId: string;
+  name: string;
+  description: string;
+  /** On/off AT this junction (per-hook toggle). */
+  enabled: boolean;
+  /** Whether the plugin is globally enabled at all (master switch on the Plugins screen). */
+  pluginEnabled: boolean;
+}
+export interface PipelinePointView extends HookPointMeta {
+  steps: PipelineStepView[];
+}
+export interface PipelineScopeView {
+  key: PipelineScopeMeta['key'];
+  label: string;
+  spine: string[];
+  points: PipelinePointView[];
+}
+export interface PipelineView {
+  scopes: PipelineScopeView[];
+}
+
+/** PUT body: the desired ordered chain for one hook point (index → position). */
+export const updatePipelineSchema = z.object({
+  steps: z
+    .array(z.object({ pluginId: z.string().min(1).max(64), enabled: z.boolean() }))
+    .max(200),
+});
+export type UpdatePipelineRequest = z.infer<typeof updatePipelineSchema>;
+
+/** POST .../trace body: run a sample payload through a junction's chain and report each step's effect. */
+export const pipelineTraceSchema = z.object({
+  /** The payload to feed the chain: an args object (pre), a result (post), or a list array (list). */
+  payload: z.unknown(),
+  /** Optional context hints for pre/post hooks. */
+  server: z.string().max(128).optional(),
+  tool: z.string().max(128).optional(),
+});
+export type PipelineTraceRequest = z.infer<typeof pipelineTraceSchema>;
+
+export interface PipelineTraceStep {
+  pluginId: string;
+  name: string;
+  before: unknown;
+  after: unknown;
+  changed: boolean;
+  denied?: string;
+  error?: string;
+}
+export interface PipelineTraceResult {
+  hookPoint: string;
+  kind: HookKind;
+  input: unknown;
+  output: unknown;
+  steps: PipelineTraceStep[];
+  denied?: { pluginId: string; reason: string };
+}
+
 export const importPluginSchema = z.object({
   /** Slug used as the on-disk filename (<id>.mjs). Must match the manifest id. */
   id: z

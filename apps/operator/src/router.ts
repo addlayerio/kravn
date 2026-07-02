@@ -22,6 +22,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'users', name: 'users', component: () => import('./views/UsersView.vue'), meta: { permission: 'users.read' } },
       { path: 'teams', name: 'teams', component: () => import('./views/TeamsView.vue'), meta: { permission: 'teams.read' } },
       { path: 'plugins', name: 'plugins', component: () => import('./views/PluginsView.vue'), meta: { permission: 'settings.read' } },
+      { path: 'pipelines', name: 'pipelines', component: () => import('./views/PipelinesView.vue'), meta: { permission: 'settings.read' } },
       { path: 'authentication', name: 'authentication', component: () => import('./views/AuthenticationView.vue'), meta: { permission: 'settings.read' } },
       { path: 'settings', name: 'settings', component: () => import('./views/SettingsView.vue'), meta: { permission: 'settings.read' } },
       { path: 'logs', name: 'logs', component: () => import('./views/LogsView.vue'), meta: { permission: 'logs.read' } },

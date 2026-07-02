@@ -8,7 +8,8 @@ import {
   type McpServerPlugin,
   type McpCallContext,
 } from '@kravn/plugin-sdk';
-import type { PluginView } from '@kravn/contracts';
+import type { PluginView, PipelineView, PipelineStepView, PipelineTraceResult, PipelineTraceStep } from '@kravn/contracts';
+import { HOOK_LIFECYCLE } from '@kravn/contracts';
 import type { Repos, PluginRecord } from '../db/repos.js';
 import type { LogStore } from '../logstore.js';
 import type { Logger } from 'pino';
@@ -32,6 +33,35 @@ function dataUrl(code: string): string {
   return 'data:text/javascript;base64,' + Buffer.from(code, 'utf8').toString('base64');
 }
 
+/** How the pipeline trace builds a context for each hook point: which payload key it mutates, and its kind. */
+const HOOK_TRACE_SPEC: Record<string, { kind: 'list' | 'pre' | 'post'; key: string }> = {
+  onListTools: { kind: 'list', key: 'tools' },
+  onListResources: { kind: 'list', key: 'resources' },
+  onListPrompts: { kind: 'list', key: 'prompts' },
+  onToolCall: { kind: 'pre', key: 'arguments' },
+  onResourceRead: { kind: 'pre', key: 'uri' },
+  onPromptGet: { kind: 'pre', key: 'arguments' },
+  onResolveUser: { kind: 'pre', key: 'user' },
+  onToolResult: { kind: 'post', key: 'result' },
+  onResourceResult: { kind: 'post', key: 'result' },
+  onPromptResult: { kind: 'post', key: 'result' },
+};
+
+function traceClone<T>(v: T): T {
+  try {
+    return structuredClone(v);
+  } catch {
+    return JSON.parse(JSON.stringify(v ?? null));
+  }
+}
+function traceEqual(a: unknown, b: unknown): boolean {
+  try {
+    return JSON.stringify(a) === JSON.stringify(b);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Discovers, persists, loads and runs plugins.
  *
@@ -46,6 +76,8 @@ function dataUrl(code: string): string {
 export class PluginManager {
   private loaded = new Map<string, KravnPlugin>();
   private records = new Map<string, PluginRecord>();
+  /** Per-hook-point ordered chain: hookPoint → [{pluginId, enabled}] in run order. Composed in the UI. */
+  private pipeline = new Map<string, Array<{ pluginId: string; enabled: boolean }>>();
   private loadErrors: LoadError[] = [];
   /** Native (in-code, privileged) plugins, keyed by id — not loaded from stored source. */
   private native: Map<string, McpServerPlugin>;
@@ -266,6 +298,36 @@ export class PluginManager {
   private async refreshRecords(): Promise<void> {
     const list = await this.repos.plugins.list();
     this.records = new Map(list.map((r) => [r.id, r]));
+    await this.ensurePipelineSteps();
+    await this.loadPipeline();
+  }
+
+  /** Raw hook method keys a loaded hook plugin implements (e.g. ['onToolCall','onToolResult']). */
+  private hookMethodsOf(id: string): string[] {
+    const p = this.loaded.get(id) as HookPlugin | undefined;
+    if (!p || !('hooks' in p) || !p.hooks) return [];
+    return Object.keys(p.hooks).filter((k) => typeof (p.hooks as any)[k] === 'function' && HOOK_POINTS[k]);
+  }
+
+  /** Every loaded hook plugin gets a step row at each junction it implements (appended at the end). Idempotent. */
+  private async ensurePipelineSteps(): Promise<void> {
+    for (const r of this.records.values()) {
+      if (r.type !== 'hook') continue;
+      for (const method of this.hookMethodsOf(r.id)) {
+        await this.repos.pipeline.ensureStep(method, r.id);
+      }
+    }
+  }
+
+  private async loadPipeline(): Promise<void> {
+    const steps = await this.repos.pipeline.list(); // ordered by hook_point, position
+    const map = new Map<string, Array<{ pluginId: string; enabled: boolean }>>();
+    for (const s of steps) {
+      const arr = map.get(s.hookPoint) ?? [];
+      arr.push({ pluginId: s.pluginId, enabled: s.enabled });
+      map.set(s.hookPoint, arr);
+    }
+    this.pipeline = map;
   }
 
   private logger(id: string): (m: string) => void {
@@ -275,16 +337,130 @@ export class PluginManager {
   // ─── Hook execution ──────────────────────────────────────────────────────────────────────────
 
   private enabledHooks(method: string) {
-    return [...this.records.values()]
-      .filter((r) => r.enabled && r.type === 'hook')
+    const order = this.pipeline.get(method);
+    // Rows present for this junction → honor them (skipping steps toggled off here). Rows ABSENT: only fall
+    // back to legacy global priority when NOTHING has been seeded yet (fresh first boot, `pipeline.size===0`);
+    // if other junctions are seeded, an absent junction means the admin cleared it on purpose → run nothing
+    // (never resurrect cleared steps by falling back).
+    const recs: Array<PluginRecord | undefined> = order
+      ? order.filter((s) => s.enabled).map((s) => this.records.get(s.pluginId))
+      : this.pipeline.size === 0
+        ? [...this.records.values()].sort((a, b) => a.priority - b.priority)
+        : [];
+    return recs
+      .filter((r): r is PluginRecord => !!r && r.enabled && r.type === 'hook') // r.enabled = global master switch
       .map((r) => ({ r, plugin: this.loaded.get(r.id) as HookPlugin | undefined }))
       .filter((x) => x.plugin && x.plugin.hooks && typeof (x.plugin.hooks as any)[method] === 'function')
-      .sort((a, b) => a.r.priority - b.r.priority)
       .map((x) => ({ id: x.r.id, plugin: x.plugin as HookPlugin, config: this.decryptConfig(x.r) }));
   }
 
   hasResolveUser(): boolean {
     return this.enabledHooks('onResolveUser').length > 0;
+  }
+
+  // ─── Pipeline composition (per-hook-point ordering) ────────────────────────────────────────────
+
+  /** The full pipeline view: for every lifecycle junction, its ordered chain of hook-plugin steps. */
+  pipelineView(): PipelineView {
+    return {
+      scopes: HOOK_LIFECYCLE.map((scope) => ({
+        key: scope.key,
+        label: scope.label,
+        spine: scope.spine,
+        points: scope.points.map((pt) => ({ ...pt, steps: this.stepsForPoint(pt.method) })),
+      })),
+    };
+  }
+
+  /** Ordered steps for one junction: pipeline order first, then any implementer not yet placed. */
+  private stepsForPoint(method: string): PipelineStepView[] {
+    const implementers = new Set(
+      [...this.records.values()].filter((r) => r.type === 'hook' && this.hookMethodsOf(r.id).includes(method)).map((r) => r.id),
+    );
+    const out: PipelineStepView[] = [];
+    const seen = new Set<string>();
+    const view = (r: PluginRecord, enabled: boolean): PipelineStepView => ({
+      pluginId: r.id,
+      name: r.name,
+      description: r.description,
+      enabled,
+      pluginEnabled: r.enabled,
+    });
+    for (const s of this.pipeline.get(method) ?? []) {
+      if (!implementers.has(s.pluginId) || seen.has(s.pluginId)) continue;
+      out.push(view(this.records.get(s.pluginId)!, s.enabled));
+      seen.add(s.pluginId);
+    }
+    for (const id of implementers) {
+      if (seen.has(id)) continue;
+      out.push(view(this.records.get(id)!, true));
+    }
+    return out;
+  }
+
+  /** Replace the ordered chain at one junction. Validates every plugin actually implements that hook. */
+  async setPipeline(hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
+    if (!Object.prototype.hasOwnProperty.call(HOOK_POINTS, hookPoint)) throw new Error('Unknown hook point.');
+    const seen = new Set<string>();
+    const clean: Array<{ pluginId: string; enabled: boolean }> = [];
+    for (const s of steps) {
+      if (seen.has(s.pluginId)) continue; // a plugin appears at most once per junction
+      if (!this.hookMethodsOf(s.pluginId).includes(hookPoint)) {
+        throw new Error(`Plugin '${s.pluginId}' does not implement ${hookPoint}.`);
+      }
+      seen.add(s.pluginId);
+      clean.push({ pluginId: s.pluginId, enabled: s.enabled });
+    }
+    await this.repos.pipeline.replaceHook(hookPoint, clean);
+    // Invariant: every implementer keeps a row. Any implementer omitted from the submitted list is recorded
+    // present-but-OFF, so a partial/empty PUT means "don't run these here" (not "reset to default") and the
+    // view stays consistent with what actually runs.
+    for (const r of this.records.values()) {
+      if (r.type !== 'hook' || seen.has(r.id)) continue;
+      if (this.hookMethodsOf(r.id).includes(hookPoint)) await this.repos.pipeline.ensureStep(hookPoint, r.id, false);
+    }
+    await this.loadPipeline();
+    await this.onChange?.();
+  }
+
+  /**
+   * Dry-run a junction's chain on a sample payload, capturing each step's before/after (and any deny).
+   * Runs the REAL plugin code on the provided sample — admin-only, synthetic input, may have side effects.
+   */
+  async trace(hookPoint: string, payload: unknown, hints: { server?: string; tool?: string } = {}): Promise<PipelineTraceResult> {
+    const spec = Object.prototype.hasOwnProperty.call(HOOK_TRACE_SPEC, hookPoint) ? HOOK_TRACE_SPEC[hookPoint] : undefined;
+    if (!spec) throw new Error('Unknown hook point.');
+    const extra: Record<string, unknown> =
+      spec.kind === 'list' || hookPoint === 'onResolveUser'
+        ? {}
+        : { server: hints.server ?? 'sample-server', tool: hints.tool ?? 'sample-tool', prompt: hints.tool ?? 'sample-prompt' };
+    const actor = { id: 'trace', email: 'trace@local', role: 'admin' };
+    let current = traceClone(payload);
+    const input = traceClone(current);
+    const steps: PipelineTraceStep[] = [];
+    let denied: { pluginId: string; reason: string } | undefined;
+
+    for (const h of this.enabledHooks(hookPoint)) {
+      const before = traceClone(current);
+      const name = this.records.get(h.id)?.name ?? h.id;
+      let denyReason: string | null = null;
+      let error: string | undefined;
+      const ctx: any = { ...extra, [spec.key]: current, actor, config: h.config, log: this.logger(h.id), deny: (r: string) => { denyReason = r; } };
+      try {
+        await (h.plugin.hooks as any)[hookPoint](ctx);
+      } catch (err) {
+        error = err instanceof Error ? err.message : String(err);
+      }
+      if (denyReason != null) {
+        steps.push({ pluginId: h.id, name, before, after: before, changed: false, denied: denyReason });
+        denied = { pluginId: h.id, reason: denyReason };
+        break;
+      }
+      const after = traceClone(ctx[spec.key]);
+      steps.push({ pluginId: h.id, name, before, after, changed: !traceEqual(before, after), error });
+      current = ctx[spec.key];
+    }
+    return { hookPoint, kind: spec.kind, input, output: traceClone(current), steps, denied };
   }
 
   /** List filter (tools/resources/prompts): plugins may filter/annotate the array. */
@@ -504,6 +680,7 @@ export class PluginManager {
     if (this.isNative(id)) throw new Error('Built-in plugins cannot be removed — disable it instead.');
     const rec = this.records.get(id);
     await this.repos.plugins.delete(id);
+    await this.repos.pipeline.deleteByPlugin(id); // drop its steps from every junction
     // Best-effort: also remove a matching inbox file so it isn't re-ingested next scan.
     if (rec?.source && /\.(mjs|js)$/.test(rec.source)) {
       try {

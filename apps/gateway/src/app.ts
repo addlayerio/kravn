@@ -19,6 +19,7 @@ import { registryRoutes } from './routes/registry.routes.js';
 import { localPromptRoutes } from './routes/local-prompts.routes.js';
 import { ssoRoutes } from './routes/sso.routes.js';
 import { pluginRoutes } from './routes/plugins.routes.js';
+import { pipelineRoutes } from './routes/pipeline.routes.js';
 import { llmRoutes } from './routes/llm.routes.js';
 import { teamRoutes } from './routes/teams.routes.js';
 import { chatRoutes } from './routes/chat.routes.js';
@@ -167,6 +168,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     registryRoutes(app, services);
     localPromptRoutes(app, services);
     pluginRoutes(app, services);
+    pipelineRoutes(app, services);
     llmRoutes(app, services);
     teamRoutes(app, services);
     userRoutes(app, services);

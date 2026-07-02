@@ -679,6 +679,56 @@ export class PluginsRepo {
   }
 }
 
+// ─── Hook pipelines ─────────────────────────────────────────────────────────────────────────────────
+
+export interface PipelineStep {
+  hookPoint: string;
+  pluginId: string;
+  position: number;
+  enabled: boolean;
+}
+
+function mapPipelineStep(r: any): PipelineStep {
+  return { hookPoint: r.hook_point, pluginId: r.plugin_id, position: Number(r.position ?? 0), enabled: bool(r.enabled) };
+}
+
+export class PipelineRepo {
+  constructor(private store: Store) {}
+
+  /** Every step across all hook points, ordered so callers can group by hook_point in position order. */
+  async list(): Promise<PipelineStep[]> {
+    return (await this.store.all('SELECT * FROM pipeline_steps ORDER BY hook_point ASC, position ASC')).map(mapPipelineStep);
+  }
+
+  /** Replace the ordered chain for one hook point. `steps` is in the desired order (index → position). */
+  async replaceHook(hookPoint: string, steps: Array<{ pluginId: string; enabled: boolean }>): Promise<void> {
+    await this.store.run('DELETE FROM pipeline_steps WHERE hook_point = ?', [hookPoint]);
+    for (let i = 0; i < steps.length; i++) {
+      await this.store.run(
+        'INSERT INTO pipeline_steps (hook_point, plugin_id, position, enabled) VALUES (?,?,?,?)',
+        [hookPoint, steps[i].pluginId, i, steps[i].enabled ? 1 : 0],
+      );
+    }
+  }
+
+  /** Append a (hook_point, plugin) step at the end if it doesn't exist yet (auto-seed on plugin discovery). */
+  async ensureStep(hookPoint: string, pluginId: string, enabled = true): Promise<void> {
+    const existing = await this.store.get('SELECT 1 FROM pipeline_steps WHERE hook_point = ? AND plugin_id = ?', [hookPoint, pluginId]);
+    if (existing) return;
+    const max = await this.store.get('SELECT MAX(position) AS m FROM pipeline_steps WHERE hook_point = ?', [hookPoint]);
+    const next = (max && max.m != null ? Number(max.m) : -1) + 1;
+    await this.store.run(
+      'INSERT INTO pipeline_steps (hook_point, plugin_id, position, enabled) VALUES (?,?,?,?)',
+      [hookPoint, pluginId, next, enabled ? 1 : 0],
+    );
+  }
+
+  /** Drop every step for a plugin (on plugin removal), across all hook points. */
+  async deleteByPlugin(pluginId: string): Promise<void> {
+    await this.store.run('DELETE FROM pipeline_steps WHERE plugin_id = ?', [pluginId]);
+  }
+}
+
 // ─── Teams ────────────────────────────────────────────────────────────────────────────────────────
 
 export class TeamsRepo {
@@ -1113,6 +1163,7 @@ export interface Repos {
   localPrompts: LocalPromptsRepo;
   llmProviders: LlmProvidersRepo;
   plugins: PluginsRepo;
+  pipeline: PipelineRepo;
   teams: TeamsRepo;
   chat: ChatRepo;
   tokens: TokensRepo;
@@ -1288,6 +1339,7 @@ export function createRepos(store: Store): Repos {
     localPrompts: new LocalPromptsRepo(store),
     llmProviders: new LlmProvidersRepo(store),
     plugins: new PluginsRepo(store),
+    pipeline: new PipelineRepo(store),
     teams: new TeamsRepo(store),
     chat: new ChatRepo(store),
     tokens: new TokensRepo(store),

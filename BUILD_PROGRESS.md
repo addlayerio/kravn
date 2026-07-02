@@ -615,6 +615,27 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   (pinned threads); an initial-connect race that spuriously degraded (fixed with offline-queue + health gate); and
   the OIDC state double-use window (fixed with `take()`).
 
+## ✅ PASS 29 — Hook Pipelines: compose plugin chains per lifecycle junction + trace (v0.1.30)
+- **What:** turned the implicit "run all hook plugins by global priority" into a **first-class, composable
+  pipeline** the admin cablea from the UI. For each MCP lifecycle junction (`onToolCall`, `onToolResult`,
+  `onListTools`, `onResourceRead/Result`, `onPromptGet/Result`, `onResolveUser`) you set the **order** of the
+  hook plugins and a **per-junction on/off** — the same plugin can sit in a different position (or be off) at
+  each junction. Node-RED-style, but on the fixed MCP spine (no invalid/cyclic graphs).
+- **Backend:** `pipeline_steps` table (migration 007) `hook_point → [plugin, position, enabled]`; `PipelineRepo`
+  (list/replaceHook/ensureStep/deleteByPlugin); `PluginManager.enabledHooks()` now runs in DB per-hook order
+  (falls back to global `priority` only before steps are seeded), gated by BOTH the global plugin switch and
+  the per-junction step toggle; new `pipelineView()`, `setPipeline()` (validates the plugin implements the
+  hook, dedupes, ≤200), and `trace()` (dry-run a junction's chain on a sample payload, capturing before/after
+  + deny per step). Routes: `GET /api/pipeline` (settings.read), `PUT /api/pipeline/:hookPoint` +
+  `POST /api/pipeline/:hookPoint/trace` (settings.write); `HOOK_LIFECYCLE` metadata shared via contracts.
+- **Frontend:** operator **Pipelines** screen — scope tabs (Tools/Resources/Prompts/Auth), a card per junction
+  with the ordered step cards (▲▼ reorder, per-junction toggle, "can deny" badge, "plugin off" hint), and a
+  **trace panel** that shows the payload transform (before/after diff, changed/denied/error) end-to-end.
+- **Validated:** 15/15 HTTP checks against a booted gateway — seeded `tool-guard` appears at its junctions;
+  imported a 2nd hook plugin, reordered them, order persisted; **trace ran both in order and redacted
+  BROU→XXXX**; a per-junction toggle-off skipped that step; an unknown plugin in a PUT was rejected (400).
+  Full monorepo typecheck + operator vite build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
