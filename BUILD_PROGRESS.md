@@ -693,6 +693,22 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   (Hook / MCP Server), **Hook-point** filter (per junction), and a **Catalog / Installed** segment (Installed =
   enabled). Preserves config editor / import / delete. Design-system tokens (light/dark). Presentation-only.
 
+## ✅ PASS 33 — Opt-in pipelines + per-VS pipeline inside the VS editor (v0.1.35)
+- **Opt-in everywhere (UX fix):** the global pipeline no longer auto-lists every hook plugin (greyed) — it's
+  now opt-in like a VS overlay. A junction shows ONLY the plugins you added, with an "+ Add plugin" picker;
+  a plugin runs only where you add it (enabling it on the Plugins screen just makes it available). Removed the
+  auto-seed + the legacy priority fallback from `enabledHooks`; `setPipeline` persists exactly the submitted
+  chain at every scope. Migration 009 clears the old auto-seeded global rows once (per-VS overlays kept).
+  Scales to many plugins (you see your chain, not a wall).
+- **Per-VS pipeline in the VS editor:** extracted a reusable `PipelineEditor(scope)` component. The **Pipelines**
+  menu now edits the **global** pipeline only; **virtual-server create/edit is a full page** (not a modal) that
+  embeds `PipelineEditor` for that VS — you see the global hooks inherited (read-only, can't remove) and add
+  hooks that run only for that VS. New routes `/virtual-servers/new` + `/virtual-servers/:id`.
+- **Validated 7/7** (+ 6/6 opt-in): global empty by default; add/remove works; only-added runs; VS inherits
+  global read-only + its overlay; trace shows global-then-overlay for the VS, global-only for another VS and
+  for the global scope; global base always runs for a VS (can't be bypassed). Full monorepo typecheck + build
+  green. Self-reviewed (safer simplification of already-reviewed threading/authz).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

@@ -314,7 +314,8 @@ export class PluginManager {
   private async refreshRecords(): Promise<void> {
     const list = await this.repos.plugins.list();
     this.records = new Map(list.map((r) => [r.id, r]));
-    await this.ensurePipelineSteps();
+    // Pipelines are OPT-IN at every scope (global included): a plugin runs only where the admin explicitly
+    // adds it to a junction. Nothing is auto-seeded — so with N plugins the chains stay curated, not a wall.
     await this.loadPipeline();
   }
 
@@ -323,17 +324,6 @@ export class PluginManager {
     const p = this.pluginFor(id) as HookPlugin | undefined;
     if (!p || !('hooks' in p) || !p.hooks) return [];
     return Object.keys(p.hooks).filter((k) => typeof (p.hooks as any)[k] === 'function' && HOOK_POINTS[k]);
-  }
-
-  /** Seed the GLOBAL base: every loaded hook plugin gets a step at each junction it implements. Idempotent.
-   *  Per-VS overlays are opt-in (never auto-seeded) — the admin explicitly adds plugins to a VS. */
-  private async ensurePipelineSteps(): Promise<void> {
-    for (const r of this.records.values()) {
-      if (r.type !== 'hook') continue;
-      for (const method of this.hookMethodsOf(r.id)) {
-        await this.repos.pipeline.ensureStep(PIPELINE_GLOBAL, method, r.id);
-      }
-    }
   }
 
   private async loadPipeline(): Promise<void> {
@@ -367,14 +357,8 @@ export class PluginManager {
   // ─── Hook execution ──────────────────────────────────────────────────────────────────────────
 
   private enabledHooks(method: string, vsId?: string) {
-    // GLOBAL base (mandatory, all traffic). Absent rows: fall back to legacy global priority ONLY on a fresh
-    // boot before anything is seeded; if global is otherwise seeded, an absent junction means "cleared" → none.
-    const globalHas = this.pipeline.get(PIPELINE_GLOBAL)?.get(method);
-    const globalRecs: Array<PluginRecord | undefined> = globalHas
-      ? this.scopeChain(PIPELINE_GLOBAL, method)
-      : (this.pipeline.get(PIPELINE_GLOBAL)?.size ?? 0) === 0
-        ? [...this.records.values()].sort((a, b) => a.priority - b.priority)
-        : [];
+    // GLOBAL base (opt-in): the plugins the admin explicitly added to this junction, in order. Empty ⇒ none.
+    const globalRecs = this.scopeChain(PIPELINE_GLOBAL, method);
     // Per-VS OVERLAY (opt-in): runs AFTER the global base, only for calls routed through this virtual server.
     const vsRecs = vsId && !GLOBAL_ONLY_HOOKS.has(method) ? this.scopeChain(vsId, method) : [];
     const seen = new Set<string>();
@@ -423,27 +407,22 @@ export class PluginManager {
     pluginEnabled: r.enabled,
   });
 
-  /** Ordered steps for one scope+junction (global auto-includes every implementer; a VS shows only its own). */
+  /** Ordered steps EXPLICITLY added to one scope+junction (opt-in at every scope, global included). */
   private stepsForScope(scope: string, method: string): PipelineStepView[] {
-    const implementers = new Set(
-      [...this.records.values()].filter((r) => r.type === 'hook' && this.hookMethodsOf(r.id).includes(method)).map((r) => r.id),
-    );
     const out: PipelineStepView[] = [];
     const seen = new Set<string>();
     for (const s of this.pipeline.get(scope)?.get(method) ?? []) {
-      if (!implementers.has(s.pluginId) || seen.has(s.pluginId)) continue;
-      out.push(this.stepView(this.records.get(s.pluginId)!, s.enabled));
+      const r = this.records.get(s.pluginId);
+      // Only show steps whose plugin still exists AND still implements this junction.
+      if (!r || seen.has(s.pluginId) || r.type !== 'hook' || !this.hookMethodsOf(s.pluginId).includes(method)) continue;
+      out.push(this.stepView(r, s.enabled));
       seen.add(s.pluginId);
-    }
-    if (scope === PIPELINE_GLOBAL) {
-      for (const id of implementers) if (!seen.has(id)) out.push(this.stepView(this.records.get(id)!, true));
     }
     return out;
   }
 
   /** Hook plugins that implement this junction but aren't in this scope's chain yet (the "add" picker). */
   private availableFor(scope: string, method: string): Array<{ pluginId: string; name: string }> {
-    if (scope === PIPELINE_GLOBAL) return []; // global already lists every implementer
     const inScope = new Set((this.pipeline.get(scope)?.get(method) ?? []).map((s) => s.pluginId));
     return [...this.records.values()]
       .filter((r) => r.type === 'hook' && !inScope.has(r.id) && this.hookMethodsOf(r.id).includes(method))
@@ -468,15 +447,9 @@ export class PluginManager {
       seen.add(s.pluginId);
       clean.push({ pluginId: s.pluginId, enabled: s.enabled });
     }
+    // Opt-in at every scope: the chain is EXACTLY what was submitted (order = position). Omitted plugins are
+    // simply not part of it — nothing is auto-added.
     await this.repos.pipeline.replaceHook(scope, hookPoint, clean);
-    // GLOBAL base only: keep every implementer present (omitted → present-but-OFF) so clearing means "don't run
-    // here", not "reset". A VS overlay is opt-in, so omitted plugins simply aren't part of it.
-    if (isGlobal) {
-      for (const r of this.records.values()) {
-        if (r.type !== 'hook' || seen.has(r.id)) continue;
-        if (this.hookMethodsOf(r.id).includes(hookPoint)) await this.repos.pipeline.ensureStep(PIPELINE_GLOBAL, hookPoint, r.id, false);
-      }
-    }
     await this.loadPipeline();
     await this.onChange?.();
   }

@@ -468,8 +468,26 @@ const pipelineScope: Migration = {
   },
 };
 
+/**
+ * 009 — Opt-in global pipeline. Earlier versions auto-seeded EVERY hook plugin into the global chain (shown
+ * greyed/disabled), which doesn't scale. Global is now opt-in like a VS overlay: a plugin runs only where the
+ * admin explicitly adds it. Clear the auto-seeded global rows once so the new model starts curated; per-VS
+ * overlays (scope != 'global') are preserved.
+ */
+const pipelineOptIn: Migration = {
+  name: '009_pipeline_opt_in',
+  async up(knex) {
+    if (await knex.schema.hasTable('pipeline_steps')) {
+      await knex('pipeline_steps').where('scope', 'global').del();
+    }
+  },
+  async down() {
+    /* no-op: opt-in is the model going forward */
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle
