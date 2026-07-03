@@ -742,6 +742,22 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   triple/hex encoding, no newline breakout), ReDoS bounded (≤~270 ms on 128 KB pathological input, >128 KB passes
   through), all 9 native hooks still load, SafeHTML still strips XSS. Full gateway typecheck + build green.
 
+## ✅ PASS 36 — Clearer authorization errors on denied MCP endpoints (v0.1.41)
+- **Problem:** a consumer denied a restricted MCP endpoint (not in an allowed team) saw a generic client-side
+  "Authorization failed — check your credentials", even though Kravn returned a correct 403 with a clear body —
+  because the 403 carried no structured signal to distinguish *forbidden* from *unauthenticated*.
+- **Fix (`mcp.routes.ts`):** a `forbidden()` helper returns 403 + the **RFC 6750 `insufficient_scope`** challenge
+  (`WWW-Authenticate: Bearer error="insufficient_scope", error_description="…"`) so spec-compliant clients render
+  it as a permission problem, with an **actionable** message (endpoint slug + "ask an admin to grant your team
+  access"). Genuine 401 keeps the RFC 9728 `resource_metadata` challenge (unchanged). Every team-denial is logged
+  to the admin Logs view (`mcp.access.denied`: actor, teams, endpoint, required `allowedTeams`) for self-serve
+  diagnosis.
+- **Security:** the client response never leaks which teams are allowed (admin-log only); `error_description` is
+  quoted-string-sanitised (a `a"b\c` slug can't inject/break the header); denial log fires post-auth into a
+  bounded ring buffer. Self-reviewed (small authz-response change) + validated with a real Fastify `inject`
+  integration test (403+insufficient_scope+log for an admin outside the team; 401 unchanged; header injection-safe).
+  Full gateway build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
