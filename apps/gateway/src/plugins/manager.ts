@@ -421,11 +421,13 @@ export class PluginManager {
     return out;
   }
 
-  /** Hook plugins that implement this junction but aren't in this scope's chain yet (the "add" picker). */
+  /** Hook plugins that implement this junction but aren't in this scope's chain yet (the "add" picker).
+   *  Only ENABLED plugins (the org-level master switch on the Plugins screen) are offered — you can't add
+   *  one that can't run; enable it first. */
   private availableFor(scope: string, method: string): Array<{ pluginId: string; name: string }> {
     const inScope = new Set((this.pipeline.get(scope)?.get(method) ?? []).map((s) => s.pluginId));
     return [...this.records.values()]
-      .filter((r) => r.type === 'hook' && !inScope.has(r.id) && this.hookMethodsOf(r.id).includes(method))
+      .filter((r) => r.enabled && r.type === 'hook' && !inScope.has(r.id) && this.hookMethodsOf(r.id).includes(method))
       .map((r) => ({ pluginId: r.id, name: r.name }));
   }
 
