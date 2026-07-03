@@ -4,6 +4,7 @@ import type { Services } from '../services.js';
 import type { JsonRpcRequest, McpScope } from '../mcp/downstream.js';
 import { authenticateToken, bearerToken } from '../auth/plugin.js';
 import type { AuthUser } from '../auth/auth.service.js';
+import { canConsumeVirtualServer } from '../mcp/vs-access.js';
 import { deriveBaseUrl } from '../http/baseurl.js';
 
 /**
@@ -15,8 +16,8 @@ import { deriveBaseUrl } from '../http/baseurl.js';
  *  - POST /servers/:slug/mcp -> a virtual server, gated by ITS OWN access policy
  *      public        -> no auth
  *      authenticated -> any signed-in user (mcp.invoke)
- *      restricted    -> user is admin, OR role ∈ allowedRoles, OR a member of a team in allowedTeams; the
- *                       tools exposed are then narrowed to that user's per-team tool grant (all, or a subset)
+ *      restricted    -> a member of a team in allowedTeams (platform role/admin is NOT an axis — data plane);
+ *                       the tools exposed are then narrowed to that user's per-team tool grant (all, or subset)
  */
 export function mcpRoutes(app: FastifyInstance, s: Services): void {
   // RFC 9728: on a 401 from an MCP endpoint, point clients (Claude, etc.) at the Protected Resource
@@ -83,12 +84,10 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
       if (!permissionMatches(user.permissions, 'mcp.invoke')) {
         return reply.code(403).send({ error: { code: 'forbidden', message: 'Not allowed to invoke MCP.' } });
       }
-      if (vs.access === 'restricted' && user.role !== 'admin') {
-        const roleOk = vs.allowedRoles.includes(user.role as any);
-        const teamOk = vs.allowedTeams.some((t) => user.teams.includes(t));
-        if (!roleOk && !teamOk) {
-          return reply.code(403).send({ error: { code: 'forbidden', message: 'Your role/team cannot access this server.' } });
-        }
+      // DATA-PLANE gate: consumption is by team membership only (see vs-access.ts). Platform role /
+      // admin-ness is NOT an axis here — an admin consumes a restricted endpoint by being in its team.
+      if (!canConsumeVirtualServer(vs, user)) {
+        return reply.code(403).send({ error: { code: 'forbidden', message: 'You are not a member of a team allowed to use this endpoint.' } });
       }
       actor = user;
     }

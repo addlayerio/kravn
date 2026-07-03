@@ -9,7 +9,7 @@ import PipelineEditor from '../components/PipelineEditor.vue';
       <p class="muted">
         The <strong>global</strong> pipeline runs for all traffic. Add hook plugins to each MCP lifecycle
         junction, in the order you want — only the plugins you add here run. To add a plugin just for one
-        virtual server, edit that virtual server and use its own pipeline.
+        MCP endpoint, edit that MCP endpoint and use its own pipeline.
       </p>
     </div>
   </div>

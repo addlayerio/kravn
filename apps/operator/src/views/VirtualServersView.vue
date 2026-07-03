@@ -30,9 +30,9 @@ function openEdit(v: VirtualServer) {
   router.push(`/virtual-servers/${v.id}`);
 }
 async function remove(v: VirtualServer) {
-  if (!confirm(`Delete virtual server "${v.name}"?`)) return;
+  if (!confirm(`Delete MCP endpoint "${v.name}"?`)) return;
   await api.del(`/api/virtual-servers/${v.id}`);
-  toast.success('Virtual server deleted.');
+  toast.success('MCP endpoint deleted.');
   await load();
 }
 
@@ -48,8 +48,8 @@ async function copyUrl(slug: string): Promise<void> {
 
 <template>
   <div class="topbar">
-    <h1>Virtual servers</h1>
-    <button v-if="auth.can('virtualservers.write')" class="btn primary" @click="openCreate">+ New virtual server</button>
+    <h1>MCP Endpoints</h1>
+    <button v-if="auth.can('virtualservers.write')" class="btn primary" @click="openCreate">+ New MCP endpoint</button>
   </div>
 
   <p class="muted" style="margin-top: -0.5rem">
@@ -59,7 +59,7 @@ async function copyUrl(slug: string): Promise<void> {
 
   <div class="card">
     <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="vservers.length === 0" class="empty">No virtual servers yet.</div>
+    <div v-else-if="vservers.length === 0" class="empty">No MCP endpoints yet.</div>
     <table v-else>
       <thead>
         <tr><th>Name</th><th>Contents</th><th>MCP endpoint</th><th></th></tr>

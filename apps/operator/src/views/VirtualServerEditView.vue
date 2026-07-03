@@ -33,7 +33,6 @@ const blank = () => ({
   resourceIds: [] as string[],
   promptIds: [] as string[],
   access: 'authenticated' as 'public' | 'authenticated' | 'restricted',
-  allowedRoles: [] as string[],
   allowedTeams: [] as string[],
   enabled: true,
 });
@@ -58,7 +57,7 @@ async function load(): Promise<void> {
     if (!isNew.value) {
       const found = v.virtualServers.find((x) => x.id === routeId.value);
       if (!found) {
-        toast.error('Virtual server not found.');
+        toast.error('MCP endpoint not found.');
         router.replace('/virtual-servers');
         return;
       }
@@ -70,7 +69,6 @@ async function load(): Promise<void> {
         resourceIds: [...found.resourceIds],
         promptIds: [...found.promptIds],
         access: found.access,
-        allowedRoles: [...found.allowedRoles],
         allowedTeams: [...found.allowedTeams],
         enabled: found.enabled,
       });
@@ -88,10 +86,10 @@ async function save(): Promise<void> {
     const payload = { ...form };
     if (vsId.value) {
       await api.patch(`/api/virtual-servers/${vsId.value}`, payload);
-      toast.success('Virtual server updated.');
+      toast.success('MCP endpoint updated.');
     } else {
       const created = await api.post<{ virtualServer: VirtualServer }>('/api/virtual-servers', payload);
-      toast.success('Virtual server created — now configure its pipeline below.');
+      toast.success('MCP endpoint created — now configure its pipeline below.');
       // Navigate to the edit route so the pipeline editor (which needs an id) appears.
       router.replace(`/virtual-servers/${created.virtualServer.id}`);
       vsId.value = created.virtualServer.id;
@@ -108,7 +106,7 @@ async function save(): Promise<void> {
   <div class="topbar">
     <div class="row" style="gap: 0.6rem; align-items: center">
       <button class="btn" @click="router.push('/virtual-servers')">← Back</button>
-      <h1 style="margin: 0">{{ isNew ? 'New virtual server' : form.name || 'Virtual server' }}</h1>
+      <h1 style="margin: 0">{{ isNew ? 'New MCP endpoint' : form.name || 'MCP endpoint' }}</h1>
     </div>
   </div>
 
@@ -164,16 +162,12 @@ async function save(): Promise<void> {
         <select v-model="form.access" :disabled="!canWrite">
           <option value="public">Public — no authentication</option>
           <option value="authenticated">Authenticated — any signed-in user</option>
-          <option value="restricted">Restricted — specific roles / teams</option>
+          <option value="restricted">Restricted — specific teams</option>
         </select>
-      </div>
-      <div class="field" v-if="form.access === 'restricted'">
-        <label>Allowed roles</label>
-        <div class="row" style="gap: 1rem">
-          <label v-for="r in ['admin', 'editor', 'viewer']" :key="r" class="checkbox">
-            <input type="checkbox" :value="r" v-model="form.allowedRoles" :disabled="!canWrite" /> {{ r }}
-          </label>
-        </div>
+        <small class="muted">
+          Consumption is by team membership — a platform admin consumes a restricted endpoint by being in one
+          of its teams, not by being an admin.
+        </small>
       </div>
       <div class="field" v-if="form.access === 'restricted'">
         <label>Allowed teams</label>
@@ -199,14 +193,14 @@ async function save(): Promise<void> {
 
     <!-- Per-VS pipeline: only after the VS exists (needs an id). Global hooks show inherited (read-only). -->
     <div v-if="vsId" class="vs-pipeline">
-      <h2>Pipeline for this virtual server</h2>
+      <h2>Pipeline for this MCP endpoint</h2>
       <p class="muted">
         Global hooks run first and can't be removed here. Add hooks that run <strong>only</strong> for calls
-        routed through this virtual server.
+        routed through this MCP endpoint.
       </p>
       <PipelineEditor :scope="vsId" />
     </div>
-    <div v-else class="card muted">Create the virtual server first to configure its own pipeline.</div>
+    <div v-else class="card muted">Create the MCP endpoint first to configure its own pipeline.</div>
   </template>
 </template>
 

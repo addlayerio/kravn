@@ -11,13 +11,12 @@ import { newId } from '../crypto.js';
 import { currentUser } from '../auth/plugin.js';
 import { extractText } from '../chat/extract.js';
 import type { Services } from '../services.js';
-import type { AuthUser } from '../auth/auth.service.js';
+import { canConsumeVirtualServer } from '../mcp/vs-access.js';
 import { parse, sendError } from './_helpers.js';
 
-function canUseVs(v: VirtualServer, u: AuthUser): boolean {
-  if (v.access !== 'restricted') return true;
-  return v.allowedRoles.includes(u.role as any) || v.allowedTeams.some((t) => u.teams.includes(t));
-}
+// Same data-plane rule as the MCP endpoint (vs-access.ts): consumption is by team membership; platform
+// role/admin is not an axis. Keeps "which endpoints show in chat" identical to "which you can actually call".
+const canUseVs = canConsumeVirtualServer;
 
 export function chatRoutes(app: FastifyInstance, s: Services): void {
   const auth = { preHandler: [app.authenticate] };

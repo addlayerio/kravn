@@ -114,12 +114,12 @@ const nodes = computed<NodeModel[]>(() => {
       w: 196,
       hue: 'blue',
       icon: 'server',
-      title: 'Virtual Servers',
+      title: 'MCP Endpoints',
       value: `${d.virtualServers.active}`,
       unit: `/ ${d.virtualServers.total} active`,
       ok: d.virtualServers.active > 0 ? true : null,
       tip:
-        `Virtual Servers (inputs)\n` +
+        `MCP Endpoints (inputs)\n` +
         `Active: ${d.virtualServers.active} of ${d.virtualServers.total}`,
     },
     {

@@ -1,5 +1,6 @@
-import { permissionMatches, type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider } from '@kravn/contracts';
+import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider } from '@kravn/contracts';
 import { newId, type Encryptor } from '../crypto.js';
+import { canConsumeVirtualServer } from '../mcp/vs-access.js';
 import { safeFetch } from '../http/client.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
@@ -240,14 +241,9 @@ export class ChatService {
     const vs = await this.repos.virtualServers.getBySlug(conv.vserverSlug);
     if (!vs || !vs.enabled) return { tools, toolIndex };
 
-    // Enforce the virtual server's access policy for this user (admins may use any server).
-    if (vs.access === 'restricted' && actor.role !== 'admin') {
-      const roleOk = vs.allowedRoles.includes(actor.role as any);
-      const teamOk = vs.allowedTeams.some((t) => actor.teams.includes(t));
-      if (!roleOk && !teamOk) throw new Error('You do not have access to this virtual server.');
-    } else if (vs.access === 'authenticated' && !permissionMatches(actor.permissions, 'mcp.invoke')) {
-      // any authenticated user is fine; permission check is lenient for chat
-    }
+    // Enforce the MCP endpoint's DATA-PLANE access policy (same rule as the MCP endpoint + chat options):
+    // consumption is by team membership — platform role/admin is NOT an axis here.
+    if (!canConsumeVirtualServer(vs, actor)) throw new Error('You do not have access to this MCP endpoint.');
 
     const allTools = await this.repos.registry.listTools();
     const set = new Set(vs.toolIds);

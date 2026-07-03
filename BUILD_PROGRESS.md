@@ -709,6 +709,19 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   for the global scope; global base always runs for a VS (can't be bypassed). Full monorepo typecheck + build
   green. Self-reviewed (safer simplification of already-reviewed threading/authz).
 
+## ✅ PASS 34 — Decouple control plane vs data plane + rename (MCP Servers / MCP Endpoints) (v0.1.38)
+- **Access decouple (the substantive change):** consuming a virtual server is now governed only by its access
+  policy — public / authenticated / restricted→team-membership — via one shared `canConsumeVirtualServer()`
+  (`mcp/vs-access.ts`). Dropped the platform-role axis (`allowedRoles`) and the implicit admin bypass from
+  consumption: being a config-admin no longer auto-grants a restricted endpoint; an admin consumes it by being
+  in one of its teams (control plane = configure Kravn; data plane = consume MCPs; now orthogonal, one identity
+  can be both). Unified all THREE enforcement points (MCP endpoint, chat options, chat tool-resolution) — fixed
+  a real inconsistency (MCP had an admin bypass, chat didn't). Strictly more restrictive. Removed the "Allowed
+  roles" UI. Validated 6/6.
+- **Naming:** upstream "Servers" → **MCP Servers** (what the gateway connects to); "Virtual server" →
+  **MCP Endpoint** (what you publish to consumers). UI labels only — routes/DB/API identifiers unchanged.
+- Full monorepo typecheck + build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

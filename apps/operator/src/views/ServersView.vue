@@ -125,7 +125,7 @@ async function remove(srv: UpstreamServer) {
 
 <template>
   <div class="topbar">
-    <h1>Servers</h1>
+    <h1>MCP Servers</h1>
     <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ Add server</button>
   </div>
 

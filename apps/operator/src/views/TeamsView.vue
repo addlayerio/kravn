@@ -106,7 +106,7 @@ async function removeMember(m: TeamMember) {
   await load();
 }
 
-// ─── MCP access (which virtual servers + which of their tools this team may use) ───────────────────
+// ─── MCP access (which MCP endpoints + which of their tools this team may use) ───────────────────
 interface ToolLite { id: string; name: string; serverId: string }
 interface ServerAccess {
   id: string; name: string; slug: string; access: string; enabled: boolean;
@@ -173,7 +173,7 @@ function toggleTool(vs: ServerAccess, toolId: string) {
   <div class="topbar">
     <div>
       <h1>Teams</h1>
-      <small class="muted">Group users and grant them access to virtual servers.</small>
+      <small class="muted">Group users and grant them access to MCP endpoints.</small>
     </div>
     <button v-if="canWrite" class="btn primary" @click="openCreate">+ New team</button>
   </div>
@@ -267,7 +267,7 @@ function toggleTool(vs: ServerAccess, toolId: string) {
       </small>
 
       <p v-if="accessLoading" class="muted" style="margin-top: 1rem">Loading…</p>
-      <div v-else-if="accessServers.length === 0" class="empty" style="margin-top: 1rem">No virtual servers yet.</div>
+      <div v-else-if="accessServers.length === 0" class="empty" style="margin-top: 1rem">No MCP endpoints yet.</div>
 
       <div v-else style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem">
         <div v-for="vs in accessServers" :key="vs.id" class="card" style="background: var(--bg-page)">

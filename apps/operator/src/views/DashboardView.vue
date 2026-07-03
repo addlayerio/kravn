@@ -40,7 +40,7 @@ onMounted(async () => {
 
   <div class="grid cols-3">
     <RouterLink to="/servers" class="card">
-      <small class="muted">Upstream servers</small>
+      <small class="muted">MCP Servers</small>
       <div class="kpi">{{ servers.length }}</div>
       <small class="muted">{{ servers.filter((s) => s.status === 'online').length }} online</small>
     </RouterLink>
@@ -49,7 +49,7 @@ onMounted(async () => {
       <div class="kpi">{{ tools.length }}</div>
     </RouterLink>
     <RouterLink to="/virtual-servers" class="card">
-      <small class="muted">Virtual servers</small>
+      <small class="muted">MCP Endpoints</small>
       <div class="kpi">{{ vservers.length }}</div>
     </RouterLink>
   </div>

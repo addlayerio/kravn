@@ -47,11 +47,11 @@ interface NavItem {
 
 const items: NavItem[] = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, perm: null, section: 'main', exact: true },
-  { to: '/servers', label: 'Servers', icon: Server, perm: 'servers.read', section: 'main' },
+  { to: '/servers', label: 'MCP Servers', icon: Server, perm: 'servers.read', section: 'main' },
   { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main' },
   { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main' },
   { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main' },
-  { to: '/virtual-servers', label: 'Virtual servers', icon: Layers, perm: 'virtualservers.read', section: 'main' },
+  { to: '/virtual-servers', label: 'MCP Endpoints', icon: Layers, perm: 'virtualservers.read', section: 'main' },
   { to: '/llm-models', label: 'LLM Models', icon: Cpu, perm: 'settings.read', section: 'main' },
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
   { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin' },

@@ -138,7 +138,7 @@ async function remove(p: LocalPrompt) {
   <div class="card">
     <h3>Kravn prompts</h3>
     <p class="muted" style="margin-top: -0.25rem">
-      Reusable prompt templates (Jinja2-compatible) you author here and expose over MCP — globally or inside a virtual server.
+      Reusable prompt templates (Jinja2-compatible) you author here and expose over MCP — globally or inside a MCP endpoint.
     </p>
     <p v-if="loading" class="muted">Loading…</p>
     <div v-else-if="locals.length === 0" class="empty">No prompts yet. Create one to expose it via <code>prompts/list</code>.</div>
