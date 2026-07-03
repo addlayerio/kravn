@@ -46,18 +46,20 @@ interface NavItem {
 }
 
 const items: NavItem[] = [
+  // Main — the MCP data plane: connect sources → see the catalog → publish endpoints.
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, perm: null, section: 'main', exact: true },
   { to: '/servers', label: 'MCP Servers', icon: Server, perm: 'servers.read', section: 'main' },
   { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main' },
   { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main' },
   { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main' },
   { to: '/virtual-servers', label: 'MCP Endpoints', icon: Layers, perm: 'virtualservers.read', section: 'main' },
-  { to: '/llm-models', label: 'LLM Models', icon: Cpu, perm: 'settings.read', section: 'main' },
+  // Administration — identity → processing → platform.
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
   { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin' },
+  { to: '/authentication', label: 'Authentication', icon: ShieldCheck, perm: 'settings.read', section: 'admin' },
   { to: '/plugins', label: 'Plugins', icon: Puzzle, perm: 'settings.read', section: 'admin' },
   { to: '/pipelines', label: 'Pipelines', icon: Workflow, perm: 'settings.read', section: 'admin' },
-  { to: '/authentication', label: 'Authentication', icon: ShieldCheck, perm: 'settings.read', section: 'admin' },
+  { to: '/llm-models', label: 'LLM Models', icon: Cpu, perm: 'settings.read', section: 'admin' },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.read', section: 'admin' },
   { to: '/logs', label: 'Logs', icon: ScrollText, perm: 'logs.read', section: 'admin' },
 ];
@@ -98,7 +100,7 @@ async function logout() {
         </RouterLink>
 
         <template v-if="adminItems.length">
-          <div v-if="!collapsed" class="nav-section">Workspace</div>
+          <div v-if="!collapsed" class="nav-section">Administration</div>
           <div v-else class="nav-divider"></div>
           <RouterLink
             v-for="i in adminItems"
