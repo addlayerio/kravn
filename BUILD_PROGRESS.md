@@ -722,6 +722,26 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   **MCP Endpoint** (what you publish to consumers). UI labels only — routes/DB/API identifiers unchanged.
 - Full monorepo typecheck + build green.
 
+## ✅ PASS 35 — DOCX → structured Markdown (mammoth) + shared HTML module (v0.1.40)
+- **The change:** the shared document extractor (`chat/extract.ts::extractText` — used by SharePoint's
+  `readDocument` AND chat uploads) now renders `.docx` as reduced **Markdown** (`mammoth.convertToHtml` →
+  `htmlToMarkdown`) instead of flat `extractRawText`, keeping headings/lists/bold and — the point — **tables**.
+  Fewer tokens than the source XML, more legible than flat text. HTML over the 128 KB cap falls back to plain text.
+- **Reuse, done as a module (not a plugin dependency):** `htmlToMarkdown` + entity/tag guards were lifted from
+  `native-hooks.ts` into `lib/html.ts`; the HTML→Markdown and SafeHTML hooks import it. Behaviour-preserving
+  (helpers byte-identical). Added `<table>` → GFM-table conversion.
+- **Adversarial review found + fixed 3 issues on this untrusted path:** (1) mammoth inlines images as base64
+  `data:` URIs (token bomb + opaque payload to the model) → images dropped at conversion, and `data:`/`js:`/`vbs:`/
+  >2 KB img srcs dropped in `htmlToMarkdown`; (2) **MEDIUM** — cell escaping was bypassable via HTML entities
+  (`&#124;`→`|`, `&#10;`→newline, incl. multi-encoded) because the final `decodeEntities` ran after per-cell
+  escaping → could inject phantom columns / break out into fake headings + prompt-injection. Fixed by rendering
+  tables to a NUL placeholder restored AFTER the decode pass, with fix-point decode + tag-neutralise + pipe-escape
+  per cell (final, holds at any encoding depth); (3) **LOW** — `imgSrc` `data:` filter bypassable via entity-encoded
+  scheme → tests the fully-decoded src.
+- **Validated:** real jszip-built `.docx` (tables/headings/bold, no base64 leak, no phantom columns at single/double/
+  triple/hex encoding, no newline breakout), ReDoS bounded (≤~270 ms on 128 KB pathological input, >128 KB passes
+  through), all 9 native hooks still load, SafeHTML still strips XSS. Full gateway typecheck + build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

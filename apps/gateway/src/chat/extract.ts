@@ -2,6 +2,7 @@ import { extractText as pdfExtractText, getDocumentProxy } from 'unpdf';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import type { ChatAttachmentKind } from '@kravn/contracts';
+import { htmlToMarkdown, MAX_HTML_BYTES } from '../lib/html.js';
 
 /** Cap extracted text so a huge file can't blow up the prompt / DB row. */
 const MAX_CHARS = 200_000;
@@ -45,10 +46,18 @@ export async function extractText(name: string, mime: string, buf: Buffer): Prom
     return { kind: 'pdf', text: cap(text) };
   }
 
-  // Word (.docx)
+  // Word (.docx) → render to HTML, then reduce to structured Markdown (keeps headings, lists, bold and
+  // — the real win over raw text — tables). Far fewer tokens than the source XML and more legible to the
+  // model than flat text. Very large docs (HTML over the processing cap) fall back to plain-text extraction.
   if (e === 'docx' || m.includes('officedocument.wordprocessingml')) {
-    const { value } = await mammoth.extractRawText({ buffer: buf });
-    return { kind: 'document', text: cap(value) };
+    // Drop images: mammoth would otherwise inline each as a base64 data: URI, exploding tokens for content
+    // the model can't use anyway. An empty src yields <img src=""> that htmlToMarkdown collapses to nothing.
+    const { value: html } = await mammoth.convertToHtml({ buffer: buf }, { convertImage: mammoth.images.imgElement(() => Promise.resolve({ src: '' })) });
+    if (html.length > MAX_HTML_BYTES) {
+      const { value } = await mammoth.extractRawText({ buffer: buf });
+      return { kind: 'document', text: cap(value) };
+    }
+    return { kind: 'document', text: cap(htmlToMarkdown(html)) };
   }
 
   // Spreadsheets (.xlsx/.xls/.csv) → one CSV block per sheet

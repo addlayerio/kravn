@@ -1,5 +1,6 @@
 import { createHash, randomBytes } from 'node:crypto';
 import type { HookPlugin } from '@kravn/plugin-sdk';
+import { MAX_HTML_BYTES, looksHtml, decodeEntities, neutralizeTags, htmlToMarkdown } from '../lib/html.js';
 
 /** JSON.stringify that never throws (BigInt / circular refs) — so a hook can't be skipped by a bad value. */
 function safeJson(v: unknown): string {
@@ -31,9 +32,6 @@ const RANDOM_SALT = randomBytes(16).toString('hex');
  */
 
 type Json = unknown;
-
-/** HTML plugins skip (pass through) content larger than this, to bound worst-case regex cost. */
-const MAX_HTML_BYTES = 128 * 1024;
 
 /** Deep-map every string leaf of a value (arrays + plain objects recursed; other types passed through). */
 function mapStrings(v: Json, fn: (s: string) => string): Json {
@@ -283,44 +281,8 @@ function denyListFilter(): HookPlugin {
 }
 
 // ─── 4. HTML → Markdown ──────────────────────────────────────────────────────────────────────────
-
-const ENTITIES: Record<string, string> = { '&amp;': '&', '&lt;': '<', '&gt;': '>', '&quot;': '"', '&#39;': "'", '&apos;': "'", '&nbsp;': ' ' };
-/** A valid Unicode scalar value (not a surrogate, within range) — else keep the literal (avoids RangeError). */
-function codePoint(n: number, literal: string): string {
-  return Number.isInteger(n) && n >= 0 && n <= 0x10ffff && !(n >= 0xd800 && n <= 0xdfff) ? String.fromCodePoint(n) : literal;
-}
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&(?:amp|lt|gt|quot|#39|apos|nbsp);/g, (m) => ENTITIES[m] || m)
-    .replace(/&#(\d{1,7});/g, (m, d) => codePoint(Number(d), m))
-    .replace(/&#x([0-9a-fA-F]{1,6});/g, (m, h) => codePoint(parseInt(h, 16), m));
-}
-/** Neutralise any `<` that begins a tag-like sequence so entity-decoded markup can't reconstruct live tags. */
-const neutralizeTags = (s: string): string => s.replace(/<(?=[a-zA-Z/!?])/g, '&lt;');
-const looksHtml = (s: string): boolean => /<\/?[a-z][\s\S]{0,200}?>/i.test(s);
-
-function htmlToMarkdown(html: string): string {
-  if (html.length > MAX_HTML_BYTES) return html; // too large to process safely — pass through
-  let s = html;
-  s = s.replace(/<!--[\s\S]*?-->/g, '');
-  s = s.replace(/<(script|style)\b[\s\S]*?<\/\1>/gi, '');
-  s = s.replace(/<(h[1-6])[^>]*>([\s\S]*?)<\/\1>/gi, (_, h, t) => '\n' + '#'.repeat(Number(h[1])) + ' ' + t.trim() + '\n');
-  s = s.replace(/<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, __, t) => '**' + t.trim() + '**');
-  s = s.replace(/<(em|i)\b[^>]*>([\s\S]*?)<\/\1>/gi, (_, __, t) => '*' + t.trim() + '*');
-  s = s.replace(/<a\b[^>]*href=["']([^"']*)["'][^>]*>([\s\S]*?)<\/a>/gi, (_, href, t) => '[' + t.trim() + '](' + href + ')');
-  s = s.replace(/<img\b[^>]*alt=["']([^"']*)["'][^>]*src=["']([^"']*)["'][^>]*>/gi, (_, alt, src) => '![' + alt + '](' + src + ')');
-  s = s.replace(/<img\b[^>]*src=["']([^"']*)["'][^>]*>/gi, (_, src) => '![](' + src + ')');
-  s = s.replace(/<li\b[^>]*>([\s\S]*?)<\/li>/gi, (_, t) => '- ' + t.trim() + '\n');
-  s = s.replace(/<\/(ul|ol)>/gi, '\n');
-  s = s.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (_, t) => '\n```\n' + t.replace(/<[^<>]+>/g, '').trim() + '\n```\n');
-  s = s.replace(/<code\b[^>]*>([\s\S]*?)<\/code>/gi, (_, t) => '`' + t.replace(/<[^<>]+>/g, '') + '`');
-  s = s.replace(/<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi, (_, t) => '\n> ' + t.replace(/<[^<>]+>/g, '').trim() + '\n');
-  s = s.replace(/<br\s*\/?>/gi, '\n');
-  s = s.replace(/<\/p>/gi, '\n\n').replace(/<p\b[^>]*>/gi, '');
-  s = s.replace(/<[^<>]+>/g, ''); // strip any remaining tags
-  s = neutralizeTags(decodeEntities(s)); // decode entities, then neutralise any markup they revealed
-  return s.replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
-}
+// htmlToMarkdown + the entity/tag helpers live in ../lib/html.js so the document extractor (chat/extract.ts,
+// for DOCX via mammoth) shares the exact same, reviewed conversion and ReDoS guards.
 
 function htmlToMarkdownPlugin(): HookPlugin {
   const apply = (ctx: any) => {
