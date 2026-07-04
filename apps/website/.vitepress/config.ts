@@ -1,7 +1,7 @@
 import { defineConfig } from 'vitepress';
 
-// Deployed to GitHub Pages at https://addlayerio.github.io/kravn/ → the site lives under the `/kravn/` path.
-// If you point a custom domain (a CNAME) at the root, change `base` to '/' and update the favicon hrefs below.
+// Served from the custom domain kravn.ai (apex). `base` is '/' and public/CNAME pins the domain on every deploy.
+const HOSTNAME = 'https://kravn.ai';
 const BASE = '/';
 
 export default defineConfig({
@@ -37,9 +37,42 @@ export default defineConfig({
       },
     ],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
+    ['meta', { property: 'og:image', content: `${HOSTNAME}/og.png` }],
+    ['meta', { name: 'twitter:image', content: `${HOSTNAME}/og.png` }],
+    [
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'SoftwareApplication',
+        name: 'Kravn',
+        applicationCategory: 'DeveloperApplication',
+        operatingSystem: 'Docker, Kubernetes, Linux',
+        url: HOSTNAME,
+        description:
+          'Kravn — a self-hostable, enterprise MCP gateway, registry and proxy. Bring the Model Context Protocol to your organization on your own infrastructure, integrated with your identity stack (SAML/OIDC/SCIM/RBAC), with no data ever leaving your perimeter.',
+        author: { '@type': 'Organization', name: 'AddLayer', url: HOSTNAME },
+        offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+        license: 'https://github.com/addlayerio/kravn/blob/main/LICENSE',
+        sameAs: ['https://github.com/addlayerio/kravn'],
+      }),
+    ],
   ],
 
-  sitemap: { hostname: 'https://addlayerio.github.io/kravn/' },
+  sitemap: { hostname: `${HOSTNAME}/` },
+
+  // Per-page canonical + og:url — critical for SEO and correct social unfurls on every page, not just home.
+  transformPageData(pageData) {
+    let slug = pageData.relativePath.replace(/\.md$/, '');
+    if (slug === 'index') slug = '';
+    else slug = slug.replace(/\/index$/, '');
+    const url = `${HOSTNAME}/${slug}`;
+    pageData.frontmatter.head ??= [];
+    pageData.frontmatter.head.push(
+      ['link', { rel: 'canonical', href: url }],
+      ['meta', { property: 'og:url', content: url }],
+    );
+  },
 
   themeConfig: {
     logo: '/logo.svg',
