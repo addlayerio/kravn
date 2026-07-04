@@ -42,6 +42,11 @@ jobs:
       - name: Build the site
         run: pnpm --filter @kravn/website build
       - uses: actions/configure-pages@v5
+        with:
+          # Turn on GitHub Pages (Actions build type) on the first run, so no manual toggle is needed.
+          # If an org policy blocks programmatic enablement, enable it once by hand:
+          #   repo → Settings → Pages → Build and deployment → Source = "GitHub Actions".
+          enablement: true
       - uses: actions/upload-pages-artifact@v3
         with:
           path: apps/website/.vitepress/dist
