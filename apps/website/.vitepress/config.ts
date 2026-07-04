@@ -2,7 +2,7 @@ import { defineConfig } from 'vitepress';
 
 // Deployed to GitHub Pages at https://addlayerio.github.io/kravn/ → the site lives under the `/kravn/` path.
 // If you point a custom domain (a CNAME) at the root, change `base` to '/' and update the favicon hrefs below.
-const BASE = '/kravn/';
+const BASE = '/';
 
 export default defineConfig({
   base: BASE,
