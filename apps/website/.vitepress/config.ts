@@ -7,6 +7,9 @@ const BASE = '/';
 export default defineConfig({
   base: BASE,
   lang: 'en-US',
+  // ⚠️ SEO / OpenGraph limits before editing title/description/image — see apps/website/SEO.md:
+  //   meta description ≤160 · og:description ≤125 (SEPARATE string) · home <title> 50–60 chars ·
+  //   og.png = PNG 1200×630 with a CTA (regen from og-source.svg) · HOSTNAME drives all absolute URLs.
   title: 'Kravn',
   titleTemplate: ':title · Kravn',
   description:
