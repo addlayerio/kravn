@@ -1,0 +1,52 @@
+/**
+ * Kravn brand skin for the VitePress default theme.
+ * Palette mirrors packages/ui: brand ink #0f1115, cream #fafaf7, gold accent #c9892c.
+ */
+
+:root {
+  /* Brand accent — gold. brand-1 is used for links/inline accents on light, so it's a touch darker for contrast. */
+  --vp-c-brand-1: #9c6a17;
+  --vp-c-brand-2: #b0761f;
+  --vp-c-brand-3: #c9892c;
+  --vp-c-brand-soft: rgba(201, 137, 44, 0.14);
+
+  /* Solid brand buttons (hero "Get Started") */
+  --vp-button-brand-bg: #0f1115;
+  --vp-button-brand-hover-bg: #232730;
+  --vp-button-brand-active-bg: #000000;
+  --vp-button-brand-border: transparent;
+  --vp-button-brand-hover-border: transparent;
+  --vp-button-brand-text: #fafaf7;
+  --vp-button-brand-hover-text: #ffffff;
+
+  /* Hero */
+  --vp-home-hero-name-color: transparent;
+  --vp-home-hero-name-background: linear-gradient(120deg, #c9892c 20%, #e6bd6f);
+  --vp-home-hero-image-background-image: linear-gradient(140deg, rgba(201, 137, 44, 0.28), rgba(15, 17, 21, 0.12));
+  --vp-home-hero-image-filter: blur(52px);
+}
+
+.dark {
+  --vp-c-brand-1: #d8a54c;
+  --vp-c-brand-2: #c9892c;
+  --vp-c-brand-3: #b0761f;
+  --vp-c-brand-soft: rgba(201, 137, 44, 0.2);
+
+  --vp-button-brand-bg: #c9892c;
+  --vp-button-brand-hover-bg: #d8a54c;
+  --vp-button-brand-active-bg: #b0761f;
+  --vp-button-brand-text: #0f1115;
+  --vp-button-brand-hover-text: #0f1115;
+
+  --vp-home-hero-image-background-image: linear-gradient(140deg, rgba(201, 137, 44, 0.35), rgba(15, 17, 21, 0.2));
+}
+
+/* Give the hero raven a bit more presence */
+.VPHero .image-bg {
+  opacity: 0.75;
+}
+
+/* Feature card icons inherit the gold accent nicely */
+.VPFeature .icon {
+  background-color: var(--vp-c-brand-soft) !important;
+}

@@ -1,0 +1,57 @@
+# Build the Kravn corporate site + docs (apps/website, VitePress) and deploy it to GitHub Pages.
+#
+# One-time setup: repo → Settings → Pages → "Build and deployment" → Source = "GitHub Actions".
+# The site is served at https://<owner>.github.io/kravn/  (matches `base: '/kravn/'` in the VitePress config).
+# For a custom domain, add a CNAME + set `base: '/'` in apps/website/.vitepress/config.ts.
+name: Deploy website
+
+on:
+  push:
+    branches: [main]
+    paths:
+      - 'apps/website/**'
+      - '.github/workflows/website.yml'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Allow one concurrent deployment; don't cancel an in-progress one.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # so VitePress "last updated" can read git history
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 9.15.0
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - name: Install dependencies
+        run: pnpm install --frozen-lockfile
+      - name: Build the site
+        run: pnpm --filter @kravn/website build
+      - uses: actions/configure-pages@v5
+      - uses: actions/upload-pages-artifact@v3
+        with:
+          path: apps/website/.vitepress/dist
+
+  deploy:
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - id: deployment
+        uses: actions/deploy-pages@v4

@@ -1,0 +1,15 @@
+{
+  "name": "@kravn/website",
+  "version": "0.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Kravn corporate site + documentation (VitePress, deployed to GitHub Pages).",
+  "scripts": {
+    "dev": "vitepress dev",
+    "build": "vitepress build",
+    "preview": "vitepress preview"
+  },
+  "devDependencies": {
+    "vitepress": "^1.6.3"
+  }
+}
