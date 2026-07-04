@@ -36,7 +36,7 @@ withDefaults(
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--brand);
+  color: var(--accent);
 }
 .raven-logo.tile {
   background: var(--bg-brand-tile);

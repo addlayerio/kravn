@@ -20,6 +20,6 @@ withDefaults(defineProps<{ size?: number }>(), { size: 32 });
   align-items: center;
   justify-content: center;
   flex-shrink: 0;
-  color: var(--brand);
+  color: var(--accent);
 }
 </style>

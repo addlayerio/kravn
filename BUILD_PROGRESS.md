@@ -815,6 +815,15 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   rescan. Validated: full monorepo build green (6 projects); both consumer routes hit one handler (Fastify
   inject → 404 "No such MCP endpoint"); permissions consistent; no stray identifier except the redirect routes.
 
+## ✅ PASS 42 — Gold-raven brand unification (v0.1.46)
+- The `RavenLogo` mark in the **operator** and **client** apps now uses `color: var(--accent)` (gold #c9892c)
+  instead of `var(--brand)` (dark/white by theme) — the raven is gold everywhere it appears (nav, login,
+  setup, chat), matching the marketing site.
+- **Favicons unified**: operator `favicon.svg` + `favicon-96x96.png` + `favicon.ico` and client `favicon.svg`
+  are now the gold-raven-on-dark-tile (regenerated the PNG/ICO from the SVG via `@resvg/resvg-js` +
+  `png-to-ico`, throwaway tools). Browser tab icon is consistent across the site and both apps.
+- Operator + client builds green. Visual only.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
