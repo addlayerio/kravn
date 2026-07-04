@@ -56,7 +56,18 @@ jobs:
     runs-on: ubuntu-latest
     environment:
       name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
+      url: ${{ steps.deploy.outputs.page_url || steps.deploy-retry-1.outputs.page_url || steps.deploy-retry-2.outputs.page_url }}
     steps:
-      - id: deployment
+      # GitHub Pages' deployment status check flakes intermittently ("Deployment failed, try again later"),
+      # especially while a newly-set custom domain's HTTPS certificate is still provisioning. Auto-retry a
+      # couple of times so a transient failure doesn't need a manual re-run.
+      - id: deploy
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - id: deploy-retry-1
+        if: steps.deploy.outcome == 'failure'
+        uses: actions/deploy-pages@v4
+        continue-on-error: true
+      - id: deploy-retry-2
+        if: steps.deploy.outcome == 'failure' && steps.deploy-retry-1.outcome == 'failure'
         uses: actions/deploy-pages@v4
