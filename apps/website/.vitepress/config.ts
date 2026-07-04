@@ -26,6 +26,8 @@ export default defineConfig({
 
   head: [
     ['link', { rel: 'icon', href: `${BASE}favicon.svg`, type: 'image/svg+xml' }],
+    // Cloudflare Web Analytics — privacy-first + cookieless (no consent banner needed). Token is public by design.
+    ['script', { defer: '', src: 'https://static.cloudflareinsights.com/beacon.min.js', 'data-cf-beacon': '{"token": "21ef1756069e40c1b49b7dac4a01b2db"}' }],
     ['meta', { name: 'theme-color', content: '#0f1115' }],
     ['meta', { name: 'author', content: 'AddLayer' }],
     ['meta', { property: 'og:type', content: 'website' }],
