@@ -762,8 +762,8 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **New native plugin `teams.ts`** — Teams over MCP via Microsoft Graph app-only (client-credentials), modeled on
   the SharePoint plugin. 7 read-only tools: `teams_find_user` (name/email → id), `teams_find_chat` (the chat
   shared by two people), `teams_list_chats`, `teams_read_chat`, `teams_list_teams`, `teams_list_channels`,
-  `teams_read_channel_messages`. The read tools take an ISO `since`/`until` window, so "what did a person and
-  another person talk about yesterday" works: find_user ×2 → find_chat → read_chat(since=yesterday). Message HTML → the
+  `teams_read_channel_messages`. The read tools take an ISO `since`/`until` window, so a question scoped to a
+  period (e.g. "yesterday") works: find_user ×2 → find_chat → read_chat(since=…). Message HTML → the
   shared hardened `htmlToMarkdown` (fewer tokens). Registered in `native.ts`; auto-appears in Plugins + Tools.
 - **Hardening** (built-in, then adversarially reviewed — no critical/high/medium): fixed Graph host (no SSRF),
   every id `encodeURIComponent`'d, nextLink followed only if on graph.microsoft.com, `redirect: 'error'`,
@@ -777,6 +777,18 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   `$search` + `ConsistencyLevel`, find_chat member-matching, date-window early-stop, invalid-date error,
   secret-hash cache isolation, output caps, and the security invariant (malicious nextLink not followed, bearer
   token never leaves graph.microsoft.com). Full monorepo build green (contracts, plugin-sdk, gateway, operator).
+
+## ✅ PASS 39 — Plugin detail modal + setup docs; example-name scrub (v0.1.43)
+- **Detail modal:** clicking a plugin card in the marketplace opens a modal with its full description, meta
+  (type/version/author/built-in), hook points, and a "Setup & required permissions" panel, plus a Configure
+  button. The card body is a keyboard-accessible button; actions (Config/Enable/Delete) stay separate.
+- **Setup docs:** the `setup` field for Teams and SharePoint is now a numbered Entra ID app-registration
+  walkthrough (register → client/tenant id → client secret → add the read-only Graph Application permissions →
+  grant admin consent), rendered in both the config and detail modals.
+- **Privacy scrub:** an illustrative example in the Teams plugin descriptions/notes used real names; replaced
+  with purely functional wording, and the git history was rewritten (`filter-branch`) to purge the string from
+  the introducing commit's content + message. Affected tag moved to the scrubbed commit; force-pushed.
+- Gateway typecheck + operator build green; no names remain in source.
 
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·

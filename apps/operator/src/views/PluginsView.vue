@@ -20,6 +20,9 @@ const importError = ref('');
 
 const showConfig = ref(false);
 const configPlugin = ref<PluginView | null>(null);
+
+const showDetail = ref(false);
+const detailPlugin = ref<PluginView | null>(null);
 const configError = ref('');
 const rawMode = ref(false);
 const rawText = ref('{}');
@@ -195,6 +198,17 @@ async function doImport() {
   }
 }
 
+function openDetail(p: PluginView) {
+  detailPlugin.value = p;
+  showDetail.value = true;
+}
+
+function configFromDetail() {
+  const p = detailPlugin.value;
+  showDetail.value = false;
+  if (p) openConfig(p);
+}
+
 async function openConfig(p: PluginView) {
   configPlugin.value = p;
   configError.value = '';
@@ -329,23 +343,26 @@ async function saveConfig() {
   </div>
   <div v-else class="plugin-grid">
     <div v-for="p in filtered" :key="p.id" class="plugin-card" :class="{ off: !p.enabled }">
-      <div class="pc-head">
-        <div class="pc-title">
-          <span class="pc-name">{{ p.name }}</span>
-          <span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? 'on' : 'off' }}</span>
+      <div class="pc-body" role="button" tabindex="0" title="View details" @click="openDetail(p)" @keydown.enter="openDetail(p)">
+        <div class="pc-head">
+          <div class="pc-title">
+            <span class="pc-name">{{ p.name }}</span>
+            <span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? 'on' : 'off' }}</span>
+          </div>
+          <div class="pc-meta">
+            <span class="badge type" :class="p.type">{{ p.type === 'hook' ? 'Hook' : 'MCP Server' }}</span>
+            <small class="muted">v{{ p.version }}</small>
+            <small class="muted" v-if="p.author">· {{ p.author }}</small>
+            <span v-if="p.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+          </div>
         </div>
-        <div class="pc-meta">
-          <span class="badge type" :class="p.type">{{ p.type === 'hook' ? 'Hook' : 'MCP Server' }}</span>
-          <small class="muted">v{{ p.version }}</small>
-          <small class="muted" v-if="p.author">· {{ p.author }}</small>
-          <span v-if="p.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+        <p class="pc-desc muted">{{ p.description }}</p>
+        <div v-if="p.hookPoints && p.hookPoints.length" class="pc-hooks">
+          <span v-for="hp in p.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
         </div>
+        <div v-if="p.error" class="pc-err"><small>{{ p.error }}</small></div>
+        <div class="pc-detail-hint muted"><small>Details →</small></div>
       </div>
-      <p class="pc-desc muted">{{ p.description }}</p>
-      <div v-if="p.hookPoints && p.hookPoints.length" class="pc-hooks">
-        <span v-for="hp in p.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
-      </div>
-      <div v-if="p.error" class="pc-err"><small>{{ p.error }}</small></div>
       <div class="pc-actions btn-row" v-if="canWrite">
         <button class="btn" @click="openConfig(p)">Config</button>
         <button class="btn" :class="{ primary: !p.enabled }" @click="toggle(p)">{{ p.enabled ? 'Disable' : 'Enable' }}</button>
@@ -365,6 +382,40 @@ async function saveConfig() {
       <div class="btn-row" style="justify-content: flex-end">
         <button class="btn" @click="showImport = false">Cancel</button>
         <button class="btn primary" :disabled="importing" @click="doImport">{{ importing ? 'Importing…' : 'Import' }}</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Detail modal -->
+  <div v-if="showDetail" class="modal-backdrop" @click.self="showDetail = false">
+    <div class="modal" style="max-width: 660px">
+      <div class="row spread">
+        <h2 style="margin: 0">{{ detailPlugin?.name }}</h2>
+        <span class="badge" :class="detailPlugin?.enabled ? 'online' : 'disabled'">{{ detailPlugin?.enabled ? 'on' : 'off' }}</span>
+      </div>
+      <div class="pc-meta" style="margin-top: 0.6rem">
+        <span class="badge type" :class="detailPlugin?.type">{{ detailPlugin?.type === 'hook' ? 'Hook' : 'MCP Server' }}</span>
+        <small class="muted">v{{ detailPlugin?.version }}</small>
+        <small class="muted" v-if="detailPlugin?.author">· {{ detailPlugin?.author }}</small>
+        <span v-if="detailPlugin?.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+      </div>
+
+      <p style="margin-top: 1rem">{{ detailPlugin?.description }}</p>
+
+      <div v-if="detailPlugin?.hookPoints && detailPlugin.hookPoints.length" class="pc-hooks" style="margin-top: 0.5rem">
+        <span v-for="hp in detailPlugin.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
+      </div>
+
+      <div v-if="detailPlugin?.setup" class="setup-note" style="margin-top: 1.25rem">
+        <div class="setup-title">Setup &amp; required permissions</div>
+        {{ detailPlugin.setup }}
+      </div>
+
+      <div v-if="detailPlugin?.error" class="alert error" style="margin-top: 1rem">{{ detailPlugin.error }}</div>
+
+      <div class="btn-row" style="justify-content: flex-end; margin-top: 1.5rem">
+        <button class="btn" @click="showDetail = false">Close</button>
+        <button v-if="canWrite" class="btn primary" @click="configFromDetail()">Configure</button>
       </div>
     </div>
   </div>
@@ -470,6 +521,12 @@ async function saveConfig() {
 .pc-hooks .badge.hook { text-transform: none; background: var(--hover); color: var(--text-muted); }
 .pc-err { color: var(--danger); }
 .pc-actions { margin-top: auto; padding-top: 0.25rem; }
+.pc-body { display: flex; flex-direction: column; gap: 0.5rem; cursor: pointer; border-radius: var(--radius-md); }
+.pc-body:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.pc-body:hover .pc-name { color: var(--accent); }
+.pc-detail-hint { opacity: 0; transition: opacity 0.15s ease; color: var(--accent); }
+.pc-body:hover .pc-detail-hint,
+.pc-body:focus-visible .pc-detail-hint { opacity: 1; }
 .setup-note {
   margin-top: 0.75rem;
   padding: 0.7rem 0.85rem;

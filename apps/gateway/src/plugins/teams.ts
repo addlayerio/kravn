@@ -26,18 +26,25 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_CHARS = 60_000;
 
 const TEAMS_SETUP = [
-  'Create an Entra (Azure AD) app registration and grant it these Application permissions, then click ',
-  '"Grant admin consent":',
+  'This plugin talks to Microsoft Graph with an app-only (client-credentials) Entra ID app registration.',
   '',
-  '• Team.ReadBasic.All — list teams',
-  '• Channel.ReadBasic.All — list channels',
-  '• ChannelMessage.Read.All — read channel posts',
-  '• Chat.Read.All — list and read chats',
-  '• User.Read.All — find people and list a user\'s teams/chats',
+  'Set it up in the Azure / Entra admin center:',
   '',
-  'These are all READ-only; no write permissions are required. Then set the Tenant ID, Client ID and Client ',
-  'Secret below (the secret is stored encrypted).',
-].join('');
+  '1. Entra ID → App registrations → New registration. Name it (e.g. "Kravn Teams"); leave the redirect URI',
+  '   empty. Register.',
+  '2. On Overview, copy the Application (client) ID and the Directory (tenant) ID.',
+  '3. Certificates & secrets → New client secret. Copy the secret VALUE immediately (shown only once).',
+  '4. API permissions → Add a permission → Microsoft Graph → Application permissions, and add:',
+  '     • Team.ReadBasic.All        — list teams',
+  '     • Channel.ReadBasic.All     — list channels',
+  '     • ChannelMessage.Read.All   — read channel posts',
+  '     • Chat.Read.All             — list and read chats',
+  '     • User.Read.All             — find people, list a user\'s teams/chats',
+  '5. Click "Grant admin consent" for the tenant (a Global Administrator must approve).',
+  '',
+  'All permissions are READ-only — no write access is requested. Then enter the Tenant ID, Client ID and',
+  'Client Secret below (the secret is stored encrypted).',
+].join('\n');
 
 interface TeamsConfig {
   tenantId: string;
@@ -233,8 +240,8 @@ const TOOLS: McpToolDef[] = [
   {
     name: 'teams_find_user',
     description:
-      'Find people by name, email or UPN (fuzzy). Use this FIRST to turn a name like "a colleague" into the ' +
-      'email/id the other tools need. Returns each match\'s display name, job title, email/UPN and id.',
+      'Find people by name, email or UPN (fuzzy). Use this FIRST to resolve a display name into the email/id ' +
+      'the other tools need. Returns each match\'s display name, job title, email/UPN and id.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -438,8 +445,8 @@ export function teamsPlugin(): McpServerPlugin {
       type: 'mcp-server',
       description:
         'Interact with Microsoft Teams over MCP via Microsoft Graph (app-only). Find people, find/list/read chats ' +
-        '(scopable by date), and list teams/channels + read channel posts. E.g. "what did two people talk ' +
-        'about yesterday". Requires an Entra app registration with read-only Application permissions (see setup).',
+        '(scopable by a date range), and list teams/channels + read channel posts. Requires an Entra app ' +
+        'registration with read-only Application permissions (see setup).',
       author: 'Kravn',
       priority: 100,
       setup: TEAMS_SETUP,

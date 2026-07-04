@@ -21,7 +21,7 @@ Talk to the corporate systems you already run — no separate MCP server to oper
 | Integration | What it does |
 |---|---|
 | **SharePoint** | Search, browse document libraries, and read documents (Word/PDF/Excel/text extracted to text) over Microsoft Graph (app-only). |
-| **Microsoft Teams** | Find people, find/list/read chats (scopable by date — "what did X and Y discuss yesterday"), list teams/channels and read channel posts, over Microsoft Graph (app-only). |
+| **Microsoft Teams** | Find people, find/list/read chats (scopable by a date range), list teams/channels and read channel posts, over Microsoft Graph (app-only). |
 | **Jira** | Query and read issues via the Jira REST API. |
 | **Confluence** | Search and read pages. |
 | **Code Interpreter** | Run Python in a WASM sandbox (Pyodide — no host filesystem or network) to read and transform attached files, e.g. complete a spreadsheet and return it. |

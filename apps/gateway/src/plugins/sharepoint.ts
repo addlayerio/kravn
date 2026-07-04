@@ -263,11 +263,19 @@ export function sharepointPlugin(): McpServerPlugin {
       author: 'Kravn',
       priority: 100,
       setup:
-        'Create an Entra (Azure AD) app registration and grant it these Application permissions, then "Grant admin consent":\n\n' +
-        '• Sites.Read.All (or Sites.Selected) — read SharePoint sites\n' +
-        '• Files.Read.All — read files / documents\n\n' +
-        'All read-only. Then set Tenant ID, Client ID and Client Secret below. For sharepoint_search, also set Region ' +
-        'to your M365 geo (NAM, EUR, BRA, APC, GBR, IND, …) — the Graph Search API requires it for app-only requests.',
+        'This plugin talks to Microsoft Graph with an app-only (client-credentials) Entra ID app registration.\n\n' +
+        'Set it up in the Azure / Entra admin center:\n\n' +
+        '1. Entra ID → App registrations → New registration. Name it (e.g. "Kravn SharePoint"); leave the redirect\n' +
+        '   URI empty. Register.\n' +
+        '2. On Overview, copy the Application (client) ID and the Directory (tenant) ID.\n' +
+        '3. Certificates & secrets → New client secret. Copy the secret VALUE immediately (shown only once).\n' +
+        '4. API permissions → Add a permission → Microsoft Graph → Application permissions, and add:\n' +
+        '     • Sites.Read.All (or Sites.Selected) — read SharePoint sites\n' +
+        '     • Files.Read.All                     — read files / documents\n' +
+        '5. Click "Grant admin consent" for the tenant (a Global Administrator must approve).\n\n' +
+        'All permissions are READ-only. Then enter the Tenant ID, Client ID and Client Secret below. For\n' +
+        'sharepoint_search, also set Region to your M365 geo (NAM, EUR, BRA, APC, GBR, IND, …) — the Graph\n' +
+        'Search API requires it for app-only requests.',
       configSchema: {
         type: 'object',
         properties: {
