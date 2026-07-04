@@ -790,6 +790,14 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   the introducing commit's content + message. Affected tag moved to the scrubbed commit; force-pushed.
 - Gateway typecheck + operator build green; no names remain in source.
 
+## ✅ PASS 40 — Fix: New MCP endpoint creation broken (v0.1.44)
+- **Bug:** clicking "New MCP endpoint" showed "MCP endpoint not found". `VirtualServerEditView` derived
+  `isNew` from `route.params.id === 'new'`, but the create route (`virtual-servers/new`, name
+  `virtual-server-new`) is a static path with **no `:id` param** → `route.params.id` is `undefined` →
+  `isNew` was always `false` → the view tried to load an endpoint with id `"undefined"` and failed.
+- **Fix:** `isNew = route.name === 'virtual-server-new' || !route.params.id`. Verified no other view has the
+  same `=== 'new'` param antipattern. Operator build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

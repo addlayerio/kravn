@@ -14,7 +14,9 @@ const toast = useToastStore();
 const canWrite = auth.can('virtualservers.write');
 
 const routeId = computed(() => String(route.params.id));
-const isNew = computed(() => routeId.value === 'new');
+// The create route is `virtual-servers/new` (name `virtual-server-new`) — a static path with NO `:id` param,
+// so route.params.id is undefined there. Detect "new" by route name (not a param value that never exists).
+const isNew = computed(() => route.name === 'virtual-server-new' || !route.params.id);
 const vsId = ref<string | null>(null); // the persisted id (drives the pipeline editor)
 
 const tools = ref<Tool[]>([]);
