@@ -10,7 +10,7 @@ export default defineConfig({
   title: 'Kravn',
   titleTemplate: ':title · Kravn',
   description:
-    'Kravn — a self-hostable, enterprise MCP gateway, registry and proxy. Bring the Model Context Protocol to your organization on your own infrastructure, governed by your own policies, with no data ever leaving your perimeter.',
+    'Kravn is a self-hostable enterprise MCP gateway: bring the Model Context Protocol on-prem, with SSO/SCIM/RBAC and no data leaving your network.',
   cleanUrls: true,
   lastUpdated: true,
   metaChunk: true,
@@ -32,8 +32,7 @@ export default defineConfig({
       'meta',
       {
         property: 'og:description',
-        content:
-          'Self-hostable MCP gateway, registry and proxy for the enterprise. Corporate identity (SAML/OIDC/SCIM/RBAC), no data egress, one-command install.',
+        content: 'Self-hostable enterprise MCP gateway: on-prem, SSO/SCIM/RBAC, no data egress — up in one command.',
       },
     ],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
@@ -67,6 +66,11 @@ export default defineConfig({
     if (slug === 'index') slug = '';
     else slug = slug.replace(/\/index$/, '');
     const url = `${HOSTNAME}/${slug}`;
+    // The home <title> should use the SERP space (50–60 chars); sub-pages keep the "· Kravn" template.
+    if (slug === '') {
+      pageData.title = 'Kravn — the self-hosted enterprise MCP gateway';
+      pageData.titleTemplate = false;
+    }
     pageData.frontmatter.head ??= [];
     pageData.frontmatter.head.push(
       ['link', { rel: 'canonical', href: url }],
