@@ -21,8 +21,12 @@ meta-tag inspector pass — respect them so previews and search snippets don't t
 ## Social image — `og:image` / `twitter:image`
 
 - Must be a **PNG, 1200×630** — most social scrapers (LinkedIn, X, Slack, Facebook) do **not** render SVG.
-- Served at `public/og.png`, referenced absolutely as `${HOSTNAME}/og.png`.
+- Served at `public/og.png`, referenced absolutely as `${HOSTNAME}/og.png?v=N`.
 - Should include a **call-to-action** (currently a "Get started →" pill) — inspectors flag images without one.
+- **Cache-busting:** scrapers (opengraph.xyz, LinkedIn, X, Slack, Facebook) cache the image **by URL**. When
+  the image *content* changes but the path stays `og.png`, they keep serving the OLD render. So **bump the
+  `?v=N`** on `og:image`/`twitter:image` in config every time you regenerate `og.png`. (Platforms also offer
+  a manual re-scrape — e.g. the Facebook Sharing Debugger — but bumping `?v=N` fixes them all at once.)
 - **Regenerate it** from the committed source `apps/website/og-source.svg` (no rasterizer ships in the repo):
   ```bash
   # in a scratch dir — @resvg/resvg-js is a throwaway tool, do NOT add it to the project

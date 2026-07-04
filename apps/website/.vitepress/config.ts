@@ -39,8 +39,10 @@ export default defineConfig({
       },
     ],
     ['meta', { name: 'twitter:card', content: 'summary_large_image' }],
-    ['meta', { property: 'og:image', content: `${HOSTNAME}/og.png` }],
-    ['meta', { name: 'twitter:image', content: `${HOSTNAME}/og.png` }],
+    // ?v=N busts social/scraper caches when the image CONTENT changes but the path stays the same.
+    // Bump the number whenever you regenerate og.png (see apps/website/SEO.md).
+    ['meta', { property: 'og:image', content: `${HOSTNAME}/og.png?v=2` }],
+    ['meta', { name: 'twitter:image', content: `${HOSTNAME}/og.png?v=2` }],
     [
       'script',
       { type: 'application/ld+json' },
