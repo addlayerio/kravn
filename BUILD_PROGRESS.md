@@ -758,6 +758,26 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   integration test (403+insufficient_scope+log for an admin outside the team; 401 unchanged; header injection-safe).
   Full gateway build green.
 
+## ✅ PASS 38 — Microsoft Teams plugin (Graph, app-only) + marketplace permission docs (v0.1.42)
+- **New native plugin `teams.ts`** — Teams over MCP via Microsoft Graph app-only (client-credentials), modeled on
+  the SharePoint plugin. 7 read-only tools: `teams_find_user` (name/email → id), `teams_find_chat` (the chat
+  shared by two people), `teams_list_chats`, `teams_read_chat`, `teams_list_teams`, `teams_list_channels`,
+  `teams_read_channel_messages`. The read tools take an ISO `since`/`until` window, so "what did a person and
+  another person talk about yesterday" works: find_user ×2 → find_chat → read_chat(since=yesterday). Message HTML → the
+  shared hardened `htmlToMarkdown` (fewer tokens). Registered in `native.ts`; auto-appears in Plugins + Tools.
+- **Hardening** (built-in, then adversarially reviewed — no critical/high/medium): fixed Graph host (no SSRF),
+  every id `encodeURIComponent`'d, nextLink followed only if on graph.microsoft.com, `redirect: 'error'`,
+  per-request timeout, message + 60 KB output caps, `$search` query quote-sanitised. Review's 2 low/info notes
+  fixed + back-ported to SharePoint: token cache key now includes a secret hash (no cross-config token reuse);
+  transcript sort tolerates bad timestamps.
+- **Marketplace permission docs:** new reusable `setup` manifest field (plugin-sdk schema + `PluginView` +
+  `PluginsView` callout). Teams and SharePoint now show a "Setup & required permissions" box listing the exact
+  read-only Graph Application permissions the credential needs.
+- **Validated** with a mocked-Graph harness (2 suites, 40 checks): tool shape, correct URLs/encoding, find_user
+  `$search` + `ConsistencyLevel`, find_chat member-matching, date-window early-stop, invalid-date error,
+  secret-hash cache isolation, output caps, and the security invariant (malicious nextLink not followed, bearer
+  token never leaves graph.microsoft.com). Full monorepo build green (contracts, plugin-sdk, gateway, operator).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-sdk';
 import { extractText } from '../chat/extract.js';
 
@@ -40,7 +41,10 @@ function readConfig(config: Record<string, unknown>): SpConfig {
 const tokenCache = new Map<string, { token: string; exp: number }>();
 
 async function getToken(cfg: SpConfig): Promise<string> {
-  const key = `${cfg.tenantId}:${cfg.clientId}`;
+  // Include a hash of the secret in the cache key so a config supplying a different (or blank) secret can
+  // never be handed a token minted from another config that shares the same tenant + client id.
+  const secretHash = createHash('sha256').update(cfg.clientSecret).digest('hex').slice(0, 16);
+  const key = `${cfg.tenantId}:${cfg.clientId}:${secretHash}`;
   const cached = tokenCache.get(key);
   if (cached && cached.exp > Date.now() + 60_000) return cached.token;
 
@@ -258,6 +262,12 @@ export function sharepointPlugin(): McpServerPlugin {
         'and read documents. Requires an Entra app registration (Sites.Read.All + Files.Read.All).',
       author: 'Kravn',
       priority: 100,
+      setup:
+        'Create an Entra (Azure AD) app registration and grant it these Application permissions, then "Grant admin consent":\n\n' +
+        '• Sites.Read.All (or Sites.Selected) — read SharePoint sites\n' +
+        '• Files.Read.All — read files / documents\n\n' +
+        'All read-only. Then set Tenant ID, Client ID and Client Secret below. For sharepoint_search, also set Region ' +
+        'to your M365 geo (NAM, EUR, BRA, APC, GBR, IND, …) — the Graph Search API requires it for app-only requests.',
       configSchema: {
         type: 'object',
         properties: {

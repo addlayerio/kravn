@@ -33,6 +33,12 @@ export const pluginManifestSchema = z.object({
   priority: z.number().int().default(100),
   /** Optional JSON Schema describing the operator-editable config for this plugin. */
   configSchema: z.unknown().optional(),
+  /**
+   * Optional setup / required-permissions guidance (plain text; blank lines and `•` bullets are fine).
+   * Shown as a callout in the plugin's config screen — the place to document, e.g., which OAuth scopes or
+   * Graph Application permissions the credential you enter here must be granted.
+   */
+  setup: z.string().optional(),
 });
 export type PluginManifest = z.infer<typeof pluginManifestSchema>;
 

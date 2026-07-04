@@ -1,6 +1,7 @@
 import type { KravnPlugin, McpServerPlugin, McpToolResult } from '@kravn/plugin-sdk';
 import type { CodeExecutor } from '../interpreter/executor.js';
 import { sharepointPlugin } from './sharepoint.js';
+import { teamsPlugin } from './teams.js';
 import { jiraPlugin } from './jira.js';
 import { confluencePlugin } from './confluence.js';
 import { nativeHookPlugins } from './native-hooks.js';
@@ -85,5 +86,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): KravnPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin(), jiraPlugin(), confluencePlugin(), ...nativeHookPlugins()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), ...nativeHookPlugins()];
 }

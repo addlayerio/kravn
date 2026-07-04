@@ -357,6 +357,8 @@ export interface PluginView {
   /** Which `secret: true` config fields currently have a value (the values themselves are never returned). */
   configSecretsSet?: Record<string, boolean>;
   configSchema?: unknown;
+  /** Optional setup / required-permissions guidance shown in the config screen. */
+  setup?: string;
   /** Human labels of the hook points this (hook) plugin implements. */
   hookPoints?: string[];
   installedAt: string;

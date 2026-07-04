@@ -377,6 +377,11 @@ async function saveConfig() {
         <button v-if="fields" class="btn" @click="rawMode = !rawMode">{{ rawMode ? 'Form' : 'Edit as JSON' }}</button>
       </div>
 
+      <div v-if="configPlugin?.setup" class="setup-note">
+        <div class="setup-title">Setup &amp; required permissions</div>
+        {{ configPlugin.setup }}
+      </div>
+
       <div v-if="configError" class="alert error" style="margin-top: 0.75rem">{{ configError }}</div>
 
       <!-- No schema declared -->
@@ -465,4 +470,17 @@ async function saveConfig() {
 .pc-hooks .badge.hook { text-transform: none; background: var(--hover); color: var(--text-muted); }
 .pc-err { color: var(--danger); }
 .pc-actions { margin-top: auto; padding-top: 0.25rem; }
+.setup-note {
+  margin-top: 0.75rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-md);
+  background: var(--bg-page);
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.setup-note .setup-title { font-weight: 600; color: var(--text); margin-bottom: 0.3rem; white-space: normal; }
 </style>

@@ -667,6 +667,7 @@ export class PluginManager {
       config,
       configSecretsSet: secretsSet,
       configSchema: (r.manifest as any)?.configSchema,
+      setup: (r.manifest as any)?.setup,
       hookPoints: r.type === 'hook' ? this.hookPointsOf(r.id) : [],
       installedAt: r.installedAt,
       updatedAt: r.updatedAt,
