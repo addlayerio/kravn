@@ -824,6 +824,18 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   `png-to-ico`, throwaway tools). Browser tab icon is consistent across the site and both apps.
 - Operator + client builds green. Visual only.
 
+## ✅ PASS 43 — Fix startup duplicate-key race on catalog sync (v0.1.47)
+- **Symptom:** on boot, PG logged `duplicate key ... tools_pkey (23505)` for an enabled plugin server's tools
+  (Jira: jira_search, jira_get_issue, …) → "skipped a catalog item that could not be stored" (non-fatal).
+- **Root cause:** `services.ts` fires `syncPluginServers()` (L134) and `syncAll()` (L157) **un-awaited** at
+  startup; both `connectAndSync` the same enabled server, so two `syncCatalog()` run concurrently. `syncCatalog`
+  does `deleteToolsByServer` then per-item INSERT — **not atomic** — so the runs interleave and the second
+  INSERT collides. (Only Jira: it's the only enabled/configured plugin server; SharePoint/Teams sit disabled.)
+- **Fix:** per-server serialization lock (`syncLocks` map) wrapping `syncCatalog` → `doSyncCatalog`; same-server
+  runs chain, different servers stay parallel, a failed run doesn't wedge the chain, map self-cleans.
+- **Validated** on the real method (5/5: serialized same-server / parallel diff-server / no leak / error not
+  wedged). Gateway typecheck green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
