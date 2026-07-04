@@ -81,7 +81,7 @@ export type Prompt = z.infer<typeof promptSchema>;
 // ─── Virtual server (compose tools/resources/prompts from many upstreams into one MCP endpoint) ───
 
 /**
- * Per-virtual-server access policy (authorization, NOT a second login):
+ * Per-mcp-endpoint access policy (authorization, NOT a second login):
  *  - public:        anyone can call the endpoint (no auth)
  *  - authenticated: any signed-in Kravn user
  *  - restricted:    only users whose role is in allowedRoles
@@ -90,7 +90,7 @@ export const VS_ACCESS = ['public', 'authenticated', 'restricted'] as const;
 export type VsAccess = (typeof VS_ACCESS)[number];
 export const vsAccessSchema = z.enum(VS_ACCESS);
 
-export const virtualServerSchema = z.object({
+export const mcpEndpointSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(120),
   slug: z.string(),
@@ -106,7 +106,7 @@ export const virtualServerSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
-export type VirtualServer = z.infer<typeof virtualServerSchema>;
+export type McpEndpoint = z.infer<typeof mcpEndpointSchema>;
 
 // ─── Teams ─────────────────────────────────────────────────────────────────────────────────────────
 

@@ -93,7 +93,7 @@ export interface PluginBaseContext {
   /** The authenticated caller, when known. */
   actor?: PluginActor;
   /** The virtual server this call was routed through, or undefined for the global catalog / chat. */
-  virtualServerId?: string;
+  mcpEndpointId?: string;
   /** Emit a line to the Kravn log viewer (prefixed with the plugin id). */
   log: (message: string) => void;
 }
@@ -213,7 +213,7 @@ export interface McpCallContext {
   files?: McpToolFile[];
   actor?: PluginActor;
   /** The virtual server this call was routed through (undefined = global catalog / chat). */
-  virtualServerId?: string;
+  mcpEndpointId?: string;
 }
 export interface McpServerHandlers {
   listTools: (config: PluginConfig) => McpToolDef[] | Promise<McpToolDef[]>;

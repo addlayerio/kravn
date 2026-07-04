@@ -52,7 +52,7 @@ const items: NavItem[] = [
   { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main' },
   { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main' },
   { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main' },
-  { to: '/virtual-servers', label: 'MCP Endpoints', icon: Layers, perm: 'virtualservers.read', section: 'main' },
+  { to: '/mcp-endpoints', label: 'MCP Endpoints', icon: Layers, perm: 'endpoints.read', section: 'main' },
   // Administration — identity → processing → platform.
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
   { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin' },

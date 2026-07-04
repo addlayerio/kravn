@@ -4,7 +4,7 @@ import type { Services } from '../services.js';
 import type { JsonRpcRequest, McpScope } from '../mcp/downstream.js';
 import { authenticateToken, bearerToken } from '../auth/plugin.js';
 import type { AuthUser } from '../auth/auth.service.js';
-import { canConsumeVirtualServer } from '../mcp/vs-access.js';
+import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { deriveBaseUrl } from '../http/baseurl.js';
 
 /**
@@ -24,7 +24,7 @@ function forbidden(reply: FastifyReply, message: string) {
  * Downstream MCP endpoints (Kravn AS an MCP server).
  *  - POST /mcp               -> the global catalog (the whole registry). ADMIN ONLY — it is not an
  *                              entitlement boundary, so exposing it to every mcp.invoke holder would let a
- *                              non-admin sidestep per-virtual-server / per-team restrictions. Consumers use
+ *                              non-admin sidestep per-mcp-endpoint / per-team restrictions. Consumers use
  *                              a specific virtual server instead.
  *  - POST /servers/:slug/mcp -> a virtual server, gated by ITS OWN access policy
  *      public        -> no auth
@@ -38,7 +38,7 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
   app.addHook('onSend', async (req, reply, payload) => {
     if (reply.statusCode === 401) {
       const url = req.raw.url ?? '';
-      if (url === '/mcp' || /^\/servers\/[^/]+\/mcp\b/.test(url)) {
+      if (url === '/mcp' || /^\/(?:servers|endpoints)\/[^/]+\/mcp\b/.test(url)) {
         const base = deriveBaseUrl(req, s.settings, s.env);
         reply.header('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`);
       }
@@ -73,18 +73,19 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
     // The global catalog is the whole registry — not entitlement-scoped. Only admins may use it; everyone
     // else must go through a specific virtual server, where the access policy + per-team tool grant apply.
     if (user.role !== 'admin') {
-      return forbidden(reply, 'The global MCP catalog is admin-only. Connect to a specific MCP endpoint (/servers/<slug>/mcp) instead.');
+      return forbidden(reply, 'The global MCP catalog is admin-only. Connect to a specific MCP endpoint (/endpoints/<slug>/mcp) instead.');
     }
     const scope = await s.downstream.buildScope(null);
     return handle(scope, req.body, reply, user);
   });
 
-  // Per-virtual-server endpoint with its own access policy.
-  app.post('/servers/:slug/mcp', async (req: FastifyRequest, reply) => {
+  // Per-MCP-endpoint route with its own access policy. The canonical path is /endpoints/:slug/mcp;
+  // /servers/:slug/mcp is kept as a backward-compatible alias for clients configured before the rename.
+  const endpointHandler = async (req: FastifyRequest, reply: FastifyReply) => {
     const { slug } = req.params as { slug: string };
-    const vs = await s.repos.virtualServers.getBySlug(slug);
+    const vs = await s.repos.mcpEndpoints.getBySlug(slug);
     if (!vs || !vs.enabled) {
-      return reply.code(404).send({ error: { code: 'not_found', message: 'No such virtual server.' } });
+      return reply.code(404).send({ error: { code: 'not_found', message: 'No such MCP endpoint.' } });
     }
 
     let actor: AuthUser | undefined;
@@ -97,9 +98,9 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
       if (!permissionMatches(user.permissions, 'mcp.invoke')) {
         return forbidden(reply, 'Your account is not permitted to invoke MCP tools.');
       }
-      // DATA-PLANE gate: consumption is by team membership only (see vs-access.ts). Platform role /
+      // DATA-PLANE gate: consumption is by team membership only (see endpoint-access.ts). Platform role /
       // admin-ness is NOT an axis here — an admin consumes a restricted endpoint by being in its team.
-      if (!canConsumeVirtualServer(vs, user)) {
+      if (!canConsumeMcpEndpoint(vs, user)) {
         // Record the denial so an admin can diagnose it from the Logs view (who, their teams, which endpoint,
         // which teams it requires) — turning an opaque client-side "authorization failed" into a clear cause.
         s.logstore.add('warn', `MCP access denied: "${user.email}" is not in a team allowed to use endpoint "${slug}"`, {
@@ -127,5 +128,7 @@ export function mcpRoutes(app: FastifyInstance, s: Services): void {
       if (allowed) scope.tools = scope.tools.filter((t) => allowed.has(t.id));
     }
     return handle(scope, req.body, reply, actor);
-  });
+  };
+  app.post('/endpoints/:slug/mcp', endpointHandler);
+  app.post('/servers/:slug/mcp', endpointHandler);
 }

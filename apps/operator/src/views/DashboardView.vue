@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
-import type { UpstreamServer, Tool, VirtualServer } from '@kravn/contracts';
+import type { UpstreamServer, Tool, McpEndpoint } from '@kravn/contracts';
 import { api } from '../api/client';
 import { useBootstrapStore } from '../stores/bootstrap';
 import ArchitectureFlow from '../components/ArchitectureFlow.vue';
@@ -9,7 +9,7 @@ import ArchitectureFlow from '../components/ArchitectureFlow.vue';
 const bootstrap = useBootstrapStore();
 const servers = ref<UpstreamServer[]>([]);
 const tools = ref<Tool[]>([]);
-const vservers = ref<VirtualServer[]>([]);
+const vservers = ref<McpEndpoint[]>([]);
 const loading = ref(true);
 
 onMounted(async () => {
@@ -17,11 +17,11 @@ onMounted(async () => {
     const [s, t, v] = await Promise.all([
       api.get<{ servers: UpstreamServer[] }>('/api/servers'),
       api.get<{ tools: Tool[] }>('/api/tools'),
-      api.get<{ virtualServers: VirtualServer[] }>('/api/virtual-servers'),
+      api.get<{ mcpEndpoints: McpEndpoint[] }>('/api/mcp-endpoints'),
     ]);
     servers.value = s.servers;
     tools.value = t.tools;
-    vservers.value = v.virtualServers;
+    vservers.value = v.mcpEndpoints;
   } finally {
     loading.value = false;
   }
@@ -48,7 +48,7 @@ onMounted(async () => {
       <small class="muted">Tools</small>
       <div class="kpi">{{ tools.length }}</div>
     </RouterLink>
-    <RouterLink to="/virtual-servers" class="card">
+    <RouterLink to="/mcp-endpoints" class="card">
       <small class="muted">MCP Endpoints</small>
       <div class="kpi">{{ vservers.length }}</div>
     </RouterLink>

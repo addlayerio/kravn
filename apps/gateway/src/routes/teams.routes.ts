@@ -61,11 +61,11 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
     }
     // Strip the team from every virtual server's allowedTeams so no phantom grant lingers (the team's
     // tool-subset rows are cleared inside teams.delete()).
-    const servers = await s.repos.virtualServers.list();
+    const servers = await s.repos.mcpEndpoints.list();
     await Promise.all(
       servers
         .filter((vs) => vs.allowedTeams.includes(id))
-        .map((vs) => s.repos.virtualServers.update(vs.id, { allowedTeams: vs.allowedTeams.filter((t) => t !== id) })),
+        .map((vs) => s.repos.mcpEndpoints.update(vs.id, { allowedTeams: vs.allowedTeams.filter((t) => t !== id) })),
     );
     await s.repos.teams.delete(id);
     return reply.code(204).send();
@@ -98,7 +98,7 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
   // (otherwise `authenticated`/`public` would leave it open to everyone and the grant would be moot).
 
   /** Shape one virtual server for the team-access UI (granted? all tools or a subset? which tools exist). */
-  async function serverAccessItem(teamId: string, vs: Awaited<ReturnType<typeof s.repos.virtualServers.getById>>, allTools: { id: string; name: string; serverId: string }[]) {
+  async function serverAccessItem(teamId: string, vs: Awaited<ReturnType<typeof s.repos.mcpEndpoints.getById>>, allTools: { id: string; name: string; serverId: string }[]) {
     if (!vs) return null;
     const subset = await s.repos.teams.serverToolSubset(teamId, vs.id);
     const toolIdSet = new Set(vs.toolIds);
@@ -118,7 +118,7 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/teams/:id/servers', write, async (req, reply) => {
     const { id } = req.params as { id: string };
     if (!(await s.repos.teams.getById(id))) return sendError(reply, 404, 'not_found', 'Team not found.');
-    const [servers, allTools] = await Promise.all([s.repos.virtualServers.list(), s.repos.registry.listTools()]);
+    const [servers, allTools] = await Promise.all([s.repos.mcpEndpoints.list(), s.repos.registry.listTools()]);
     const items = (await Promise.all(servers.map((vs) => serverAccessItem(id, vs, allTools)))).filter(Boolean);
     return { servers: items };
   });
@@ -128,7 +128,7 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
     const dto = parse(reply, setTeamServerAccessSchema, req.body);
     if (!dto) return;
     if (!(await s.repos.teams.getById(id))) return sendError(reply, 404, 'not_found', 'Team not found.');
-    const vs = await s.repos.virtualServers.getById(vsId);
+    const vs = await s.repos.mcpEndpoints.getById(vsId);
     if (!vs) return sendError(reply, 404, 'not_found', 'Virtual server not found.');
 
     const teams = new Set(vs.allowedTeams);
@@ -136,17 +136,17 @@ export function teamRoutes(app: FastifyInstance, s: Services): void {
       teams.add(id);
       const patch: Record<string, unknown> = { allowedTeams: [...teams] };
       if (vs.access !== 'restricted') patch.access = 'restricted'; // team grants only bite in restricted mode
-      await s.repos.virtualServers.update(vs.id, patch);
+      await s.repos.mcpEndpoints.update(vs.id, patch);
       // Keep only tool ids that actually belong to this virtual server; null/[] ⇒ full server (all tools).
       const valid = dto.toolIds == null ? null : dto.toolIds.filter((t) => vs.toolIds.includes(t));
       await s.repos.teams.setServerToolSubset(id, vs.id, valid);
     } else {
       teams.delete(id);
-      await s.repos.virtualServers.update(vs.id, { allowedTeams: [...teams] });
+      await s.repos.mcpEndpoints.update(vs.id, { allowedTeams: [...teams] });
       await s.repos.teams.setServerToolSubset(id, vs.id, null); // clear any subset
     }
 
-    const [updated, allTools] = await Promise.all([s.repos.virtualServers.getById(vs.id), s.repos.registry.listTools()]);
+    const [updated, allTools] = await Promise.all([s.repos.mcpEndpoints.getById(vs.id), s.repos.registry.listTools()]);
     return { server: await serverAccessItem(id, updated, allTools) };
   });
 }

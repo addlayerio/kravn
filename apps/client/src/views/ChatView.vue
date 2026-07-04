@@ -71,12 +71,12 @@ const docBusy = ref(false);
 
 async function load() {
   const [opts, convs, projs] = await Promise.all([
-    api.get<{ providers: ProviderOpt[]; virtualServers: VsOpt[] }>('/api/chat/options'),
+    api.get<{ providers: ProviderOpt[]; mcpEndpoints: VsOpt[] }>('/api/chat/options'),
     api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations'),
     api.get<{ projects: ChatProject[] }>('/api/chat/projects'),
   ]);
   providers.value = opts.providers;
-  vservers.value = opts.virtualServers;
+  vservers.value = opts.mcpEndpoints;
   conversations.value = convs.conversations;
   projects.value = projs.projects;
 }

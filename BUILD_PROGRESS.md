@@ -798,6 +798,23 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Fix:** `isNew = route.name === 'virtual-server-new' || !route.params.id`. Verified no other view has the
   same `=== 'new'` param antipattern. Operator build green.
 
+## ✅ PASS 41 — Rename virtual-server → MCP endpoint across the codebase (v0.1.45)
+- **Why:** v0.1.38 renamed only the UI labels; identifiers (routes, API, type, permissions) still said
+  virtual-server. Aligned the whole internal surface to "MCP endpoint".
+- **Renamed:** frontend routes/views (`/virtual-servers`→`/mcp-endpoints`, `McpEndpointsView`,
+  `McpEndpointEditView`), `VirtualServer`→`McpEndpoint` type, admin API `/api/virtual-servers`→
+  `/api/mcp-endpoints`, `vs-access.ts`→`endpoint-access.ts` (+ `canConsumeMcpEndpoint`), RBAC
+  `virtualservers.*`→`endpoints.*`.
+- **Preserved (intentional):** DB table `virtual_servers` + column `virtual_server_id` (never user-visible;
+  renaming needs a 4-engine migration for no value). RBAC is a static role→permission map (runtime-derived,
+  not persisted) → no data migration.
+- **Back-compat:** consumer URL alias — canonical `/endpoints/:slug/mcp` + old `/servers/:slug/mcp` kept
+  (one shared handler); operator redirects for old `/virtual-servers*` admin URLs.
+- **Method + gotcha:** per-form sed (Pascal/camel/hyphen/permission) preserving snake_case. `grep -I` skipped
+  two files as "binary" (`registry.service.ts`, `native-hooks.ts`) → caught + fixed via a force-text (`-a`)
+  rescan. Validated: full monorepo build green (6 projects); both consumer routes hit one handler (Fastify
+  inject → 404 "No such MCP endpoint"); permissions consistent; no stray identifier except the redirect routes.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

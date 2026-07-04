@@ -12,14 +12,14 @@ export function overviewRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/overview', { preHandler: [app.authenticate, app.authorize('servers.read')] }, async (): Promise<PlatformOverview> => {
     let connected = true;
     let servers: Awaited<ReturnType<typeof s.repos.servers.list>> = [];
-    let vservers: Awaited<ReturnType<typeof s.repos.virtualServers.list>> = [];
+    let vservers: Awaited<ReturnType<typeof s.repos.mcpEndpoints.list>> = [];
     let tools: Awaited<ReturnType<typeof s.repos.registry.listTools>> = [];
     let resources: Awaited<ReturnType<typeof s.repos.registry.listResources>> = [];
     let prompts: Awaited<ReturnType<typeof s.repos.registry.listPrompts>> = [];
     try {
       [servers, vservers, tools, resources, prompts] = await Promise.all([
         s.repos.servers.list(),
-        s.repos.virtualServers.list(),
+        s.repos.mcpEndpoints.list(),
         s.repos.registry.listTools(),
         s.repos.registry.listResources(),
         s.repos.registry.listPrompts(),
@@ -38,7 +38,7 @@ export function overviewRoutes(app: FastifyInstance, s: Services): void {
     return {
       instanceName: s.settings.get().general.instanceName,
       version: KRAVN_VERSION,
-      virtualServers: { total: vservers.length, active: vservers.filter((v) => v.enabled).length },
+      mcpEndpoints: { total: vservers.length, active: vservers.filter((v) => v.enabled).length },
       plugins: {
         total: plugins.length,
         enabled: plugins.filter((p) => p.enabled).length,

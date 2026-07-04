@@ -62,7 +62,7 @@ function traceEqual(a: unknown, b: unknown): boolean {
   }
 }
 
-/** Reserved scope key for the mandatory base chain (vs. a virtualServerId for an overlay). */
+/** Reserved scope key for the mandatory base chain (vs. a mcpEndpointId for an overlay). */
 const PIPELINE_GLOBAL = 'global';
 /** Hooks that are global-only (auth runs at sign-in, before any virtual server is chosen). */
 const GLOBAL_ONLY_HOOKS = new Set(['onResolveUser']);
@@ -83,7 +83,7 @@ export class PluginManager {
   private records = new Map<string, PluginRecord>();
   /**
    * Composed hook chains, keyed scope → hookPoint → ordered [{pluginId, enabled}]. Scope is `'global'`
-   * (the mandatory base that runs for all traffic) or a virtualServerId (an opt-in overlay that runs, in
+   * (the mandatory base that runs for all traffic) or a mcpEndpointId (an opt-in overlay that runs, in
    * addition to global, only for calls routed through that virtual server).
    */
   private pipeline = new Map<string, Map<string, Array<{ pluginId: string; enabled: boolean }>>>();
@@ -377,7 +377,7 @@ export class PluginManager {
   // ─── Pipeline composition (per-hook-point ordering) ────────────────────────────────────────────
 
   /**
-   * The pipeline view for one scope: `'global'` (the base) or a virtualServerId (an overlay). For a VS scope,
+   * The pipeline view for one scope: `'global'` (the base) or a mcpEndpointId (an overlay). For a VS scope,
    * each junction also carries the `inherited` global steps (read-only) and the `available` plugins you can add.
    * The global-only auth junction is omitted under a VS scope.
    */
@@ -437,7 +437,7 @@ export class PluginManager {
     const isGlobal = scope === PIPELINE_GLOBAL;
     if (!isGlobal) {
       if (GLOBAL_ONLY_HOOKS.has(hookPoint)) throw new Error(`${hookPoint} runs globally and cannot be overlaid per virtual server.`);
-      if (!(await this.repos.virtualServers.getById(scope))) throw new Error('Unknown virtual server.');
+      if (!(await this.repos.mcpEndpoints.getById(scope))) throw new Error('Unknown virtual server.');
     }
     const seen = new Set<string>();
     const clean: Array<{ pluginId: string; enabled: boolean }> = [];
@@ -480,7 +480,7 @@ export class PluginManager {
       const name = this.records.get(h.id)?.name ?? h.id;
       let denyReason: string | null = null;
       let error: string | undefined;
-      const ctx: any = { ...extra, [spec.key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denyReason = r; } };
+      const ctx: any = { ...extra, [spec.key]: current, actor, mcpEndpointId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denyReason = r; } };
       try {
         await (h.plugin.hooks as any)[hookPoint](ctx);
       } catch (err) {
@@ -502,7 +502,7 @@ export class PluginManager {
   private async applyList(method: string, key: string, items: any[], actor?: any, vsId?: string): Promise<any[]> {
     let current = items;
     for (const h of this.enabledHooks(method, vsId)) {
-      const ctx: any = { [key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id) };
+      const ctx: any = { [key]: current, actor, mcpEndpointId: vsId, config: h.config, log: this.logger(h.id) };
       try {
         await (h.plugin.hooks as any)[method](ctx);
         current = ctx[key];
@@ -518,7 +518,7 @@ export class PluginManager {
     let current = value;
     for (const h of this.enabledHooks(method, vsId)) {
       let denied: string | null = null;
-      const ctx: any = { ...extra, [key]: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denied = r; } };
+      const ctx: any = { ...extra, [key]: current, actor, mcpEndpointId: vsId, config: h.config, log: this.logger(h.id), deny: (r: string) => { denied = r; } };
       try {
         await (h.plugin.hooks as any)[method](ctx);
       } catch (err) {
@@ -535,7 +535,7 @@ export class PluginManager {
   private async applyPost(method: string, extra: object, result: any, actor?: any, vsId?: string): Promise<any> {
     let current = result;
     for (const h of this.enabledHooks(method, vsId)) {
-      const ctx: any = { ...extra, result: current, actor, virtualServerId: vsId, config: h.config, log: this.logger(h.id) };
+      const ctx: any = { ...extra, result: current, actor, mcpEndpointId: vsId, config: h.config, log: this.logger(h.id) };
       try {
         await (h.plugin.hooks as any)[method](ctx);
         current = ctx.result;

@@ -4,7 +4,7 @@ import type {
   Tool,
   Resource,
   Prompt,
-  VirtualServer,
+  McpEndpoint,
   VsAccess,
   User,
   Role,
@@ -346,7 +346,7 @@ export class RegistryRepo {
 
 // ─── Virtual servers ─────────────────────────────────────────────────────────────────────────────────
 
-function mapVServer(r: any): VirtualServer {
+function mapVServer(r: any): McpEndpoint {
   return {
     id: r.id, name: r.name, slug: r.slug, description: r.description ?? '',
     toolIds: JSON.parse(r.tool_ids || '[]'),
@@ -359,16 +359,16 @@ function mapVServer(r: any): VirtualServer {
   };
 }
 
-export class VirtualServersRepo {
+export class McpEndpointsRepo {
   constructor(private store: Store) {}
-  async list(): Promise<VirtualServer[]> {
+  async list(): Promise<McpEndpoint[]> {
     return (await this.store.all('SELECT * FROM virtual_servers ORDER BY created_at ASC')).map(mapVServer);
   }
-  async getById(id: string): Promise<VirtualServer | undefined> {
+  async getById(id: string): Promise<McpEndpoint | undefined> {
     const r = await this.store.get('SELECT * FROM virtual_servers WHERE id = ?', [id]);
     return r ? mapVServer(r) : undefined;
   }
-  async getBySlug(slug: string): Promise<VirtualServer | undefined> {
+  async getBySlug(slug: string): Promise<McpEndpoint | undefined> {
     const r = await this.store.get('SELECT * FROM virtual_servers WHERE slug = ?', [slug]);
     return r ? mapVServer(r) : undefined;
   }
@@ -376,7 +376,7 @@ export class VirtualServersRepo {
     id: string; name: string; slug: string; description: string;
     toolIds: string[]; resourceIds: string[]; promptIds: string[];
     access: VsAccess; allowedRoles: string[]; allowedTeams: string[]; enabled: boolean;
-  }): Promise<VirtualServer> {
+  }): Promise<McpEndpoint> {
     const ts = now();
     await this.store.run(
       `INSERT INTO virtual_servers (id, name, slug, description, tool_ids, resource_ids, prompt_ids, access, allowed_roles, allowed_teams, enabled, created_at, updated_at)
@@ -682,7 +682,7 @@ export class PluginsRepo {
 // ─── Hook pipelines ─────────────────────────────────────────────────────────────────────────────────
 
 export interface PipelineStep {
-  /** 'global' (the base chain) or a virtualServerId (an overlay that runs only for that virtual server). */
+  /** 'global' (the base chain) or a mcpEndpointId (an overlay that runs only for that virtual server). */
   scope: string;
   hookPoint: string;
   pluginId: string;
@@ -819,7 +819,7 @@ export class TeamsRepo {
     return rows.map((r) => r.team_id);
   }
 
-  // ─── Per-team virtual-server tool grants (level 2) ───────────────────────────────────────────────
+  // ─── Per-team mcp-endpoint tool grants (level 2) ───────────────────────────────────────────────
   // Level 1 (which teams can use a VS) lives in virtual_servers.allowed_teams. These methods manage the
   // optional per-(team, VS) tool subset: rows present ⇒ team is restricted to those tools; no rows ⇒ ALL.
 
@@ -1172,7 +1172,7 @@ export interface Repos {
   authConfig: AuthConfigRepo;
   servers: ServersRepo;
   registry: RegistryRepo;
-  virtualServers: VirtualServersRepo;
+  mcpEndpoints: McpEndpointsRepo;
   localPrompts: LocalPromptsRepo;
   llmProviders: LlmProvidersRepo;
   plugins: PluginsRepo;
@@ -1348,7 +1348,7 @@ export function createRepos(store: Store): Repos {
     authConfig: new AuthConfigRepo(store),
     servers: new ServersRepo(store),
     registry: new RegistryRepo(store),
-    virtualServers: new VirtualServersRepo(store),
+    mcpEndpoints: new McpEndpointsRepo(store),
     localPrompts: new LocalPromptsRepo(store),
     llmProviders: new LlmProvidersRepo(store),
     plugins: new PluginsRepo(store),

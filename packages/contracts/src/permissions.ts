@@ -29,9 +29,9 @@ export const PERMISSIONS = [
   'servers.delete',
   'registry.read',
   'registry.write',
-  'virtualservers.read',
-  'virtualservers.write',
-  'virtualservers.delete',
+  'endpoints.read',
+  'endpoints.write',
+  'endpoints.delete',
   'settings.read',
   'settings.write',
   'users.read',
@@ -51,8 +51,8 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'servers.write',
     'registry.read',
     'registry.write',
-    'virtualservers.read',
-    'virtualservers.write',
+    'endpoints.read',
+    'endpoints.write',
     'settings.read',
     'teams.read',
     'logs.read',
@@ -61,12 +61,12 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
   viewer: [
     'servers.read',
     'registry.read',
-    'virtualservers.read',
+    'endpoints.read',
     'settings.read',
     'teams.read',
     'logs.read',
     // A viewer is a read-only operator AND an MCP consumer. `mcp.invoke` no longer decides WHICH MCP a
-    // user may use — the per-virtual-server access policy + per-team tool grants do. So a "consumer" user
+    // user may use — the per-mcp-endpoint access policy + per-team tool grants do. So a "consumer" user
     // (e.g. a partner) can be a viewer: able to invoke, but only the servers/tools they've been granted.
     'mcp.invoke',
   ],

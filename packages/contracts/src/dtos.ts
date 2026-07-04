@@ -143,7 +143,7 @@ export interface PlatformOverview {
   instanceName: string;
   version: string;
   /** INPUTS */
-  virtualServers: { total: number; active: number };
+  mcpEndpoints: { total: number; active: number };
   /** GATEWAY middleware */
   plugins: { total: number; enabled: number; byHook: { hook: string; count: number }[] };
   /** OUTPUTS */
@@ -284,7 +284,7 @@ export type UpdateServerRequest = z.infer<typeof updateServerSchema>;
 
 // ─── Virtual server create/update ──────────────────────────────────────────────────────────────────
 
-export const upsertVirtualServerSchema = z.object({
+export const upsertMcpEndpointSchema = z.object({
   name: z.string().min(1).max(120),
   description: z.string().max(2000).default(''),
   toolIds: z.array(z.string()).default([]),
@@ -295,7 +295,7 @@ export const upsertVirtualServerSchema = z.object({
   allowedTeams: z.array(z.string()).default([]),
   enabled: z.boolean().default(true),
 });
-export type UpsertVirtualServerRequest = z.infer<typeof upsertVirtualServerSchema>;
+export type UpsertMcpEndpointRequest = z.infer<typeof upsertMcpEndpointSchema>;
 
 // ─── Users ─────────────────────────────────────────────────────────────────────────────────────────
 
@@ -459,7 +459,7 @@ export interface PipelineScopeView {
   points: PipelinePointView[];
 }
 export interface PipelineView {
-  /** 'global' (the mandatory base) or a virtualServerId (an overlay for that virtual server). */
+  /** 'global' (the mandatory base) or a mcpEndpointId (an overlay for that virtual server). */
   scope: string;
   global: boolean;
   scopes: PipelineScopeView[];

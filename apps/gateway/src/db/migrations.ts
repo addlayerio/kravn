@@ -432,8 +432,8 @@ const pipelineSteps: Migration = {
 };
 
 /**
- * 008 — Per-virtual-server pipeline overlays. Add a `scope` to pipeline_steps ('global' = the base chain,
- * a virtualServerId = an overlay that runs only for that VS) and fold it into the primary key. Existing rows
+ * 008 — Per-mcp-endpoint pipeline overlays. Add a `scope` to pipeline_steps ('global' = the base chain,
+ * a mcpEndpointId = an overlay that runs only for that VS) and fold it into the primary key. Existing rows
  * (created by 007) are preserved as scope='global'. Rebuilds the table because the PK changes.
  */
 const pipelineScope: Migration = {

@@ -5,7 +5,7 @@ import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 
-// The pipeline is edited for ONE scope: 'global' (the base) or a virtualServerId (an overlay). Opt-in at
+// The pipeline is edited for ONE scope: 'global' (the base) or a mcpEndpointId (an overlay). Opt-in at
 // every scope — a junction shows only the plugins explicitly added to it, plus an add picker.
 const props = defineProps<{ scope: string }>();
 

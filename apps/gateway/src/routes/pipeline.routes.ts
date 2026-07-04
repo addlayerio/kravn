@@ -5,7 +5,7 @@ import { parse, sendError } from './_helpers.js';
 
 /**
  * Hook pipelines: compose, per MCP lifecycle junction, the ordered chain of hook plugins that runs there —
- * for the GLOBAL base (`scope=global`, runs for all traffic) or a per-virtual-server OVERLAY (`scope=<vsId>`,
+ * for the GLOBAL base (`scope=global`, runs for all traffic) or a per-mcp-endpoint OVERLAY (`scope=<vsId>`,
  * runs only for calls routed through that VS, after the global base). Read = settings.read; mutate/trace =
  * settings.write (same admin gate as the Plugins screen). Ordering affects deny/auth hooks, so writes are
  * admin-only; the manager validates the scope + hook point before any DB/exec use.

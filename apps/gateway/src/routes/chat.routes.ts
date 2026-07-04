@@ -5,18 +5,18 @@ import {
   addProjectDocumentSchema,
   createConversationSchema,
   postChatMessageSchema,
-  type VirtualServer,
+  type McpEndpoint,
 } from '@kravn/contracts';
 import { newId } from '../crypto.js';
 import { currentUser } from '../auth/plugin.js';
 import { extractText } from '../chat/extract.js';
 import type { Services } from '../services.js';
-import { canConsumeVirtualServer } from '../mcp/vs-access.js';
+import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { parse, sendError } from './_helpers.js';
 
-// Same data-plane rule as the MCP endpoint (vs-access.ts): consumption is by team membership; platform
+// Same data-plane rule as the MCP endpoint (endpoint-access.ts): consumption is by team membership; platform
 // role/admin is not an axis. Keeps "which endpoints show in chat" identical to "which you can actually call".
-const canUseVs = canConsumeVirtualServer;
+const canUseVs = canConsumeMcpEndpoint;
 
 export function chatRoutes(app: FastifyInstance, s: Services): void {
   const auth = { preHandler: [app.authenticate] };
@@ -27,10 +27,10 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const providers = (await s.repos.llmProviders.list())
       .filter((p) => p.enabled)
       .map((p) => ({ id: p.id, name: p.name, models: p.models, defaultModel: p.defaultModel }));
-    const virtualServers = (await s.repos.virtualServers.list())
+    const mcpEndpoints = (await s.repos.mcpEndpoints.list())
       .filter((v) => v.enabled && canUseVs(v, u))
       .map((v) => ({ slug: v.slug, name: v.name }));
-    return { providers, virtualServers };
+    return { providers, mcpEndpoints };
   });
 
   // Projects (Claude-Projects-style: instructions + documents injected as chat context)

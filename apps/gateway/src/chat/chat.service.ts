@@ -1,6 +1,6 @@
 import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider } from '@kravn/contracts';
 import { newId, type Encryptor } from '../crypto.js';
-import { canConsumeVirtualServer } from '../mcp/vs-access.js';
+import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { safeFetch } from '../http/client.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
@@ -238,12 +238,12 @@ export class ChatService {
     const toolIndex = new Map<string, string>();
     if (!conv.vserverSlug) return { tools, toolIndex };
 
-    const vs = await this.repos.virtualServers.getBySlug(conv.vserverSlug);
+    const vs = await this.repos.mcpEndpoints.getBySlug(conv.vserverSlug);
     if (!vs || !vs.enabled) return { tools, toolIndex };
 
     // Enforce the MCP endpoint's DATA-PLANE access policy (same rule as the MCP endpoint + chat options):
     // consumption is by team membership — platform role/admin is NOT an axis here.
-    if (!canConsumeVirtualServer(vs, actor)) throw new Error('You do not have access to this MCP endpoint.');
+    if (!canConsumeMcpEndpoint(vs, actor)) throw new Error('You do not have access to this MCP endpoint.');
 
     const allTools = await this.repos.registry.listTools();
     const set = new Set(vs.toolIds);

@@ -277,7 +277,7 @@ function toggleTool(vs: ServerAccess, toolId: string) {
                 <input type="checkbox" :checked="vs.granted" :disabled="!canWrite || accessBusy === vs.id" @change="toggleGrant(vs)" />
                 {{ vs.name }}
               </label>
-              <small class="muted">/servers/{{ vs.slug }}/mcp · {{ vs.access }}<span v-if="!vs.enabled"> · disabled</span></small>
+              <small class="muted">/endpoints/{{ vs.slug }}/mcp · {{ vs.access }}<span v-if="!vs.enabled"> · disabled</span></small>
             </div>
             <span v-if="accessBusy === vs.id" class="muted">Saving…</span>
           </div>

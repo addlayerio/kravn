@@ -1,4 +1,4 @@
-import type { VirtualServer } from '@kravn/contracts';
+import type { McpEndpoint } from '@kravn/contracts';
 import type { AuthUser } from '../auth/auth.service.js';
 
 /**
@@ -15,7 +15,7 @@ import type { AuthUser } from '../auth/auth.service.js';
  *   authenticated -> any signed-in consumer
  *   restricted    -> only members of a team in `allowedTeams` (platform role is NOT an axis here)
  */
-export function canConsumeVirtualServer(vs: Pick<VirtualServer, 'access' | 'allowedTeams'>, user: Pick<AuthUser, 'teams'>): boolean {
+export function canConsumeMcpEndpoint(vs: Pick<McpEndpoint, 'access' | 'allowedTeams'>, user: Pick<AuthUser, 'teams'>): boolean {
   if (vs.access === 'public' || vs.access === 'authenticated') return true;
   return vs.allowedTeams.some((t) => user.teams.includes(t));
 }

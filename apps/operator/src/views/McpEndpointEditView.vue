@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { VirtualServer, Tool, Resource, Prompt, LocalPrompt, Team } from '@kravn/contracts';
+import type { McpEndpoint, Tool, Resource, Prompt, LocalPrompt, Team } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
@@ -11,12 +11,12 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const toast = useToastStore();
-const canWrite = auth.can('virtualservers.write');
+const canWrite = auth.can('endpoints.write');
 
 const routeId = computed(() => String(route.params.id));
-// The create route is `virtual-servers/new` (name `virtual-server-new`) — a static path with NO `:id` param,
+// The create route is `mcp-endpoints/new` (name `mcp-endpoint-new`) — a static path with NO `:id` param,
 // so route.params.id is undefined there. Detect "new" by route name (not a param value that never exists).
-const isNew = computed(() => route.name === 'virtual-server-new' || !route.params.id);
+const isNew = computed(() => route.name === 'mcp-endpoint-new' || !route.params.id);
 const vsId = ref<string | null>(null); // the persisted id (drives the pipeline editor)
 
 const tools = ref<Tool[]>([]);
@@ -44,7 +44,7 @@ async function load(): Promise<void> {
   loading.value = true;
   try {
     const [v, t, r, p, lp] = await Promise.all([
-      api.get<{ virtualServers: VirtualServer[] }>('/api/virtual-servers'),
+      api.get<{ mcpEndpoints: McpEndpoint[] }>('/api/mcp-endpoints'),
       api.get<{ tools: Tool[] }>('/api/tools'),
       api.get<{ resources: Resource[] }>('/api/resources'),
       api.get<{ prompts: Prompt[] }>('/api/prompts'),
@@ -57,10 +57,10 @@ async function load(): Promise<void> {
     teams.value = (await api.get<{ teams: Team[] }>('/api/teams').catch(() => ({ teams: [] }))).teams;
 
     if (!isNew.value) {
-      const found = v.virtualServers.find((x) => x.id === routeId.value);
+      const found = v.mcpEndpoints.find((x) => x.id === routeId.value);
       if (!found) {
         toast.error('MCP endpoint not found.');
-        router.replace('/virtual-servers');
+        router.replace('/mcp-endpoints');
         return;
       }
       vsId.value = found.id;
@@ -87,14 +87,14 @@ async function save(): Promise<void> {
   try {
     const payload = { ...form };
     if (vsId.value) {
-      await api.patch(`/api/virtual-servers/${vsId.value}`, payload);
+      await api.patch(`/api/mcp-endpoints/${vsId.value}`, payload);
       toast.success('MCP endpoint updated.');
     } else {
-      const created = await api.post<{ virtualServer: VirtualServer }>('/api/virtual-servers', payload);
+      const created = await api.post<{ mcpEndpoint: McpEndpoint }>('/api/mcp-endpoints', payload);
       toast.success('MCP endpoint created — now configure its pipeline below.');
       // Navigate to the edit route so the pipeline editor (which needs an id) appears.
-      router.replace(`/virtual-servers/${created.virtualServer.id}`);
-      vsId.value = created.virtualServer.id;
+      router.replace(`/mcp-endpoints/${created.mcpEndpoint.id}`);
+      vsId.value = created.mcpEndpoint.id;
     }
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : 'Save failed.';
@@ -107,7 +107,7 @@ async function save(): Promise<void> {
 <template>
   <div class="topbar">
     <div class="row" style="gap: 0.6rem; align-items: center">
-      <button class="btn" @click="router.push('/virtual-servers')">← Back</button>
+      <button class="btn" @click="router.push('/mcp-endpoints')">← Back</button>
       <h1 style="margin: 0">{{ isNew ? 'New MCP endpoint' : form.name || 'MCP endpoint' }}</h1>
     </div>
   </div>

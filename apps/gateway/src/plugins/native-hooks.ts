@@ -579,12 +579,12 @@ function auditLogger(): HookPlugin {
       onToolCall: (ctx: any) => {
         const config = ctx.config || {};
         const n = typeof config.previewChars === 'number' ? config.previewChars : 200;
-        ctx.log(auditLine({ event: 'tool.call', tool: ctx.tool, server: ctx.server, vs: ctx.virtualServerId || null, actor: actorOf(ctx), args: config.logArguments !== false ? clip(safeJson(ctx.arguments), n) : undefined }));
+        ctx.log(auditLine({ event: 'tool.call', tool: ctx.tool, server: ctx.server, vs: ctx.mcpEndpointId || null, actor: actorOf(ctx), args: config.logArguments !== false ? clip(safeJson(ctx.arguments), n) : undefined }));
       },
       onToolResult: (ctx: any) => {
         const config = ctx.config || {};
         const n = typeof config.previewChars === 'number' ? config.previewChars : 200;
-        ctx.log(auditLine({ event: 'tool.result', tool: ctx.tool, server: ctx.server, vs: ctx.virtualServerId || null, actor: actorOf(ctx), result: config.logResults !== false ? clip(safeJson(ctx.result), n) : undefined }));
+        ctx.log(auditLine({ event: 'tool.result', tool: ctx.tool, server: ctx.server, vs: ctx.mcpEndpointId || null, actor: actorOf(ctx), result: config.logResults !== false ? clip(safeJson(ctx.result), n) : undefined }));
       },
     },
   };
