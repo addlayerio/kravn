@@ -24,10 +24,13 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
     };
   });
 
-  app.get('/healthz', async () => ({ status: 'ok' }));
-  app.get('/readyz', async () => ({ status: 'ok' }));
+  // Health/readiness probes are hit every few seconds by k8s and flood stdout with request logs — silence
+  // them entirely. Metrics is scraped constantly by Prometheus: drop the per-request info noise but keep
+  // warn/error so a real problem (auth failure, disabled) still surfaces.
+  app.get('/healthz', { logLevel: 'silent' }, async () => ({ status: 'ok' }));
+  app.get('/readyz', { logLevel: 'silent' }, async () => ({ status: 'ok' }));
 
-  app.get('/metrics', async (req, reply) => {
+  app.get('/metrics', { logLevel: 'warn' }, async (req, reply) => {
     if (!s.settings.get().observability.metricsEnabled) {
       return reply.code(404).send({ error: { code: 'disabled', message: 'Metrics are disabled.' } });
     }
