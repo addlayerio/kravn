@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import {
   LayoutDashboard,
@@ -21,8 +21,10 @@ import {
   LogOut,
   PanelLeftClose,
   PanelLeftOpen,
+  Compass,
 } from 'lucide-vue-next';
 import RavenLogo from './RavenLogo.vue';
+import TourModal from './TourModal.vue';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import { useThemeStore } from '../stores/theme';
@@ -76,6 +78,16 @@ async function logout() {
   await auth.logout();
   router.push('/login');
 }
+
+// First-run product tour (once per browser); relaunchable from the sidebar.
+const showTour = ref(false);
+onMounted(() => {
+  try {
+    if (!localStorage.getItem('kravn.tour.v1.seen')) showTour.value = true;
+  } catch {
+    /* private mode: skip auto-open */
+  }
+});
 </script>
 
 <template>
@@ -121,6 +133,10 @@ async function logout() {
           <div class="u-name">{{ auth.user?.name || auth.user?.email }}</div>
           <small class="muted">{{ auth.user?.role }}</small>
         </div>
+        <button class="ghost-btn" @click="showTour = true">
+          <Compass :size="16" />
+          <span>Take a tour</span>
+        </button>
         <button class="ghost-btn" @click="theme.toggleDark()">
           <component :is="theme.dark ? Sun : Moon" :size="16" />
           <span>{{ theme.dark ? 'Light mode' : 'Dark mode' }}</span>
@@ -143,6 +159,8 @@ async function logout() {
         </div>
       </main>
     </div>
+
+    <TourModal v-if="showTour" @close="showTour = false" />
   </div>
 </template>
 

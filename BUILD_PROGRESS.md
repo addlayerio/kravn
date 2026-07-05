@@ -919,6 +919,15 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - No backend/security change — reuses the existing gated `/api/plugins` + `/api/servers`. Full monorepo
   build green; SFC template balance verified. (Blind UI change — recommend a visual pass after deploy.)
 
+## ✅ PASS 49 — Guided product tour (first-run onboarding) (v0.1.55)
+- **Discoverability.** The Catalog was easy to miss, so a first-run guided tour now introduces the console
+  and reinforces the Catalog as the place to start. `components/TourModal.vue` — a centered, self-contained
+  stepper (no fragile element anchoring), 7 steps (welcome → Catalog ⭐ → endpoints → teams → hooks →
+  settings → done), with an **Open the Catalog** CTA that routes to `/servers`.
+- **First-run + relaunch.** Auto-opens once per browser (`localStorage kravn.tour.v1.seen`); a **Take a tour**
+  button in the sidebar footer relaunches it anytime. Mounted in `AppShell`. Theme-aware.
+- Pure UI, no backend change. Operator build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

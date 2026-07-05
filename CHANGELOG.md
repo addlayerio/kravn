@@ -12,6 +12,13 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.55] — 2026-07-05
+
+- 📣 **Guided product tour.** A friendly first-run walkthrough now introduces the console — what each area
+  does, from connecting integrations to publishing endpoints, governance and settings — and points you
+  straight to the Catalog to get started. It runs once, and you can relaunch it any time from **Take a tour**
+  in the sidebar.
+
 ## [0.1.54] — 2026-07-05
 
 - 📣 **One place for every integration.** The **Catalog** (MCP Servers → Catalog) now shows *all* integrations
@@ -189,6 +196,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.55]: https://github.com/addlayerio/kravn/releases/tag/v0.1.55
 [0.1.54]: https://github.com/addlayerio/kravn/releases/tag/v0.1.54
 [0.1.53]: https://github.com/addlayerio/kravn/releases/tag/v0.1.53
 [0.1.52]: https://github.com/addlayerio/kravn/releases/tag/v0.1.52
