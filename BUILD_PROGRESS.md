@@ -1092,6 +1092,16 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   (no exploitable finding; api_domain host check tightened) — SECURITY.md v0.1.68 row. No live Zoho tested.
 - **Gallery kind filter:** All/Built-in/Catalog chips (with counts) on `/integrations`.
 
+## ✅ PASS 63 — Read AI catalog entry + real dashboard version (v0.1.69)
+- **Read AI** added to `MCP_SERVER_CATALOG` (OAuth, `https://api.read.ai/mcp/`, streamable-http) + setup guide —
+  appears in the operator catalog and the public gallery automatically. (URL/auth confirmed from Read AI's docs.)
+- **Dashboard version fix:** the console/MCP serverInfo always reported the hardcoded `KRAVN_VERSION` constant
+  (`0.1.0`). The real release version is now injected into the image at build (`Dockerfile ARG VERSION → ENV
+  KRAVN_VERSION`; `release.yml` passes `build-args VERSION=<tag>`); the gateway resolves
+  `APP_VERSION = process.env.KRAVN_VERSION || KRAVN_VERSION` (dev fallback), wired into /api/bootstrap,
+  /api/overview and upstream/downstream MCP client/serverInfo. Validated by boot (env → 0.1.68, none → 0.1.0).
+  Takes effect from this release's image onward.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

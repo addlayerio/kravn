@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.69] — 2026-07-05
 
 - 🧩 **Read AI added to the catalog.** Connect Read AI (meeting copilot) with one-click OAuth to reach your
   meeting reports, transcripts, summaries and action items.
