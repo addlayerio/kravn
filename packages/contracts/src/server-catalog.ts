@@ -801,6 +801,6 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   },
   {
     id: 'kravn-odoo', name: 'Odoo', category: 'CRM',
-    description: 'CRM & ERP over Odoo JSON-RPC — leads, contacts, sales orders, invoices, products, tasks, employees. Works with Odoo Online, Odoo.sh and self-hosted.',
+    description: 'CRM & ERP over Odoo JSON-RPC — CRUD, server-side aggregation & counts, and search across leads, contacts, sales orders, invoices, products, tasks, employees. Works with Odoo Online, Odoo.sh and self-hosted.',
   },
 ];
