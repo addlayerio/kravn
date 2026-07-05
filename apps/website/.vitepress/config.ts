@@ -25,7 +25,12 @@ export default defineConfig({
   srcExclude: ['README.md'],
 
   head: [
+    // Multiple formats so Google (and browsers) reliably pick up the favicon — Google prefers a
+    // crawlable .ico / square PNG (multiple of 48px) alongside the SVG.
     ['link', { rel: 'icon', href: `${BASE}favicon.svg`, type: 'image/svg+xml' }],
+    ['link', { rel: 'icon', type: 'image/png', sizes: '96x96', href: `${BASE}favicon-96x96.png` }],
+    ['link', { rel: 'shortcut icon', href: `${BASE}favicon.ico` }],
+    ['link', { rel: 'apple-touch-icon', sizes: '180x180', href: `${BASE}apple-touch-icon.png` }],
     ['meta', { name: 'theme-color', content: '#0f1115' }],
     ['meta', { name: 'author', content: 'AddLayer' }],
     ['meta', { property: 'og:type', content: 'website' }],
