@@ -2,8 +2,8 @@ apiVersion: v2
 name: kravn
 description: Kravn — a seamless, self-configuring MCP gateway, registry and proxy.
 type: application
-version: 0.1.50
-appVersion: "0.1.50"
+version: 0.1.51
+appVersion: "0.1.51"
 keywords:
   - mcp
   - gateway

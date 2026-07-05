@@ -30,6 +30,16 @@ Credentials for these are stored **encrypted at rest**, and access is governed b
 everything else — you compose their tools into a restricted MCP endpoint for the teams allowed to use
 them.
 
+## Integrations catalog
+
+Beyond the native plugins, Kravn ships a curated **catalog of public MCP servers** — Notion, Linear,
+Sentry, Stripe, Supabase, Vercel, Hugging Face, Google (Maps / BigQuery), Attio, Semgrep and dozens more
+across project management, payments, CRM, databases, observability, documentation and search. Open the
+**Catalog** tab on the *MCP Servers* page, filter by category, and one click prefills the connection — you
+only supply a credential if the server needs one. Servers with no auth or an API key connect immediately;
+OAuth 2.1 servers are catalogued, with upstream sign-in rolling out. Once connected, their tools flow into
+the same registry and team-governed endpoints as everything else.
+
 ## Governance & content pipelines
 
 Hook plugins are composed into **pipelines** — an ordered chain per lifecycle junction. A global pipeline

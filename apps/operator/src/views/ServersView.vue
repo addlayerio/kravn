@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
-import type { UpstreamServer, Transport, AuthType } from '@kravn/contracts';
+import { computed, onMounted, reactive, ref } from 'vue';
+import type { UpstreamServer, Transport, AuthType, CatalogServer } from '@kravn/contracts';
+import { MCP_SERVER_CATALOG, CATALOG_CATEGORIES } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
@@ -13,6 +14,11 @@ const error = ref('');
 const showModal = ref(false);
 const editingId = ref<string | null>(null);
 const saving = ref(false);
+
+const tab = ref<'installed' | 'catalog'>('installed');
+const catalogSearch = ref('');
+const catalogCategory = ref('');
+const catalogCategories = CATALOG_CATEGORIES;
 
 const blank = () => ({
   name: '',
@@ -27,6 +33,29 @@ const blank = () => ({
   enabled: true,
 });
 const form = reactive(blank());
+
+// URLs already registered, so a catalog card shows "Added" instead of "Add".
+const installedUrls = computed(() => new Set(servers.value.map((s) => s.url).filter(Boolean)));
+
+const filteredCatalog = computed(() => {
+  const q = catalogSearch.value.trim().toLowerCase();
+  const cat = catalogCategory.value;
+  return MCP_SERVER_CATALOG.filter((s) => {
+    if (cat && s.category !== cat) return false;
+    if (!q) return true;
+    return (
+      s.name.toLowerCase().includes(q) ||
+      s.description.toLowerCase().includes(q) ||
+      (s.tags ?? []).some((t) => t.includes(q))
+    );
+  });
+});
+
+const authLabel: Record<CatalogServer['auth'], string> = {
+  open: 'No auth',
+  apikey: 'API key',
+  oauth: 'OAuth 2.1',
+};
 
 async function load() {
   loading.value = true;
@@ -59,6 +88,21 @@ function openEdit(s: UpstreamServer) {
     enabled: s.enabled,
   });
   editingId.value = s.id;
+  error.value = '';
+  showModal.value = true;
+}
+
+// Prefill the Add form from a catalog entry — the admin only supplies a credential if the server needs one.
+// 'apikey' servers take the key as a Bearer header; 'open'/'oauth' start with no credential (OAuth upstream
+// sign-in is a separate connect step).
+function addFromCatalog(e: CatalogServer) {
+  Object.assign(form, blank());
+  form.name = e.name;
+  form.description = e.description;
+  form.transport = e.transport;
+  form.url = e.url;
+  form.authType = e.auth === 'apikey' ? 'bearer' : 'none';
+  editingId.value = null;
   error.value = '';
   showModal.value = true;
 }
@@ -97,6 +141,7 @@ async function save() {
     }
     showModal.value = false;
     toast.success(editingId.value ? 'Server updated.' : 'Server added.');
+    tab.value = 'installed';
     await load();
   } catch (e) {
     error.value = e instanceof ApiError ? e.message : (e as Error).message || 'Save failed.';
@@ -126,12 +171,20 @@ async function remove(srv: UpstreamServer) {
 <template>
   <div class="topbar">
     <h1>MCP Servers</h1>
-    <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ Add server</button>
+    <div class="btn-row">
+      <div class="segmented" role="tablist">
+        <button :class="{ active: tab === 'installed' }" @click="tab = 'installed'">Installed</button>
+        <button :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog</button>
+      </div>
+      <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ Add server</button>
+    </div>
   </div>
 
-  <div class="card">
+  <div v-if="tab === 'installed'" class="card">
     <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="servers.length === 0" class="empty">No upstream MCP servers registered yet.</div>
+    <div v-else-if="servers.length === 0" class="empty">
+      No upstream MCP servers registered yet. Browse the <a href="#" @click.prevent="tab = 'catalog'">Catalog</a> to add one.
+    </div>
     <table v-else>
       <thead>
         <tr><th>Name</th><th>Transport</th><th>Endpoint</th><th>Status</th><th></th></tr>
@@ -159,6 +212,39 @@ async function remove(srv: UpstreamServer) {
       </tbody>
     </table>
   </div>
+
+  <template v-else>
+    <div class="card">
+      <div class="catalog-toolbar">
+        <input v-model="catalogSearch" class="catalog-search" placeholder="Search integrations…" />
+        <select v-model="catalogCategory">
+          <option value="">All categories</option>
+          <option v-for="c in catalogCategories" :key="c" :value="c">{{ c }}</option>
+        </select>
+        <span class="muted count">{{ filteredCatalog.length }} servers</span>
+      </div>
+      <p class="muted legend">
+        Curated public MCP servers — one click prefills the connection.
+        <span class="cc-auth open">No auth</span> and <span class="cc-auth apikey">API key</span> connect now;
+        <span class="cc-auth oauth">OAuth 2.1</span> upstream sign-in is rolling out.
+      </p>
+    </div>
+
+    <div class="catalog-grid">
+      <div v-for="e in filteredCatalog" :key="e.id" class="catalog-card">
+        <div class="cc-head">
+          <span class="cc-name">{{ e.name }}</span>
+          <span class="cc-auth" :class="e.auth">{{ authLabel[e.auth] }}</span>
+        </div>
+        <div class="cc-cat muted">{{ e.category }}</div>
+        <p class="cc-desc">{{ e.description }}</p>
+        <div class="cc-foot">
+          <span v-if="installedUrls.has(e.url)" class="muted">Added ✓</span>
+          <button v-else-if="auth.can('servers.write')" class="btn" @click="addFromCatalog(e)">Add</button>
+        </div>
+      </div>
+    </div>
+  </template>
 
   <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">
     <div class="modal">
@@ -229,3 +315,103 @@ async function remove(srv: UpstreamServer) {
     </div>
   </div>
 </template>
+
+<style scoped>
+.segmented {
+  display: inline-flex;
+  border: 1px solid var(--border, #33384a);
+  border-radius: 8px;
+  overflow: hidden;
+}
+.segmented button {
+  padding: 6px 14px;
+  background: transparent;
+  border: 0;
+  color: inherit;
+  cursor: pointer;
+  font: inherit;
+  opacity: 0.7;
+}
+.segmented button.active {
+  background: var(--accent, #6c8cff);
+  color: #fff;
+  opacity: 1;
+}
+.catalog-toolbar {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+.catalog-search {
+  flex: 1;
+  min-width: 200px;
+}
+.catalog-toolbar .count {
+  margin-left: auto;
+  white-space: nowrap;
+}
+.legend {
+  margin: 10px 0 0;
+  font-size: 0.85em;
+}
+.catalog-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(240px, 1fr));
+  gap: 12px;
+  margin-top: 14px;
+}
+.catalog-card {
+  border: 1px solid var(--border, #33384a);
+  border-radius: 10px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.cc-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+.cc-name {
+  font-weight: 600;
+}
+.cc-cat {
+  font-size: 0.8em;
+}
+.cc-desc {
+  flex: 1;
+  margin: 4px 0 10px;
+  font-size: 0.88em;
+  line-height: 1.4;
+  opacity: 0.85;
+}
+.cc-foot {
+  display: flex;
+  justify-content: flex-end;
+}
+.cc-auth {
+  font-size: 0.72em;
+  padding: 2px 8px;
+  border-radius: 999px;
+  border: 1px solid transparent;
+  white-space: nowrap;
+}
+.cc-auth.open {
+  color: #2ea043;
+  border-color: rgba(46, 160, 67, 0.4);
+  background: rgba(46, 160, 67, 0.1);
+}
+.cc-auth.apikey {
+  color: #4a90d9;
+  border-color: rgba(74, 144, 217, 0.4);
+  background: rgba(74, 144, 217, 0.1);
+}
+.cc-auth.oauth {
+  color: #d29922;
+  border-color: rgba(210, 153, 34, 0.4);
+  background: rgba(210, 153, 34, 0.12);
+}
+</style>

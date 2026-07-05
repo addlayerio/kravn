@@ -874,6 +874,20 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Deferred (documented):** KEK/DEK rotation + bulk re-key command; JWT signing still on the bootstrap
   secret; AWS/GCP KMS providers (same interface).
 
+## ✅ PASS 46 — Integrations catalog (95 curated public MCP servers) (v0.1.51)
+- **Breadth of integrations.** Kravn is a registry/gateway, so most requested integrations are **existing
+  remote MCP servers**, not code to write. Added `MCP_SERVER_CATALOG` in `@kravn/contracts` (offline data,
+  shared by gateway + operator, like `LLM_MODEL_CATALOG`): 95 curated servers with name, category,
+  description, url, transport (derived), auth class (`open`/`apikey`/`oauth`), provider, tags. Sourced/
+  adapted from the public mcp-context-forge catalog.
+- **Operator UI:** a **Catalog** tab in `ServersView.vue` (Installed | Catalog segmented) — search +
+  category filter + cards with an auth badge; **Add** prefills the existing SSRF-guarded create modal
+  (name/description/transport/url/authType), so the admin only supplies a credential. `open`/`apikey`
+  connect today; `oauth` catalogued pending upstream-OAuth (Phase 2).
+- **Validated** on the compiled catalog (95 entries, 42 categories, all https, no dup ids/urls, valid
+  auth/transport, no incomplete rows). Full monorepo build green. Website (what-is-kravn + plugins) updated.
+- **Not in the reference catalog (flagged for manual add):** Odoo, Zoho, ReadAi, BlueDot.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

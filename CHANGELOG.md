@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.51] — 2026-07-05
+
+- 📣 🧩 **Integrations catalog — connect 95+ MCP servers in a click.** A new **Catalog** tab on the MCP
+  Servers page lets you browse a curated library of public MCP servers (Notion, Linear, Sentry, Stripe,
+  Supabase, Vercel, Hugging Face, Google, Attio, Semgrep, and dozens more across project management,
+  payments, CRM, databases, observability, docs and search), filter by category, and add one to your
+  registry with the connection prefilled — no hand-typing URLs. Servers with no auth or an API key connect
+  immediately; OAuth 2.1 servers are catalogued, with upstream sign-in landing next.
+
 ## [0.1.50] — 2026-07-05
 
 - 📣 🔒 **Bring your own key — encrypt secrets with your KMS/HSM.** Kravn can now protect secrets at rest
@@ -154,6 +163,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.51]: https://github.com/addlayerio/kravn/releases/tag/v0.1.51
 [0.1.50]: https://github.com/addlayerio/kravn/releases/tag/v0.1.50
 [0.1.49]: https://github.com/addlayerio/kravn/releases/tag/v0.1.49
 [0.1.48]: https://github.com/addlayerio/kravn/releases/tag/v0.1.48

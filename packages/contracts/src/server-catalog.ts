@@ -1,0 +1,600 @@
+/**
+ * Curated catalog of known public MCP servers, so an admin can browse and one-click-add them as
+ * upstream servers instead of hand-typing a URL. Offline data (no network) shared by the gateway and
+ * operator, mirroring LLM_MODEL_CATALOG. Sourced/adapted from public MCP server directories.
+ *
+ *  - `auth: 'open'`   -> no credential; connects today.
+ *  - `auth: 'apikey'` -> the server takes an API key/token (added as a Bearer header); connects today.
+ *  - `auth: 'oauth'`  -> the server requires an OAuth 2.1 handshake to the upstream; catalogued now,
+ *                        one-click connect lands with upstream-OAuth support.
+ */
+export type CatalogAuth = 'open' | 'apikey' | 'oauth';
+
+export interface CatalogServer {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+  /** Remote MCP endpoint URL. */
+  url: string;
+  transport: 'streamable-http' | 'sse';
+  auth: CatalogAuth;
+  provider?: string;
+  tags?: string[];
+}
+
+export const MCP_SERVER_CATALOG: CatalogServer[] = [
+  {
+    id: 'notion', name: 'Notion', category: 'Project Management',
+    description: 'All-in-one workspace for notes, tasks, and collaboration',
+    url: 'https://mcp.notion.com/sse', transport: 'sse', auth: 'oauth', provider: 'Notion',
+    tags: ['project-management', 'documentation', 'wiki'],
+  },
+  {
+    id: 'asana', name: 'Asana', category: 'Project Management',
+    description: 'Task and project management platform for teams',
+    url: 'https://mcp.asana.com/sse', transport: 'sse', auth: 'oauth', provider: 'Asana',
+    tags: ['project-management', 'collaboration', 'tasks'],
+  },
+  {
+    id: 'linear', name: 'Linear', category: 'Project Management',
+    description: 'Modern project management for software teams',
+    url: 'https://mcp.linear.app/sse', transport: 'sse', auth: 'oauth', provider: 'Linear',
+    tags: ['project-management', 'issue-tracking', 'development'],
+  },
+  {
+    id: 'monday', name: 'monday.com', category: 'Productivity',
+    description: 'Work OS for teams to manage projects and workflows',
+    url: 'https://mcp.monday.com/sse', transport: 'sse', auth: 'oauth', provider: 'monday MCP',
+    tags: ['productivity', 'workflow', 'collaboration'],
+  },
+  {
+    id: 'cloudflare-workers', name: 'Cloudflare Workers', category: 'Software Development',
+    description: 'Serverless compute platform at the edge',
+    url: 'https://bindings.mcp.cloudflare.com/sse', transport: 'sse', auth: 'oauth', provider: 'Cloudflare',
+    tags: ['serverless', 'edge-computing', 'development'],
+  },
+  {
+    id: 'cloudflare-observability', name: 'Cloudflare Observability', category: 'Observability',
+    description: 'Monitor and analyze Cloudflare services',
+    url: 'https://observability.mcp.cloudflare.com/sse', transport: 'sse', auth: 'oauth', provider: 'Cloudflare',
+    tags: ['monitoring', 'observability', 'analytics'],
+  },
+  {
+    id: 'grafbase', name: 'Grafbase', category: 'Software Development',
+    description: 'GraphQL backend platform',
+    url: 'https://api.grafbase.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Grafbase',
+    tags: ['graphql', 'backend', 'api', 'development'],
+  },
+  {
+    id: 'instant', name: 'Instant', category: 'Software Development',
+    description: 'Real-time database platform',
+    url: 'https://mcp.instantdb.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Instant',
+    tags: ['database', 'real-time', 'development'],
+  },
+  {
+    id: 'jam', name: 'Jam', category: 'Software Development',
+    description: 'Bug reporting and debugging tool',
+    url: 'https://mcp.jam.dev/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Jam.dev',
+    tags: ['debugging', 'bug-tracking', 'development'],
+  },
+  {
+    id: 'neon', name: 'Neon', category: 'Software Development',
+    description: 'Serverless Postgres database',
+    url: 'https://mcp.neon.tech/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Neon',
+    tags: ['database', 'postgres', 'serverless'],
+  },
+  {
+    id: 'netlify', name: 'Netlify', category: 'Software Development',
+    description: 'Web hosting and serverless backend services',
+    url: 'https://netlify-mcp.netlify.app/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Netlify',
+    tags: ['hosting', 'deployment', 'serverless', 'jamstack'],
+  },
+  {
+    id: 'sentry', name: 'Sentry', category: 'Software Development',
+    description: 'Application monitoring and error tracking',
+    url: 'https://mcp.sentry.dev/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Sentry',
+    tags: ['monitoring', 'error-tracking', 'observability'],
+  },
+  {
+    id: 'vercel', name: 'Vercel', category: 'Software Development',
+    description: 'Platform for frontend frameworks and static sites',
+    url: 'https://mcp.vercel.com/', transport: 'streamable-http', auth: 'oauth', provider: 'Vercel',
+    tags: ['hosting', 'deployment', 'nextjs', 'serverless'],
+  },
+  {
+    id: 'prisma-postgres', name: 'Prisma Postgres', category: 'Database',
+    description: 'Type-safe database access and migrations',
+    url: 'https://mcp.prisma.io/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Prisma Postgres',
+    tags: ['database', 'orm', 'postgres', 'typescript'],
+  },
+  {
+    id: 'globalping', name: 'Globalping', category: 'Software Development',
+    description: 'Global network testing and monitoring',
+    url: 'https://mcp.globalping.dev/sse', transport: 'sse', auth: 'oauth', provider: 'Globalping',
+    tags: ['networking', 'monitoring', 'testing'],
+  },
+  {
+    id: 'supabase', name: 'Supabase', category: 'Database',
+    description: 'Open source Firebase alternative with Postgres',
+    url: 'https://mcp.supabase.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Supabase',
+    tags: ['database', 'postgres', 'backend', 'auth'],
+  },
+  {
+    id: 'cortex', name: 'Cortex', category: 'Software Development',
+    description: 'Internal developer portal and service catalog',
+    url: 'https://mcp.cortex.io/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Cortex',
+    tags: ['developer-portal', 'service-catalog', 'development'],
+  },
+  {
+    id: 'stripe', name: 'Stripe', category: 'Payments',
+    description: 'Payment processing and financial infrastructure',
+    url: 'https://mcp.stripe.com/', transport: 'streamable-http', auth: 'oauth', provider: 'Stripe',
+    tags: ['payments', 'billing', 'finance'],
+  },
+  {
+    id: 'paypal', name: 'PayPal', category: 'Payments',
+    description: 'Online payment processing',
+    url: 'https://mcp.paypal.com/sse', transport: 'sse', auth: 'oauth', provider: 'PayPal',
+    tags: ['payments', 'e-commerce', 'finance'],
+  },
+  {
+    id: 'plaid', name: 'Plaid', category: 'Payments',
+    description: 'Financial data aggregation and banking APIs',
+    url: 'https://api.dashboard.plaid.com/mcp/sse', transport: 'sse', auth: 'oauth', provider: 'Plaid',
+    tags: ['banking', 'finance', 'fintech'],
+  },
+  {
+    id: 'square', name: 'Square', category: 'Payments',
+    description: 'Payment processing and point-of-sale solutions',
+    url: 'https://mcp.squareup.com/sse', transport: 'sse', auth: 'oauth', provider: 'Square',
+    tags: ['payments', 'pos', 'e-commerce'],
+  },
+  {
+    id: 'dodo-payments', name: 'Dodo Payments', category: 'Payments',
+    description: 'Payment processing platform',
+    url: 'https://mcp.dodopayments.com/sse', transport: 'sse', auth: 'apikey', provider: 'Dodo Payments',
+    tags: ['payments', 'processing', 'finance'],
+  },
+  {
+    id: 'mercado-pago', name: 'Mercado Pago', category: 'Payments',
+    description: 'Payment solutions for Latin America',
+    url: 'https://mcp.mercadopago.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Mercado Pago MCP Server',
+    tags: ['payments', 'latam', 'e-commerce'],
+  },
+  {
+    id: 'ramp', name: 'Ramp', category: 'Payments',
+    description: 'Corporate card and spend management platform',
+    url: 'https://ramp-mcp-remote.ramp.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Ramp',
+    tags: ['payments', 'finance', 'expense-management'],
+  },
+  {
+    id: 'close-crm', name: 'Close CRM', category: 'CRM',
+    description: 'Sales CRM for small and medium businesses',
+    url: 'https://mcp.close.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Close',
+    tags: ['crm', 'sales', 'customer-management'],
+  },
+  {
+    id: 'hubspot', name: 'HubSpot', category: 'CRM',
+    description: 'Inbound marketing, sales, and service platform',
+    url: 'https://app.hubspot.com/mcp/v1/http', transport: 'streamable-http', auth: 'apikey', provider: 'HubSpot',
+    tags: ['crm', 'marketing', 'sales', 'automation'],
+  },
+  {
+    id: 'intercom', name: 'Intercom', category: 'Customer Support',
+    description: 'Customer messaging and support platform',
+    url: 'https://mcp.intercom.com/sse', transport: 'sse', auth: 'oauth', provider: 'Intercom',
+    tags: ['support', 'messaging', 'customer-service'],
+  },
+  {
+    id: 'box', name: 'Box', category: 'Document Management',
+    description: 'Cloud content management and file sharing',
+    url: 'https://mcp.box.com', transport: 'streamable-http', auth: 'oauth', provider: 'Box',
+    tags: ['storage', 'documents', 'collaboration'],
+  },
+  {
+    id: 'egnyte', name: 'Egnyte', category: 'Document Management',
+    description: 'Content collaboration and governance platform',
+    url: 'https://mcp-server.egnyte.com/sse', transport: 'sse', auth: 'oauth', provider: 'Egnyte',
+    tags: ['storage', 'documents', 'governance'],
+  },
+  {
+    id: 'cloudinary', name: 'Cloudinary', category: 'Asset Management',
+    description: 'Image and video management platform',
+    url: 'https://asset-management.mcp.cloudinary.com/sse', transport: 'sse', auth: 'oauth', provider: 'Cloudinary',
+    tags: ['media', 'images', 'video', 'cdn'],
+  },
+  {
+    id: 'audioscrape', name: 'Audioscrape', category: 'RAG-as-a-Service',
+    description: 'Audio content extraction and analysis',
+    url: 'https://mcp.audioscrape.com', transport: 'streamable-http', auth: 'oauth', provider: 'Audioscrape',
+    tags: ['audio', 'rag', 'ai', 'content-extraction'],
+  },
+  {
+    id: 'carbon-voice', name: 'Carbon Voice', category: 'Productivity',
+    description: 'Voice-based productivity tools',
+    url: 'https://mcp.carbonvoice.app', transport: 'streamable-http', auth: 'oauth', provider: 'Carbon Voice',
+    tags: ['voice', 'productivity', 'audio'],
+  },
+  {
+    id: 'firefly', name: 'Firefly', category: 'Productivity',
+    description: 'AI meeting assistant and transcription',
+    url: 'https://api.fireflies.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Firefly',
+    tags: ['meetings', 'transcription', 'ai', 'productivity'],
+  },
+  {
+    id: 'listenetic', name: 'Listenetic', category: 'Productivity',
+    description: 'Audio analysis and processing platform',
+    url: 'https://mcp.listenetic.com/v1/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Listenetic',
+    tags: ['audio', 'analysis', 'productivity'],
+  },
+  {
+    id: 'waystation', name: 'WayStation', category: 'Productivity',
+    description: 'AI-powered productivity assistant',
+    url: 'https://waystation.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'WayStation',
+    tags: ['ai', 'productivity', 'assistant'],
+  },
+  {
+    id: 'zine', name: 'Zine', category: 'Memory',
+    description: 'Personal knowledge management system',
+    url: 'https://www.zine.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Zine',
+    tags: ['knowledge', 'memory', 'notes'],
+  },
+  {
+    id: 'mypromind', name: 'myProMind', category: 'Productivity',
+    description: 'AI-powered professional productivity tools',
+    url: 'https://www.mypromind.com/interface/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'myProMind',
+    tags: ['ai', 'productivity', 'professional'],
+  },
+  {
+    id: 'canva', name: 'Canva', category: 'Design',
+    description: 'Graphic design and visual content creation',
+    url: 'https://mcp.canva.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Canva',
+    tags: ['design', 'graphics', 'content-creation'],
+  },
+  {
+    id: 'invideo', name: 'InVideo', category: 'Video Platform',
+    description: 'Video creation and editing platform',
+    url: 'https://mcp.invideo.io/sse', transport: 'sse', auth: 'oauth', provider: 'Invidio',
+    tags: ['video', 'editing', 'content-creation'],
+  },
+  {
+    id: 'vibemarketing', name: 'VibeMarketing', category: 'Marketing',
+    description: 'AI-powered marketing content creation',
+    url: 'https://vibemarketing.ninja/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'VibeMarketing',
+    tags: ['marketing', 'content-creation', 'ai'],
+  },
+  {
+    id: 'webflow', name: 'Webflow', category: 'CMS',
+    description: 'Visual web design and CMS platform',
+    url: 'https://mcp.webflow.com/sse', transport: 'sse', auth: 'oauth', provider: 'Webflow',
+    tags: ['cms', 'web-design', 'no-code'],
+  },
+  {
+    id: 'wix', name: 'Wix', category: 'CMS',
+    description: 'Website builder and hosting platform',
+    url: 'https://mcp.wix.com/sse', transport: 'sse', auth: 'oauth', provider: 'Wix',
+    tags: ['cms', 'website-builder', 'hosting'],
+  },
+  {
+    id: 'dialer', name: 'Dialer', category: 'Outbound Phone Calls',
+    description: 'Automated outbound calling platform',
+    url: 'https://getdialer.app/sse', transport: 'sse', auth: 'oauth', provider: 'Dialer',
+    tags: ['phone', 'calling', 'communication'],
+  },
+  {
+    id: 'thoughtspot', name: 'ThoughtSpot', category: 'Data Analytics',
+    description: 'Search-driven analytics platform',
+    url: 'https://agent.thoughtspot.app/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'ThoughtSpot',
+    tags: ['analytics', 'bi', 'data', 'search'],
+  },
+  {
+    id: 'scorecard', name: 'Scorecard', category: 'AI Evaluation',
+    description: 'AI model evaluation and benchmarking',
+    url: 'https://scorecard-mcp.dare-d5b.workers.dev/sse', transport: 'sse', auth: 'oauth', provider: 'Scorecard',
+    tags: ['ai', 'evaluation', 'testing', 'ml'],
+  },
+  {
+    id: 'morningstar', name: 'MorningStar', category: 'Data Analytics',
+    description: 'Investment research and financial data analytics',
+    url: 'https://mcp.morningstar.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'MorningStar',
+    tags: ['finance', 'analytics', 'investment', 'data'],
+  },
+  {
+    id: 'onecontext', name: 'OneContext', category: 'RAG-as-a-Service',
+    description: 'Retrieval-augmented generation platform',
+    url: 'https://rag-mcp-2.whatsmcp.workers.dev/sse', transport: 'sse', auth: 'oauth', provider: 'OneContext',
+    tags: ['rag', 'ai', 'search', 'retrieval'],
+  },
+  {
+    id: 'needle', name: 'Needle', category: 'RAG-as-a-Service',
+    description: 'Document search and retrieval AI',
+    url: 'https://mcp.needle-ai.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Needle',
+    tags: ['rag', 'ai', 'search', 'documents'],
+  },
+  {
+    id: 'dappier', name: 'Dappier', category: 'RAG-as-a-Service',
+    description: 'Content discovery and recommendation engine',
+    url: 'https://mcp.dappier.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Dappier',
+    tags: ['rag', 'ai', 'content', 'recommendations'],
+  },
+  {
+    id: 'deepwiki', name: 'DeepWiki', category: 'RAG-as-a-Service',
+    description: 'Knowledge base with deep learning integration',
+    url: 'https://mcp.deepwiki.com/mcp', transport: 'streamable-http', auth: 'open', provider: 'Devin',
+    tags: ['rag', 'wiki', 'knowledge', 'ai'],
+  },
+  {
+    id: 'exa-search', name: 'Exa Search', category: 'RAG-as-a-Service',
+    description: 'AI-powered search engine for retrieving web content',
+    url: 'https://mcp.exa.ai/mcp', transport: 'streamable-http', auth: 'open', provider: 'Exa',
+    tags: ['search', 'rag', 'ai', 'web'],
+  },
+  {
+    id: 'cloudflare-docs', name: 'Cloudflare Docs', category: 'Documentation',
+    description: 'Cloudflare documentation and guides',
+    url: 'https://docs.mcp.cloudflare.com/sse', transport: 'sse', auth: 'open', provider: 'Cloudflare',
+    tags: ['documentation', 'cloudflare', 'reference'],
+  },
+  {
+    id: 'astro-docs', name: 'Astro Docs', category: 'Documentation',
+    description: 'Astro framework documentation',
+    url: 'https://mcp.docs.astro.build/mcp', transport: 'streamable-http', auth: 'open', provider: 'Astro',
+    tags: ['documentation', 'astro', 'framework'],
+  },
+  {
+    id: 'gitmcp', name: 'GitMCP', category: 'Software Development',
+    description: 'Git integration for MCP',
+    url: 'https://gitmcp.io/docs', transport: 'streamable-http', auth: 'open', provider: 'GitMCP',
+    tags: ['git', 'version-control', 'development'],
+  },
+  {
+    id: 'simplescraper', name: 'Simplescraper', category: 'Web Scraping',
+    description: 'Visual web scraping platform',
+    url: 'https://mcp.simplescraper.io/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Simplescraper',
+    tags: ['scraping', 'automation', 'web-data'],
+  },
+  {
+    id: 'apify', name: 'Apify', category: 'Web Data Extraction',
+    description: 'Web scraping and automation platform',
+    url: 'https://mcp.apify.com', transport: 'streamable-http', auth: 'apikey', provider: 'Apify',
+    tags: ['scraping', 'automation', 'crawling', 'data-extraction'],
+  },
+  {
+    id: 'zapier', name: 'Zapier', category: 'Automation',
+    description: 'Workflow automation between apps',
+    url: 'https://mcp.zapier.com/api/mcp/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Zapier',
+    tags: ['automation', 'integration', 'workflow', 'no-code'],
+  },
+  {
+    id: 'mercado-libre', name: 'Mercado Libre', category: 'E-Commerce',
+    description: 'Latin America\'s largest e-commerce platform',
+    url: 'https://mcp.mercadolibre.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Mercado Libre MCP Server',
+    tags: ['e-commerce', 'marketplace', 'latam'],
+  },
+  {
+    id: 'stytch', name: 'Stytch', category: 'Authentication',
+    description: 'User authentication and authorization platform',
+    url: 'https://mcp.stytch.dev/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Stytch',
+    tags: ['auth', 'security', 'identity'],
+  },
+  {
+    id: 'zenable', name: 'Zenable', category: 'Security',
+    description: 'Security and compliance automation',
+    url: 'https://mcp.zenable.app/', transport: 'streamable-http', auth: 'oauth', provider: 'Zenable',
+    tags: ['security', 'compliance', 'automation'],
+  },
+  {
+    id: 'find-a-domain', name: 'Find-A-Domain', category: 'Productivity',
+    description: 'Domain name search and availability checker',
+    url: 'https://api.findadomain.dev/mcp', transport: 'streamable-http', auth: 'open', provider: 'Find-A-Domain',
+    tags: ['domains', 'dns', 'search'],
+  },
+  {
+    id: 'hive-intelligence', name: 'Hive Intelligence', category: 'Crypto',
+    description: 'Cryptocurrency and blockchain analytics',
+    url: 'https://hiveintelligence.xyz/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Hive Intelligence',
+    tags: ['crypto', 'blockchain', 'analytics'],
+  },
+  {
+    id: 'octagon', name: 'Octagon', category: 'Market Intelligence',
+    description: 'Market research and competitive intelligence',
+    url: 'https://mcp.octagonagents.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Octagon',
+    tags: ['market-research', 'intelligence', 'analytics'],
+  },
+  {
+    id: 'meta-ads', name: 'Meta Ads by Pipeboard', category: 'Advertising',
+    description: 'Meta (Facebook/Instagram) advertising management',
+    url: 'https://mcp.pipeboard.co/meta-ads-mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Pipeboard',
+    tags: ['advertising', 'marketing', 'social-media', 'meta'],
+  },
+  {
+    id: 'shortio', name: 'Short.io', category: 'Link Shortener',
+    description: 'Custom domain link shortening service',
+    url: 'https://ai-assistant.short.io/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Short.io',
+    tags: ['urls', 'links', 'analytics'],
+  },
+  {
+    id: 'turkish-airlines', name: 'Turkish Airlines', category: 'Airlines',
+    description: 'Flight booking and airline services',
+    url: 'https://mcp.turkishtechlab.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Turkish Technology',
+    tags: ['travel', 'airlines', 'booking'],
+  },
+  {
+    id: 'rube', name: 'Rube', category: 'Other',
+    description: 'Workflow automation and integration platform',
+    url: 'https://rube.app/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Composio',
+    tags: ['automation', 'integration', 'workflow'],
+  },
+  {
+    id: 'indeed', name: 'Indeed', category: 'Recruitment',
+    description: 'Job search and recruitment platform',
+    url: 'https://mcp.indeed.com/claude/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Indeed',
+    tags: ['jobs', 'recruitment', 'hiring'],
+  },
+  {
+    id: 'peek', name: 'Peek', category: 'Travel',
+    description: 'Activities and experiences booking platform',
+    url: 'https://mcp.peek.com', transport: 'streamable-http', auth: 'open', provider: 'Peek',
+    tags: ['travel', 'booking', 'activities'],
+  },
+  {
+    id: 'ferryhopper', name: 'Ferryhopper', category: 'Travel',
+    description: 'Ferry ticket booking and route planning',
+    url: 'https://mcp.ferryhopper.com/mcp', transport: 'streamable-http', auth: 'open', provider: 'Ferryhopper',
+    tags: ['travel', 'ferries', 'booking'],
+  },
+  {
+    id: 'subwayinfo-nyc', name: 'SubwayInfo NYC', category: 'Travel',
+    description: 'New York City subway information and schedules',
+    url: 'https://subwayinfo.nyc/mcp', transport: 'streamable-http', auth: 'open', provider: 'SubwayInfo',
+    tags: ['transit', 'nyc', 'subway'],
+  },
+  {
+    id: 'hugging-face', name: 'Hugging Face', category: 'Software Development',
+    description: 'Machine learning model hub and collaboration platform',
+    url: 'https://hf.co/mcp', transport: 'streamable-http', auth: 'open', provider: 'Hugging Face',
+    tags: ['ai', 'ml', 'models', 'datasets'],
+  },
+  {
+    id: 'semgrep', name: 'Semgrep', category: 'Software Development',
+    description: 'Static code analysis and security scanning',
+    url: 'https://mcp.semgrep.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Semgrep',
+    tags: ['security', 'code-analysis', 'sast', 'linting'],
+  },
+  {
+    id: 'polar-signals', name: 'Polar Signals', category: 'Software Development',
+    description: 'Continuous profiling for performance optimization',
+    url: 'https://api.polarsignals.com/api/mcp/', transport: 'streamable-http', auth: 'apikey', provider: 'Polar Signals',
+    tags: ['performance', 'profiling', 'observability'],
+  },
+  {
+    id: 'remote-mcp', name: 'Remote MCP', category: 'MCP Directory',
+    description: 'Directory and discovery service for MCP servers',
+    url: 'https://mcp.remote-mcp.com', transport: 'streamable-http', auth: 'open', provider: 'Remote MCP',
+    tags: ['directory', 'discovery', 'mcp'],
+  },
+  {
+    id: 'context-awesome', name: 'Context Awesome', category: 'Specialised Dataset',
+    description: 'Curated datasets for context-aware applications',
+    url: 'https://www.context-awesome.com/api/mcp', transport: 'streamable-http', auth: 'open', provider: 'Context Awesome',
+    tags: ['datasets', 'context', 'ai', 'data'],
+  },
+  {
+    id: 'port-io', name: 'Port', category: 'Software Development',
+    description: 'Internal developer portal for microservices',
+    url: 'https://mcp.port.io/v1', transport: 'streamable-http', auth: 'oauth', provider: 'Port',
+    tags: ['developer-portal', 'infrastructure', 'microservices'],
+  },
+  {
+    id: 'openzeppelin-cairo', name: 'OpenZeppelin Cairo Contracts', category: 'Software Development',
+    description: 'Cairo smart contract libraries for StarkNet',
+    url: 'https://mcp.openzeppelin.com/contracts/cairo/mcp', transport: 'streamable-http', auth: 'open', provider: 'OpenZeppelin',
+    tags: ['blockchain', 'smart-contracts', 'cairo', 'starknet'],
+  },
+  {
+    id: 'openzeppelin-solidity', name: 'OpenZeppelin Solidity Contracts', category: 'Software Development',
+    description: 'Secure smart contract libraries for Ethereum',
+    url: 'https://mcp.openzeppelin.com/contracts/solidity/mcp', transport: 'streamable-http', auth: 'open', provider: 'OpenZeppelin',
+    tags: ['blockchain', 'smart-contracts', 'solidity', 'ethereum'],
+  },
+  {
+    id: 'openzeppelin-stellar', name: 'OpenZeppelin Stellar Contracts', category: 'Software Development',
+    description: 'Smart contract libraries for Stellar blockchain',
+    url: 'https://mcp.openzeppelin.com/contracts/stellar/mcp', transport: 'streamable-http', auth: 'open', provider: 'OpenZeppelin',
+    tags: ['blockchain', 'smart-contracts', 'stellar'],
+  },
+  {
+    id: 'openzeppelin-stylus', name: 'OpenZeppelin Stylus Contracts', category: 'Software Development',
+    description: 'Smart contract libraries for Arbitrum Stylus',
+    url: 'https://mcp.openzeppelin.com/contracts/stylus/mcp', transport: 'streamable-http', auth: 'open', provider: 'OpenZeppelin',
+    tags: ['blockchain', 'smart-contracts', 'stylus', 'arbitrum'],
+  },
+  {
+    id: 'aws-knowledge', name: 'AWS Knowledge', category: 'Cloud',
+    description: 'AWS documentation and knowledge base',
+    url: 'https://knowledge-mcp.global.api.aws', transport: 'streamable-http', auth: 'open', provider: 'AWS',
+    tags: ['cloud', 'aws', 'documentation', 'knowledge'],
+  },
+  {
+    id: 'google-maps', name: 'Google Maps', category: 'Maps & Location',
+    description: 'Maps, geocoding, and location services',
+    url: 'https://mapstools.googleapis.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Google',
+    tags: ['maps', 'location', 'geocoding', 'google'],
+  },
+  {
+    id: 'google-bigquery', name: 'Google BigQuery', category: 'Data Analytics',
+    description: 'Serverless data warehouse for analytics',
+    url: 'https://bigquery.googleapis.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Google',
+    tags: ['data', 'analytics', 'warehouse', 'google'],
+  },
+  {
+    id: 'google-gke', name: 'Google GKE', category: 'Cloud',
+    description: 'Google Kubernetes Engine container management',
+    url: 'https://container.googleapis.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Google',
+    tags: ['kubernetes', 'containers', 'cloud', 'google'],
+  },
+  {
+    id: 'google-compute-engine', name: 'Google Compute Engine', category: 'Cloud',
+    description: 'Virtual machine instances on Google Cloud',
+    url: 'https://compute.googleapis.com/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Google',
+    tags: ['compute', 'vm', 'cloud', 'google'],
+  },
+  {
+    id: 'searchapi', name: 'SearchAPI', category: 'Search',
+    description: 'Real-time search engine results API',
+    url: 'https://www.searchapi.io/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'SearchAPI',
+    tags: ['search', 'api', 'data'],
+  },
+  {
+    id: 'ean-search', name: 'EAN-Search', category: 'Product Data',
+    description: 'Barcode and product information lookup',
+    url: 'https://www.ean-search.org/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'EAN-Search.org',
+    tags: ['barcode', 'products', 'ean', 'data'],
+  },
+  {
+    id: 'webzum', name: 'WebZum', category: 'Search',
+    description: 'Business search and local data platform',
+    url: 'https://webzum.com/api/mcp', transport: 'streamable-http', auth: 'open', provider: 'WebZum',
+    tags: ['search', 'business', 'local-data'],
+  },
+  {
+    id: 'zip1', name: 'zip1.io', category: 'Link Shortener',
+    description: 'URL shortener service',
+    url: 'https://zip1.io/mcp', transport: 'streamable-http', auth: 'open', provider: 'zip1.io',
+    tags: ['urls', 'links', 'shortener'],
+  },
+  {
+    id: 'tweetsave', name: 'TweetSave', category: 'Social Media',
+    description: 'Tweet archiving and saving service',
+    url: 'https://mcp.tweetsave.org/sse', transport: 'sse', auth: 'open', provider: 'TweetSave',
+    tags: ['twitter', 'social-media', 'archive'],
+  },
+  {
+    id: 'parallel-task', name: 'Parallel Task', category: 'AI Services',
+    description: 'AI-powered task execution and automation',
+    url: 'https://task-mcp.parallel.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Parallel',
+    tags: ['ai', 'tasks', 'automation'],
+  },
+  {
+    id: 'parallel-search', name: 'Parallel Search', category: 'AI Services',
+    description: 'AI-powered search and information retrieval',
+    url: 'https://search-mcp.parallel.ai/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Parallel',
+    tags: ['ai', 'search', 'retrieval'],
+  },
+  {
+    id: 'metro-mcp', name: 'Metro MCP', category: 'Software Development',
+    description: 'Metro bundler integration for React Native',
+    url: 'https://metro-mcp.anuragd.me/sse', transport: 'sse', auth: 'oauth', provider: 'Metro MCP',
+    tags: ['react-native', 'metro', 'bundler', 'development'],
+  },
+  {
+    id: 'attio', name: 'Attio', category: 'CRM',
+    description: 'Next-generation CRM with flexible data modeling and real-time collaboration',
+    url: 'https://mcp.attio.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Attio',
+    tags: ['crm', 'sales', 'customer-management'],
+  },
+];
+
+/** Distinct categories present in the catalog, for the browse filter. */
+export const CATALOG_CATEGORIES: string[] = Array.from(new Set(MCP_SERVER_CATALOG.map((s) => s.category))).sort();
