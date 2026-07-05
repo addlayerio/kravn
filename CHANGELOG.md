@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔒 **Model governance — allowlist which LLM models may be used.** Settings → *Allowed LLM models* restricts
+  the chat to an approved set (exact ids or `*` globs like `claude-*`; empty = any). A conversation on a
+  disallowed model is refused server-side. (MCP-upstream egress is already governed by the SSRF policy, and
+  which LLM providers exist is admin-configured.)
 - 🔒 **Deeper PII detection.** The PII Tokenizer now also catches **IBANs** (mod-97), **Argentina CBU**
   bank accounts and **CUIT/CUIL** tax ids — all **checksum-validated** to limit false positives — on top of
   emails, IPs, credit cards and phones. Each is replaced with a stable token so the model never sees the

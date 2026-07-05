@@ -165,7 +165,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
     .catch((err) => log.error({ err }, 'platform-admin reconciliation failed (admins keep console access via role)'));
   const sso = new SsoService(repos, encryptor, jwt, settings, log, sharedStore);
   const oauth = new OAuthService(repos, jwt, settings);
-  const chat = new ChatService(repos, encryptor, registry, log, plugins);
+  const chat = new ChatService(repos, encryptor, registry, log, plugins, settings);
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 

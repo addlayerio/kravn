@@ -6,6 +6,7 @@ import { withSpan } from '../otel.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
 import type { PluginManager } from '../plugins/manager.js';
+import type { SettingsService } from '../settings/settings.service.js';
 import { CODE_INTERPRETER_ID, INTERPRETER_TOOL_NAME } from '../plugins/native.js';
 import type { AuthUser } from '../auth/auth.service.js';
 import type { Logger } from 'pino';
@@ -48,7 +49,22 @@ export class ChatService {
     private registry: RegistryService,
     private log: Logger,
     private plugins: PluginManager,
+    private settings: SettingsService,
   ) {}
+
+  /** Model governance: reject a model that isn't on the operator's allowlist (empty = allow any). Supports
+   *  exact ids and simple `*` globs (e.g. `claude-*`). */
+  private assertModelAllowed(model: string): void {
+    const allowed = this.settings.get().security.allowedModels ?? [];
+    if (!allowed.length) return;
+    const ok = allowed.some((pat) => {
+      if (pat === model) return true;
+      if (!pat.includes('*')) return false;
+      const re = new RegExp('^' + pat.split('*').map((p) => p.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('.*') + '$');
+      return re.test(model);
+    });
+    if (!ok) throw new Error(`Model "${model}" is not allowed by policy. Allowed: ${allowed.join(', ')}.`);
+  }
 
   /** Send a user message and produce the assistant reply (running tools when the model asks). */
   async send(actor: AuthUser, conversationId: string, content: string, attachmentIds: string[] = []): Promise<ChatMessage> {
@@ -57,6 +73,7 @@ export class ChatService {
 
     const provider = await this.repos.llmProviders.getById(conv.providerId);
     if (!provider) throw new Error('The conversation has no valid LLM provider.');
+    this.assertModelAllowed(conv.model); // model-governance allowlist
     const key = this.encryptor.decrypt(await this.repos.llmProviders.getApiKeyEncrypted(conv.providerId));
 
     const userMsg = await this.repos.chat.addMessage(newId(), conversationId, 'user', content);

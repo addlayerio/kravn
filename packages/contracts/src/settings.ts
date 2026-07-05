@@ -46,6 +46,9 @@ export const appSettingsSchema = z
         trustedOrigins: z.array(z.string()).default([]),
         rateLimitEnabled: z.boolean().default(true),
         rateLimitPerMinute: z.number().int().positive().max(100_000).default(600),
+        /** Model governance: allowlist of LLM model ids the chat may use (exact or `*` glob, e.g.
+         *  `claude-*`). Empty = allow any model on a configured provider. */
+        allowedModels: z.array(z.string()).default([]),
       })
       .default({}),
 
@@ -181,6 +184,7 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'security.trustedOrigins', label: 'Trusted origins', control: 'string[]' },
       { path: 'security.rateLimitEnabled', label: 'Rate limiting', control: 'boolean' },
       { path: 'security.rateLimitPerMinute', label: 'Requests / minute', control: 'number' },
+      { path: 'security.allowedModels', label: 'Allowed LLM models (empty = any; * glob ok)', control: 'string[]' },
     ],
   },
   {
