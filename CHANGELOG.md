@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.66] — 2026-07-05
 
 - 📣 **Integration setup guides now render as formatted docs, not a wall of text.** In the catalog detail
   view and the built-in integration config, the "Getting set up" / setup notes and field help are rendered

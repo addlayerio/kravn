@@ -1056,6 +1056,23 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   (filter-dependent server count; auto-expand not firing when editing an existing endpoint due to an
   intervening `await`). typecheck + build green; data path validated by booting the gateway.
 
+## ✅ PASS 60 — Grouped browse, web integrations gallery, markdown docs, plugin-edit fixes (v0.1.66)
+- **Grouped browse** (Tools/Resources/Prompts): reusable read-only `GroupedList.vue` (generic + `#row` slot)
+  groups each list by origin server (logo + search + collapse). ToolsView/ResourcesView/PromptsView refactored;
+  ResourcesView gained the `/api/servers` fetch. Reviewed (2 dims × verifier): no bugs.
+- **Public integrations gallery** on kravn.ai — generated at build time from `@kravn/contracts` (VitePress
+  data loader `integrations.data.ts` + `IntegrationsGallery.vue`): landing featured strip + `/integrations`
+  page (search/filter/trademark disclaimer). **Brand icons moved to `packages/contracts/src/brand-icons.ts`**
+  (single source for operator + website); added `NATIVE_INTEGRATIONS`. AGENTS.md #7 extended to require a
+  website entry for new integrations.
+- **Markdown docs:** catalog/plugin `setup`/`description`/field-`help` render as Markdown (`lib/markdown.ts`
+  markdown-it `html:false` + `MarkdownText.vue`); rewrote CATALOG_SETUP + Odoo/SharePoint/Teams setups with
+  structure. XSS validated (raw HTML escaped, `javascript:` blocked) — SECURITY.md v0.1.66 row.
+- **Plugin fixes:** editing a plugin-backed server opens its **PluginConfigModal** (was the generic server
+  form); plugin server description "Provided by plugin" → **"Provided by Kravn"** (self-heals on reconcile);
+  Odoo.sh database-name guidance in the field help + setup + public Plugins page. **Mercado Libre** logo
+  (Mercado Pago glyph in yellow via a `DERIVED` entry).
+
 ### Deferred to later phases (intentional, not missing)
 Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
