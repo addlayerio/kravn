@@ -52,9 +52,9 @@ const items: NavItem[] = [
   // Main — the MCP data plane: connect sources → see the catalog → publish endpoints.
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, perm: null, section: 'main', exact: true },
   { to: '/servers', label: 'MCP Servers', icon: Server, perm: 'servers.read', section: 'main', tour: 'servers' },
-  { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main' },
-  { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main' },
-  { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main' },
+  { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main', tour: 'tools' },
+  { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main', tour: 'resources' },
+  { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main', tour: 'prompts' },
   { to: '/mcp-endpoints', label: 'MCP Endpoints', icon: Layers, perm: 'endpoints.read', section: 'main', tour: 'endpoints' },
   // Administration — identity → processing → platform.
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
@@ -132,7 +132,7 @@ onMounted(() => {
           <div class="u-name">{{ auth.user?.name || auth.user?.email }}</div>
           <small class="muted">{{ auth.user?.role }}</small>
         </div>
-        <button class="ghost-btn" @click="startTour(router)">
+        <button class="ghost-btn" @click="startTour(router, route.path)">
           <Compass :size="16" />
           <span>Take a tour</span>
         </button>

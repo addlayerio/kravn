@@ -986,6 +986,16 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   unconfigured / localhost blocked / unknown tool). Full runtime against a live Odoo not exercised here (no
   instance) — verify on deploy. Gateway build green.
 
+## ✅ PASS 55 — Multi-page navigating tour + per-page tours (v0.1.61)
+- **The navigation fix.** Rebuilt `lib/tour.ts` around a controlled runner: overriding driver.js `onNextClick`/
+  `onPrevClick`, each advance does `router.push(step.route)` → `waitFor(step.element)` → `moveTo(i)`, so the
+  page actually changes and the target is mounted before it's spotlighted (the previous version highlighted
+  stale/absent elements). Overview walks every page with richer copy (MCP servers, catalog, tools, resources,
+  prompts + creating a custom one, endpoints, teams, governance, settings).
+- **Per-page tours.** `startTour(router, path)` runs a page-scoped plan when one exists (`/servers`,
+  `/prompts`) else the overview; the sidebar button passes the current route. Added `data-tour` anchors
+  (nav tools/resources/prompts, prompt-new). Operator build green.
+
 ### Deferred to later phases (intentional, not missing)
 Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

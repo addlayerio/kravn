@@ -132,7 +132,7 @@ async function remove(p: LocalPrompt) {
 <template>
   <div class="topbar">
     <h1>Prompts</h1>
-    <button v-if="auth.can('registry.write')" class="btn primary" @click="openCreate">+ New prompt</button>
+    <button v-if="auth.can('registry.write')" data-tour="prompt-new" class="btn primary" @click="openCreate">+ New prompt</button>
   </div>
 
   <div class="card">

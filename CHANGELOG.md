@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.61] — 2026-07-05
+
+- 📣 **The tour now changes pages as it goes** — it navigates to each section and waits for it to load before
+  spotlighting, so the highlight always lands on what's on screen (the earlier version spotlighted the wrong
+  spot). It's also more complete: it explains MCP servers, the Catalog, tools, resources, prompts (incl.
+  creating a custom one), endpoints, access control, governance and settings.
+- **Per-page tours.** Click **Take a tour** on a specific page (e.g. MCP Servers or Prompts) and you get a
+  focused tour of just that page; from the Dashboard you get the full overview.
+
 ## [0.1.60] — 2026-07-05
 
 - 📣 🧩 **Odoo integration (built-in).** A new native Odoo plugin talks to your Odoo (CRM & ERP) over its
@@ -238,6 +247,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.61]: https://github.com/addlayerio/kravn/releases/tag/v0.1.61
 [0.1.60]: https://github.com/addlayerio/kravn/releases/tag/v0.1.60
 [0.1.59]: https://github.com/addlayerio/kravn/releases/tag/v0.1.59
 [0.1.58]: https://github.com/addlayerio/kravn/releases/tag/v0.1.58
