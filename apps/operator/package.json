@@ -14,6 +14,7 @@
     "@fontsource/jetbrains-mono": "^5.1.2",
     "@kravn/contracts": "workspace:*",
     "@kravn/ui": "workspace:*",
+    "driver.js": "^1.6.0",
     "echarts": "^5.5.1",
     "lucide-vue-next": "^0.469.0",
     "pinia": "^2.3.0",

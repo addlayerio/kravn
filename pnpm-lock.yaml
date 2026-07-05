@@ -175,6 +175,9 @@ importers:
       '@kravn/ui':
         specifier: workspace:*
         version: link:../../packages/ui
+      driver.js:
+        specifier: ^1.6.0
+        version: 1.6.0
       echarts:
         specifier: ^5.5.1
         version: 5.6.0
@@ -1764,6 +1767,9 @@ packages:
   dotenv@16.4.7:
     resolution: {integrity: sha512-47qPchRCykZC03FhkYAhrvwU4xDBFIj1QPqaarj6mdM/hgUzfPHcpkHJOn3mJAufFeeAxAzeGsr5X0M4k6fLZQ==}
     engines: {node: '>=12'}
+
+  driver.js@1.6.0:
+    resolution: {integrity: sha512-gryo9QS7AZhz8J0bmdf42dwaTzcd1BgSJLnaSM7cPJbu8bTW8wIEuiGDy4MoCvB4Sr8wA9g5o2G9EFNVYZGeVQ==}
 
   duck@0.1.12:
     resolution: {integrity: sha512-wkctla1O6VfP89gQ+J/yDesM0S7B7XLXjKGzXxMDVFg7uEn706niAtyYovKbyq1oT9YwDcly721/iUWoc8MVRg==}
@@ -4775,6 +4781,8 @@ snapshots:
       dotenv: 16.4.7
 
   dotenv@16.4.7: {}
+
+  driver.js@1.6.0: {}
 
   duck@0.1.12:
     dependencies:

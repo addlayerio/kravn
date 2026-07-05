@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted } from 'vue';
 import { RouterLink, RouterView, useRoute, useRouter } from 'vue-router';
 import {
   LayoutDashboard,
@@ -24,7 +24,7 @@ import {
   Compass,
 } from 'lucide-vue-next';
 import RavenLogo from './RavenLogo.vue';
-import TourModal from './TourModal.vue';
+import { startTour, shouldAutoTour } from '../lib/tour';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import { useThemeStore } from '../stores/theme';
@@ -45,24 +45,25 @@ interface NavItem {
   perm: string | null;
   section: 'main' | 'admin';
   exact?: boolean;
+  tour?: string; // anchor id for the guided tour
 }
 
 const items: NavItem[] = [
   // Main — the MCP data plane: connect sources → see the catalog → publish endpoints.
   { to: '/', label: 'Dashboard', icon: LayoutDashboard, perm: null, section: 'main', exact: true },
-  { to: '/servers', label: 'MCP Servers', icon: Server, perm: 'servers.read', section: 'main' },
+  { to: '/servers', label: 'MCP Servers', icon: Server, perm: 'servers.read', section: 'main', tour: 'servers' },
   { to: '/tools', label: 'Tools', icon: Wrench, perm: 'registry.read', section: 'main' },
   { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main' },
   { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main' },
-  { to: '/mcp-endpoints', label: 'MCP Endpoints', icon: Layers, perm: 'endpoints.read', section: 'main' },
+  { to: '/mcp-endpoints', label: 'MCP Endpoints', icon: Layers, perm: 'endpoints.read', section: 'main', tour: 'endpoints' },
   // Administration — identity → processing → platform.
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
-  { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin' },
+  { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin', tour: 'teams' },
   { to: '/authentication', label: 'Authentication', icon: ShieldCheck, perm: 'settings.read', section: 'admin' },
-  { to: '/plugins', label: 'Plugins', icon: Puzzle, perm: 'settings.read', section: 'admin' },
+  { to: '/plugins', label: 'Plugins', icon: Puzzle, perm: 'settings.read', section: 'admin', tour: 'plugins' },
   { to: '/pipelines', label: 'Pipelines', icon: Workflow, perm: 'settings.read', section: 'admin' },
   { to: '/llm-models', label: 'LLM Models', icon: Cpu, perm: 'settings.read', section: 'admin' },
-  { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.read', section: 'admin' },
+  { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.read', section: 'admin', tour: 'settings' },
   { to: '/logs', label: 'Logs', icon: ScrollText, perm: 'logs.read', section: 'admin' },
 ];
 
@@ -79,14 +80,10 @@ async function logout() {
   router.push('/login');
 }
 
-// First-run product tour (once per browser); relaunchable from the sidebar.
-const showTour = ref(false);
+// First-run guided tour (once per browser); relaunchable from the sidebar. The short delay lets the sidebar
+// finish rendering so driver.js can anchor to the nav items.
 onMounted(() => {
-  try {
-    if (!localStorage.getItem('kravn.tour.v1.seen')) showTour.value = true;
-  } catch {
-    /* private mode: skip auto-open */
-  }
+  if (shouldAutoTour()) window.setTimeout(() => startTour(router), 500);
 });
 </script>
 
@@ -106,6 +103,7 @@ onMounted(() => {
           class="nav-link"
           :class="{ active: isActive(i) }"
           :title="collapsed ? i.label : undefined"
+          :data-tour="i.tour"
         >
           <component :is="i.icon" :size="18" :stroke-width="2" />
           <span>{{ i.label }}</span>
@@ -121,6 +119,7 @@ onMounted(() => {
             class="nav-link"
             :class="{ active: isActive(i) }"
             :title="collapsed ? i.label : undefined"
+            :data-tour="i.tour"
           >
             <component :is="i.icon" :size="18" :stroke-width="2" />
             <span>{{ i.label }}</span>
@@ -133,7 +132,7 @@ onMounted(() => {
           <div class="u-name">{{ auth.user?.name || auth.user?.email }}</div>
           <small class="muted">{{ auth.user?.role }}</small>
         </div>
-        <button class="ghost-btn" @click="showTour = true">
+        <button class="ghost-btn" @click="startTour(router)">
           <Compass :size="16" />
           <span>Take a tour</span>
         </button>
@@ -160,7 +159,6 @@ onMounted(() => {
       </main>
     </div>
 
-    <TourModal v-if="showTour" @close="showTour = false" />
   </div>
 </template>
 

@@ -85,7 +85,7 @@ const catalogItems = computed<CatalogItem[]>(() => {
     if (q && !(s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || (s.tags ?? []).some((t) => t.includes(q)))) continue;
     items.push({ kind: 'remote', key: `r:${s.id}`, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url) });
   }
-  return items;
+  return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
 
 const detailItem = ref<CatalogItem | null>(null);

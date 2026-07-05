@@ -928,6 +928,16 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   button in the sidebar footer relaunches it anytime. Mounted in `AppShell`. Theme-aware.
 - Pure UI, no backend change. Operator build green.
 
+## ✅ PASS 50 — Interactive tour (driver.js) + alphabetical Catalog (v0.1.56)
+- **Interactive tour.** Replaced the centered card tour with an element-anchored **driver.js** tour
+  (`lib/tour.ts`) that spotlights the real sidebar controls (`data-tour="…"` on the nav) with a popover per
+  step, reinforces the Catalog ⭐, and routes to `/servers` on finish. Steps whose element isn't visible
+  (permission-limited users) are dropped so it works for everyone. First-run once (localStorage) +
+  relaunchable from **Take a tour**. CSP-safe (bundled JS; inline positioning styles allowed by
+  `style-src 'unsafe-inline'`). Added `driver.js@^1.6` to the operator.
+- **Catalog alphabetical.** `catalogItems` is sorted by name (`localeCompare`, case-insensitive).
+- Operator build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

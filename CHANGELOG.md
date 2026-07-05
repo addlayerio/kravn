@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.56] — 2026-07-05
+
+- 📣 **The product tour is now interactive.** Instead of a static card, the tour **spotlights the real
+  controls** in the sidebar and walks you through them one by one — highlighting the Catalog, endpoints,
+  access control, governance and settings — then drops you in the Catalog to get started. Relaunch it any
+  time from **Take a tour**.
+- **Catalog sorted alphabetically** so integrations are easy to scan.
+
 ## [0.1.55] — 2026-07-05
 
 - 📣 **Guided product tour.** A friendly first-run walkthrough now introduces the console — what each area
@@ -196,6 +204,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.56]: https://github.com/addlayerio/kravn/releases/tag/v0.1.56
 [0.1.55]: https://github.com/addlayerio/kravn/releases/tag/v0.1.55
 [0.1.54]: https://github.com/addlayerio/kravn/releases/tag/v0.1.54
 [0.1.53]: https://github.com/addlayerio/kravn/releases/tag/v0.1.53
