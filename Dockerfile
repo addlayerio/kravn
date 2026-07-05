@@ -24,8 +24,12 @@ RUN pnpm --filter @kravn/contracts --filter @kravn/plugin-sdk --filter @kravn/op
 
 # ── Runtime stage ─────────────────────────────────────────────────────────────
 FROM node:22-bookworm-slim AS runtime
+# The release version (git tag / chart appVersion) is injected here so the app reports it (dashboard,
+# MCP serverInfo) instead of a hardcoded constant. Defaults to a dev marker for local `docker build`.
+ARG VERSION=0.1.0-dev
 ENV NODE_ENV=production \
     KRAVN_DATA_DIR=/data \
+    KRAVN_VERSION=${VERSION} \
     PORT=8080
 WORKDIR /app
 RUN npm install -g pnpm@9.15.0

@@ -2,7 +2,8 @@ import { Client } from '@modelcontextprotocol/sdk/client/index.js';
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js';
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
-import { KRAVN_VERSION, type UpstreamServer } from '@kravn/contracts';
+import { type UpstreamServer } from '@kravn/contracts';
+import { APP_VERSION } from '../version.js';
 import type { McpCallContext } from '@kravn/plugin-sdk';
 import type { Logger } from 'pino';
 import type { PluginManager } from '../plugins/manager.js';
@@ -125,7 +126,7 @@ export class UpstreamManager {
       return shim;
     }
 
-    const client = new Client({ name: 'kravn-gateway', version: KRAVN_VERSION }, { capabilities: {} });
+    const client = new Client({ name: 'kravn-gateway', version: APP_VERSION }, { capabilities: {} });
     const headers = { ...server.headers, ...authHeaders(server.authType, authPlain) };
 
     let transport;

@@ -57,6 +57,8 @@ jobs:
           context: .
           file: ./Dockerfile
           push: true
+          build-args: |
+            VERSION=${{ steps.vars.outputs.version }}
           tags: |
             ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
             ghcr.io/${{ steps.vars.outputs.owner }}/kravn:latest

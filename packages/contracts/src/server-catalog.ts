@@ -654,6 +654,12 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
     url: 'https://app.bluedothq.com/api/v1/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Bluedot',
     tags: ['meetings', 'transcription', 'notetaker', 'productivity'],
   },
+  {
+    id: 'read-ai', name: 'Read AI', category: 'Productivity',
+    description: 'AI meeting copilot — meeting reports, transcripts, summaries and action items',
+    url: 'https://api.read.ai/mcp/', transport: 'streamable-http', auth: 'oauth', provider: 'Read AI',
+    tags: ['meetings', 'transcription', 'notetaker', 'productivity'],
+  },
 ];
 
 /** Distinct categories present in the catalog, for the browse filter. */
@@ -676,6 +682,12 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
       'Click **Connect** and sign in with the Bluedot account you want the AI to access — the emails need not match.\n\n' +
       'No token to manage: the AI can only read what that account already has permission to see (meeting transcripts and metadata).\n\n' +
       'For an org-wide setup, an admin connects it from `Bluedot → Personal Settings → Connectors`.',
+  },
+  'read-ai': {
+    docsUrl: 'https://support.read.ai/hc/en-us/articles/49379985941523-Read-AI-API-and-MCP-Overview',
+    setup:
+      'Click **Connect** and sign in with your Read AI account. The AI can then read your **meeting reports, ' +
+      'transcripts, summaries and action items** — following your Read AI account permissions. No token to manage.',
   },
   github: {
     docsUrl: 'https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app',

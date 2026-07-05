@@ -1,5 +1,5 @@
 import type { Tool, Resource, Prompt, LocalPrompt } from '@kravn/contracts';
-import { KRAVN_VERSION } from '@kravn/contracts';
+import { APP_VERSION } from '../version.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from './registry.service.js';
 import type { SettingsService } from '../settings/settings.service.js';
@@ -126,7 +126,7 @@ export class DownstreamMcp {
           return ok({
             protocolVersion: typeof requested === 'string' ? requested : DEFAULT_PROTOCOL_VERSION,
             capabilities: { tools: {}, resources: {}, prompts: {} },
-            serverInfo: { name: `kravn:${scope.label}`, version: KRAVN_VERSION },
+            serverInfo: { name: `kravn:${scope.label}`, version: APP_VERSION },
           });
         }
         case 'notifications/initialized':

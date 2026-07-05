@@ -1,6 +1,7 @@
 import type { FastifyInstance } from 'fastify';
-import { KRAVN_VERSION, type PlatformOverview } from '@kravn/contracts';
+import { type PlatformOverview } from '@kravn/contracts';
 import type { Services } from '../services.js';
+import { APP_VERSION } from '../version.js';
 
 /**
  * Aggregated platform state for the dashboard "Architecture Flow" panel — one call instead of five.
@@ -37,7 +38,7 @@ export function overviewRoutes(app: FastifyInstance, s: Services): void {
 
     return {
       instanceName: s.settings.get().general.instanceName,
-      version: KRAVN_VERSION,
+      version: APP_VERSION,
       mcpEndpoints: { total: vservers.length, active: vservers.filter((v) => v.enabled).length },
       plugins: {
         total: plugins.length,

@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Read AI added to the catalog.** Connect Read AI (meeting copilot) with one-click OAuth to reach your
+  meeting reports, transcripts, summaries and action items.
+- 🐛 **The dashboard shows the real running version.** It always read `0.1.0` (a hardcoded constant); the
+  actual release version is now injected into the image at build time, so the console reflects the version
+  you're running. (Takes effect from the next released image.)
+
 ## [0.1.68] — 2026-07-05
 
 - 🧩 **New built-in integration: Zoho CRM.** Connect Zoho CRM (server-to-server OAuth 2.0 — a Self Client +

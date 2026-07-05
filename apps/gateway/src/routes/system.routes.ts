@@ -1,8 +1,9 @@
 import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
-import { KRAVN_VERSION, type BootstrapInfo } from '@kravn/contracts';
+import { type BootstrapInfo } from '@kravn/contracts';
 import type { Services } from '../services.js';
 import { bearerToken, authenticateToken } from '../auth/plugin.js';
+import { APP_VERSION } from '../version.js';
 
 function tokenMatches(a: string, b: string): boolean {
   const ab = Buffer.from(a);
@@ -16,7 +17,7 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
     const settings = s.settings.get();
     return {
       instanceName: settings.general.instanceName,
-      version: KRAVN_VERSION,
+      version: APP_VERSION,
       setupRequired: await s.auth.setupRequired(),
       publicRegistration: settings.auth.publicRegistrationEnabled,
       passwordLoginEnabled: settings.auth.passwordLoginEnabled,
