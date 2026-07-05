@@ -1,9 +1,14 @@
 # Why Kravn
 
-**Kravn is a self-hostable MCP gateway, registry and proxy, built for the enterprise.** It brings the
+**Kravn is a self-hostable MCP gateway, registry and proxy for any company.** It brings the
 [Model Context Protocol](https://modelcontextprotocol.io) to your organization on your own
 infrastructure — integrated with your identity stack, governed by your own policies, with no data ever
 leaving your perimeter.
+
+It's **general-purpose** — any team can run it. What sets it apart is a **compliance-grade** posture:
+strong governance, identity and data controls by default, so even a regulated bank can adopt it without
+risk of information leaving the building. The compliance focus is what makes Kravn *safe to install
+anywhere* — not a niche for compliance teams.
 
 ## The problem
 

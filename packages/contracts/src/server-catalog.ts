@@ -594,6 +594,60 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
     url: 'https://mcp.attio.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Attio',
     tags: ['crm', 'sales', 'customer-management'],
   },
+  {
+    id: 'github', name: 'GitHub', category: 'Software Development',
+    description: 'Version control and collaborative software development',
+    url: 'https://api.githubcopilot.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'GitHub',
+    tags: ['development', 'git', 'version-control', 'collaboration'],
+  },
+  {
+    id: 'atlassian', name: 'Atlassian', category: 'Software Development',
+    description: 'Suite of development and collaboration tools',
+    url: 'https://mcp.atlassian.com/v1/sse', transport: 'sse', auth: 'oauth', provider: 'Atlassian',
+    tags: ['development', 'jira', 'confluence', 'bitbucket'],
+  },
+  {
+    id: 'stack-overflow', name: 'Stack Overflow', category: 'Software Development',
+    description: 'Developer Q&A platform — search and access programming knowledge',
+    url: 'https://mcp.stackoverflow.com', transport: 'streamable-http', auth: 'oauth', provider: 'Stack Overflow',
+    tags: ['development', 'q-and-a', 'knowledge'],
+  },
+  {
+    id: 'buildkite', name: 'Buildkite', category: 'Software Development',
+    description: 'Continuous integration and deployment platform',
+    url: 'https://mcp.buildkite.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Buildkite',
+    tags: ['ci-cd', 'automation', 'development'],
+  },
+  {
+    id: 'telnyx', name: 'Telnyx', category: 'Communication',
+    description: 'Cloud communications platform — voice, messaging, and networking APIs',
+    url: 'https://api.telnyx.com/v2/mcp', transport: 'streamable-http', auth: 'apikey', provider: 'Telnyx',
+    tags: ['communication', 'voice', 'messaging', 'telecom'],
+  },
+  {
+    id: 'microsoft-learn-docs', name: 'Microsoft Learn Docs', category: 'Documentation',
+    description: 'Real-time semantic search across Microsoft Learn, Azure, Microsoft 365, .NET, and C# documentation — always up to date with the latest releases and best practices',
+    url: 'https://learn.microsoft.com/api/mcp', transport: 'streamable-http', auth: 'open', provider: 'Microsoft',
+    tags: ['documentation', 'microsoft', 'azure', 'dotnet', 'csharp'],
+  },
+  {
+    id: 'power-bi', name: 'Power BI', category: 'Data Analytics',
+    description: 'Query Power BI semantic models — AI agents connect to hosted analytics without running a local server',
+    url: 'https://api.fabric.microsoft.com/v1/mcp/powerbi', transport: 'streamable-http', auth: 'oauth', provider: 'Microsoft',
+    tags: ['analytics', 'bi', 'power-bi', 'fabric', 'microsoft'],
+  },
+  {
+    id: 'microsoft-foundry', name: 'Microsoft Foundry', category: 'AI Services',
+    description: 'Unified toolkit for Azure AI — models, knowledge, evaluation, and more through a single MCP endpoint',
+    url: 'https://mcp.ai.azure.com', transport: 'streamable-http', auth: 'oauth', provider: 'Microsoft',
+    tags: ['ai', 'azure', 'models', 'evaluation', 'microsoft'],
+  },
+  {
+    id: 'javadocs', name: 'Javadocs', category: 'Documentation',
+    description: 'Java API documentation search and reference',
+    url: 'https://www.javadocs.dev/mcp', transport: 'streamable-http', auth: 'open', provider: 'Javadocs',
+    tags: ['documentation', 'java', 'api-reference'],
+  },
 ];
 
 /** Distinct categories present in the catalog, for the browse filter. */

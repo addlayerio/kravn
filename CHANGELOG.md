@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.52] — 2026-07-05
+
+- 🧩 **More catalog integrations.** Added 9 general-purpose servers to the integrations catalog — GitHub,
+  Atlassian, Stack Overflow, Buildkite, Telnyx, Microsoft Learn, Power BI, Microsoft Foundry and Javadocs —
+  bringing it to 104.
+- **Sharper positioning.** Clarified on the site that Kravn is a *general-purpose* MCP gateway for any
+  company; its compliance-grade governance is what makes it safe for a regulated bank to run — not a niche
+  compliance tool.
+
 ## [0.1.51] — 2026-07-05
 
 - 📣 🧩 **Integrations catalog — connect 95+ MCP servers in a click.** A new **Catalog** tab on the MCP
@@ -163,6 +172,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.52]: https://github.com/addlayerio/kravn/releases/tag/v0.1.52
 [0.1.51]: https://github.com/addlayerio/kravn/releases/tag/v0.1.51
 [0.1.50]: https://github.com/addlayerio/kravn/releases/tag/v0.1.50
 [0.1.49]: https://github.com/addlayerio/kravn/releases/tag/v0.1.49
