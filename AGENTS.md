@@ -89,6 +89,19 @@ auto-unsubscribing on unmount. To add a new live signal: add an event name to `K
 the mutation site, and handle it in the view's `useEventStream` callback. Do NOT introduce `setInterval`
 polling of `/api/*` for freshness.
 
+### 7. Every integration ships a brand icon
+Each catalog server and native `mcp-server` plugin shows a **brand logo** in the operator so users can
+tell products apart at a glance (unified catalog cards, detail modal, installed list — and reuse it
+anywhere a tool's origin is shown). Logos are baked from **simple-icons** (a build-time devDependency)
+into `apps/operator/src/lib/brand-icons.ts` as `{ path, hex }` per integration id — nothing imports
+simple-icons at runtime, and the operator CSP blocks remote images so icons must stay inlined/baked.
+`IntegrationIcon.vue` renders the baked logo on a light tile, or a deterministic coloured **monogram**
+fallback for ids with no brand logo. **When you add a new integration** (a `MCP_SERVER_CATALOG` entry or
+a native mcp-server plugin), regenerate the map: `node apps/operator/scripts/gen-brand-icons.mjs`, then
+rebuild the operator. If the logo doesn't match (id doesn't normalise to the simple-icons slug), add an
+entry to `OVERRIDE` (catalog) or `NATIVE` (plugin) in that script; if simple-icons genuinely lacks the
+brand (niche/removed for trademark), the monogram fallback is expected — leave it.
+
 ## Development, validation & release workflow
 
 This is the loop every change goes through. The **durable record** of what shipped and why lives in **git

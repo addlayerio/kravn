@@ -7,6 +7,13 @@ import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import { useEventStream } from '../lib/events';
 import PluginConfigModal from '../components/PluginConfigModal.vue';
+import IntegrationIcon from '../components/IntegrationIcon.vue';
+
+/** Best-effort brand id for an installed server: match its endpoint URL to a catalog entry. */
+const catalogIdByUrl = new Map(MCP_SERVER_CATALOG.map((s) => [s.url, s.id]));
+function serverIconId(s: UpstreamServer): string | undefined {
+  return (s.url && catalogIdByUrl.get(s.url)) || undefined;
+}
 
 const auth = useAuthStore();
 const toast = useToastStore();
@@ -96,6 +103,7 @@ const allCategories = computed(() => {
 interface CatalogItem {
   kind: 'remote' | 'native';
   key: string;
+  iconId: string;
   name: string;
   category: string;
   description: string;
@@ -126,13 +134,13 @@ const catalogItems = computed<CatalogItem[]>(() => {
   for (const p of nativeIntegrations.value) {
     if (cat && cat !== NATIVE_CATEGORY) continue;
     if (q && !`${p.name} ${p.description} ${p.id}`.toLowerCase().includes(q)) continue;
-    items.push({ kind: 'native', key: `n:${p.id}`, name: p.name, category: NATIVE_CATEGORY, description: p.description, plugin: p });
+    items.push({ kind: 'native', key: `n:${p.id}`, iconId: p.id, name: p.name, category: NATIVE_CATEGORY, description: p.description, plugin: p });
   }
   for (const s of MCP_SERVER_CATALOG) {
     if (cat && s.category !== cat) continue;
     if (q && !(s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || (s.tags ?? []).some((t) => t.includes(q)))) continue;
     const d = catalogDetail(s.id);
-    items.push({ kind: 'remote', key: `r:${s.id}`, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url), setup: d.setup, docsUrl: d.docsUrl });
+    items.push({ kind: 'remote', key: `r:${s.id}`, iconId: s.id, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url), setup: d.setup, docsUrl: d.docsUrl });
   }
   return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
@@ -154,7 +162,7 @@ async function toggleNative(p: PluginView) {
   try {
     const res = await api.patch<{ plugins: PluginView[] }>(`/api/plugins/${p.id}`, { enabled: !p.enabled });
     nativeIntegrations.value = res.plugins.filter((x) => x.type === 'mcp-server');
-    if (detailItem.value?.kind === 'native' && detailItem.value.plugin.id === p.id) {
+    if (detailItem.value?.kind === 'native' && detailItem.value.plugin?.id === p.id) {
       const fresh = nativeIntegrations.value.find((x) => x.id === p.id);
       if (fresh) detailItem.value = { ...detailItem.value, plugin: fresh };
     }
@@ -371,8 +379,13 @@ async function remove(srv: UpstreamServer) {
       <tbody>
         <tr v-for="s in servers" :key="s.id">
           <td>
-            <div style="font-weight: 600">{{ s.name }}</div>
-            <small class="muted">{{ s.description }}</small>
+            <div style="display: flex; align-items: center; gap: 0.6rem">
+              <IntegrationIcon :id="serverIconId(s)" :name="s.name" :size="26" />
+              <div>
+                <div style="font-weight: 600">{{ s.name }}</div>
+                <small class="muted">{{ s.description }}</small>
+              </div>
+            </div>
           </td>
           <td><small class="muted">{{ s.transport }}</small></td>
           <td><small class="muted">{{ s.transport === 'stdio' ? s.command : s.url }}</small></td>
@@ -415,7 +428,10 @@ async function remove(srv: UpstreamServer) {
       <div v-for="e in catalogItems" :key="e.key" class="catalog-card">
         <div class="cc-body" role="button" tabindex="0" title="View details" @click="detailItem = e" @keydown.enter="detailItem = e">
           <div class="cc-head">
-            <span class="cc-name">{{ e.name }}</span>
+            <span class="cc-title">
+              <IntegrationIcon :id="e.iconId" :name="e.name" :size="30" />
+              <span class="cc-name">{{ e.name }}</span>
+            </span>
             <span v-if="e.kind === 'native'" class="cc-auth native">Built-in</span>
             <span v-else class="cc-auth" :class="e.auth">{{ e.auth ? authLabel[e.auth] : '' }}</span>
           </div>
@@ -444,7 +460,10 @@ async function remove(srv: UpstreamServer) {
   <div v-if="detailItem" class="modal-backdrop" @click.self="detailItem = null">
     <div class="modal" style="max-width: 600px">
       <div class="row spread">
-        <h2 style="margin: 0">{{ detailItem.name }}</h2>
+        <div style="display: flex; align-items: center; gap: 0.7rem">
+          <IntegrationIcon :id="detailItem.iconId" :name="detailItem.name" :size="38" />
+          <h2 style="margin: 0">{{ detailItem.name }}</h2>
+        </div>
         <span v-if="detailItem.kind === 'native'" class="cc-auth native">Built-in</span>
         <span v-else class="cc-auth" :class="detailItem.auth">{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}</span>
       </div>
@@ -707,8 +726,17 @@ async function remove(srv: UpstreamServer) {
   justify-content: space-between;
   gap: 8px;
 }
+.cc-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
 .cc-name {
   font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .cc-cat {
   font-size: 0.8em;

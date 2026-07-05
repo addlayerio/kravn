@@ -648,6 +648,12 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
     url: 'https://www.javadocs.dev/mcp', transport: 'streamable-http', auth: 'open', provider: 'Javadocs',
     tags: ['documentation', 'java', 'api-reference'],
   },
+  {
+    id: 'bluedot', name: 'Bluedot', category: 'Productivity',
+    description: 'AI meeting notetaker — access your transcripts, recordings and meeting metadata',
+    url: 'https://app.bluedothq.com/api/v1/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Bluedot',
+    tags: ['meetings', 'transcription', 'notetaker', 'productivity'],
+  },
 ];
 
 /** Distinct categories present in the catalog, for the browse filter. */
@@ -664,6 +670,11 @@ export interface CatalogDetail {
 }
 
 export const CATALOG_SETUP: Record<string, CatalogDetail> = {
+  bluedot: {
+    docsUrl: 'https://help.bluedothq.com/en/articles/14708332-bluedot-mcp',
+    setup:
+      'Click Connect and sign in with the Bluedot account you want the AI to access (the emails need not match). No token to manage — the AI can only read data that account already has permission to see, including meeting transcripts and metadata. For an org-wide setup, an admin connects it from Bluedot → Personal Settings → Connectors.',
+  },
   github: {
     docsUrl: 'https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app',
     setup:

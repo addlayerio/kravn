@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 📣 **Every integration now has its logo.** The catalog, detail view and your installed servers show each
+  product's brand icon, so you can tell what's what at a glance instead of reading names — integrations
+  without a known logo get a clean coloured monogram. Logos ship inside the app (no external image calls).
+- 🧩 **Bluedot added to the catalog.** Connect Bluedot (AI meeting notetaker) with one-click OAuth to reach
+  your meeting transcripts, recordings and metadata.
+- 🐛 **Fixed: refreshing MCP Endpoints (or any deep page) no longer 404s.** Pressing F5 / opening a direct
+  link to `/mcp-endpoints` (and similar pages) now loads correctly instead of returning a "Not found" error.
+
 ## [0.1.64] — 2026-07-05
 
 - 📣 **Live updates instead of polling.** The console now reflects changes in real time over Server-Sent

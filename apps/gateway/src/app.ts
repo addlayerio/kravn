@@ -230,8 +230,10 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     await app.register(fastifyStatic, { root: staticDir, wildcard: false });
     const indexHtml = path.join(staticDir, 'index.html');
     app.setNotFoundHandler((req, reply) => {
-      const url = req.raw.url ?? '';
-      if (API_PREFIXES.some((p) => url.startsWith(p))) {
+      // Match API prefixes on path SEGMENTS, not raw string prefix: `/mcp` is an API path but the SPA
+      // route `/mcp-endpoints` must NOT be treated as one (a raw startsWith('/mcp') 404s the deep-link).
+      const reqPath = (req.raw.url ?? '').split('?')[0].split('#')[0];
+      if (API_PREFIXES.some((p) => reqPath === p || reqPath.startsWith(p + '/'))) {
         return reply.code(404).send({ error: { code: 'not_found', message: 'Not found.' } });
       }
       try {
