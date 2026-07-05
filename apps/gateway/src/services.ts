@@ -21,6 +21,7 @@ import { UpstreamManager } from './mcp/upstream.js';
 import { RegistryService } from './mcp/registry.service.js';
 import { AuditService } from './audit/audit.service.js';
 import { UpstreamOAuthService } from './auth/upstream-oauth.service.js';
+import { EventBus } from './events/bus.js';
 import { DownstreamMcp } from './mcp/downstream.js';
 import { LogStore } from './logstore.js';
 import { Metrics } from './metrics.js';
@@ -47,6 +48,8 @@ export interface Services {
   registry: RegistryService;
   /** Upstream OAuth 2.1 client — connect to OAuth-protected remote MCP servers. */
   upstreamOAuth: UpstreamOAuthService;
+  /** In-process event bus pushed to operator UIs over SSE (live updates instead of polling). */
+  events: EventBus;
   downstream: DownstreamMcp;
   plugins: PluginManager;
   chat: ChatService;
@@ -142,11 +145,13 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter }), encryptor);
   upstream.setPluginManager(plugins);
   const upstreamOAuth = new UpstreamOAuthService({ repos, encryptor, ssrf, log });
-  const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins, upstreamOAuth });
+  const events = new EventBus();
+  const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins, upstreamOAuth, events });
   const downstream = new DownstreamMcp(repos, registry, settings, plugins);
   plugins.onChange = () => {
     downstream.invalidateRegistryCache(); // a plugin toggle changes the tool/resource/prompt set — reflect now
     registry.syncPluginServers().catch((err) => log.warn({ err }, 'plugin-server sync failed'));
+    events.fire('registry'); // push the change to connected operator UIs
   };
   await plugins.scan();
 
@@ -164,7 +169,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, downstream, plugins, chat, interpreter, logstore, metrics, audit, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, interpreter, logstore, metrics, audit, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */

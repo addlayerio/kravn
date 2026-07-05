@@ -10,6 +10,7 @@ import type { SettingsService } from '../settings/settings.service.js';
 import type { UpstreamManager } from './upstream.js';
 import type { SsrfGuard } from '../http/ssrf.js';
 import type { UpstreamOAuthService } from '../auth/upstream-oauth.service.js';
+import type { EventBus } from '../events/bus.js';
 import type { LogStore } from '../logstore.js';
 import type { Metrics } from '../metrics.js';
 import type { PluginManager } from '../plugins/manager.js';
@@ -28,6 +29,7 @@ export interface RegistryDeps {
   metrics: Metrics;
   plugins: PluginManager;
   upstreamOAuth: UpstreamOAuthService;
+  events: EventBus;
 }
 
 /**
@@ -185,6 +187,7 @@ export class RegistryService {
     await this.d.repos.servers.delete(id);
     this.refreshGauge();
     this.d.logstore.add('info', `Server removed`, { id });
+    this.d.events.fire('registry');
   }
 
   // ─── Connection + catalog sync ───────────────────────────────────────────────────────────────
@@ -214,6 +217,7 @@ export class RegistryService {
       this.d.log.warn({ err, server: server.name }, 'upstream connect/sync failed');
     } finally {
       this.refreshGauge();
+      this.d.events.fire('registry'); // status changed (connecting → online/error) → push to operator UIs
     }
     return this.d.repos.servers.getById(id);
   }

@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.64] — 2026-07-05
+
+- 📣 **Live updates instead of polling.** The console now reflects changes in real time over Server-Sent
+  Events — no more constant refresh/flicker on the MCP Servers page from timer-based polling. When a server
+  connects, syncs, or a plugin toggles, the list updates the moment it happens. (This is now the standard
+  across the app for live updates.)
+- 🐛 **No "Connect" button once a server is Online** — it only shows when the server actually needs
+  connecting.
+
 ## [0.1.63] — 2026-07-05
 
 - 🐛 **OAuth token exchange, hardened for real providers.** Kravn now performs the token exchange/refresh
@@ -268,6 +277,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.64]: https://github.com/addlayerio/kravn/releases/tag/v0.1.64
 [0.1.63]: https://github.com/addlayerio/kravn/releases/tag/v0.1.63
 [0.1.62]: https://github.com/addlayerio/kravn/releases/tag/v0.1.62
 [0.1.61]: https://github.com/addlayerio/kravn/releases/tag/v0.1.61

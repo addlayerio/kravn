@@ -1023,8 +1023,20 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   tokenAuthMethod flows to the stored clientInfo (basic/post), GitHub-style **form-encoded** token response
   parses + token usable, and a provider error surfaces its real message. Full monorepo build green.
 
+## ✅ PASS 58 — Live updates via SSE (standard, replaces polling) + Connect-button UX (v0.1.64)
+- **SSE as the standard for live updates** (documented in AGENTS.md principle #6). New in-process `EventBus`
+  (`events/bus.ts`) on `Services.events`; the registry `fire('registry')` on server status changes
+  (connectAndSync, delete) and plugin toggles (`plugins.onChange`). Auth-gated streaming route
+  `GET /api/events` (`routes/events.routes.ts`, hijacked SSE + 25s heartbeat + reconnect hint). Operator
+  `useEventStream(onEvent)` composable (`lib/events.ts`) — fetch-based so the Bearer rides the Authorization
+  header (native EventSource can't), auto-reconnect + auto-unsubscribe on unmount. ServersView subscribes and
+  refreshes on `registry`; **removed the connectOAuth `setInterval` poll** (the flicker source).
+- **Connect button** hidden once a server's status is `online` (only shows when it needs connecting).
+- **Validated** by booting the real gateway (SSE): 401 without auth, 200 text/event-stream with a token, a
+  fired `registry` event delivered over the stream, initial connected comment. Full monorepo build green.
+
 ### Deferred to later phases (intentional, not missing)
-**Server-Sent Events** for the operator (replace status polling on MCP Servers/Plugins) · Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·

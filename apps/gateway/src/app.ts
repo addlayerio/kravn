@@ -28,6 +28,7 @@ import { logRoutes } from './routes/logs.routes.js';
 import { auditRoutes } from './routes/audit.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
+import { eventRoutes } from './routes/events.routes.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
 import { serverOAuthRoutes } from './routes/server-oauth.routes.js';
 import { scimRoutes } from './routes/scim.routes.js';
@@ -209,6 +210,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     auditRoutes(app, services);
     mcpRoutes(app, services);
     overviewRoutes(app, services);
+    eventRoutes(app, services);
   }
 
   // End-user chat surface (the dedicated chat pod serves only this + the shared routes above).

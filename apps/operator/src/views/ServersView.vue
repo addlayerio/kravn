@@ -5,6 +5,7 @@ import { MCP_SERVER_CATALOG, CATALOG_CATEGORIES, catalogDetail } from '@kravn/co
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { useEventStream } from '../lib/events';
 import PluginConfigModal from '../components/PluginConfigModal.vue';
 
 const auth = useAuthStore();
@@ -179,6 +180,10 @@ async function load() {
   }
 }
 onMounted(load);
+// Live updates over SSE instead of polling: refresh when a server/plugin changes on the server.
+useEventStream((type) => {
+  if (type === 'registry') void load();
+});
 
 function openCreate() {
   Object.assign(form, blank());
@@ -246,14 +251,8 @@ async function connectOAuth(srv: UpstreamServer, cfg?: OAuthCfg) {
       toast.error('Popup blocked — allow popups for this site and try Connect again.');
       return;
     }
+    // No polling — the SSE stream refreshes the list when the callback connects the server.
     toast.success('Finish signing in in the new window…');
-    let tries = 0;
-    const timer = setInterval(async () => {
-      tries += 1;
-      await load();
-      const cur = servers.value.find((x) => x.id === srv.id);
-      if ((cur && cur.status === 'online') || tries >= 12) clearInterval(timer);
-    }, 3000);
   } catch (e) {
     if (e instanceof ApiError && e.code === 'oauth_needs_client') {
       Object.assign(oauthClientForm, { clientId: '', clientSecret: '', authorizationUrl: '', tokenUrl: '', scope: '' });
@@ -383,7 +382,7 @@ async function remove(srv: UpstreamServer) {
           </td>
           <td>
             <div class="btn-row">
-              <button v-if="s.authType === 'oauth' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">Connect</button>
+              <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">Connect</button>
               <button class="btn" @click="sync(s)">Sync</button>
               <button v-if="auth.can('servers.write')" class="btn" @click="openEdit(s)">Edit</button>
               <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">Delete</button>

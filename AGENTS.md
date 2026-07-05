@@ -77,6 +77,18 @@ change done, run the SECURITY.md §6 checklist against your diff; if it touches 
 OAuth, SSO, plugins, DB or headers (§5), run the adversarial review and fix confirmed findings first. Add a
 row to the SECURITY.md change log for any release that touches security.
 
+### 6. Live updates via SSE, never front-end polling
+When the operator (or any UI) needs to reflect server-side changes, push them over **Server-Sent Events**,
+don't poll an API on a timer. The mechanism is already built: the gateway has an in-process `EventBus`
+(`events/bus.ts`) exposed on `Services.events`; fire a named event where state changes (e.g.
+`this.d.events.fire('registry')` on server status / catalog / plugin changes) and it streams to connected
+clients via `GET /api/events` (`routes/events.routes.ts`, auth-gated, hijacked SSE stream + heartbeat). The
+operator subscribes with the `useEventStream(onEvent)` composable (`lib/events.ts`) — a fetch-based reader so
+the Bearer token rides the `Authorization` header (native `EventSource` can't), auto-reconnecting and
+auto-unsubscribing on unmount. To add a new live signal: add an event name to `KravnEvent`, `fire()` it at
+the mutation site, and handle it in the view's `useEventStream` callback. Do NOT introduce `setInterval`
+polling of `/api/*` for freshness.
+
 ## Development, validation & release workflow
 
 This is the loop every change goes through. The **durable record** of what shipped and why lives in **git
