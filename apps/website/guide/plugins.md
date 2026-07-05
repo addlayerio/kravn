@@ -31,14 +31,6 @@ Credentials for these are stored **encrypted at rest**, and access is governed b
 everything else — you compose their tools into a restricted MCP endpoint for the teams allowed to use
 them.
 
-::: tip Finding your Odoo.sh database name
-For the **Odoo** connector on **Odoo.sh**, the database name is **not** the subdomain (using it gives
-`database "…" does not exist`). Open your Odoo with `?debug=1` — e.g. `https://your-company.odoo.com/web?debug=1` —
-and copy the name shown **top-right, in brackets** next to your user. It may include a build-id suffix (e.g.
-`your-company-branch-18-0-1234567`). Make sure the **Odoo URL** and **Database** are from the same build; if a
-later rebuild/restore changes the name, re-check it the same way and update the field.
-:::
-
 ## Integrations catalog
 
 > Browse the full, always-current list in the **[integrations gallery](/integrations)**.

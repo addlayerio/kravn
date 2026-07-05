@@ -112,6 +112,11 @@ coloured **monogram** fallback.
    - **Native mcp-server plugin** → add it to `NATIVE_INTEGRATIONS` in `packages/contracts/src/server-catalog.ts`
      (so the gallery + landing list it) **and** add a row to the built-in table in `apps/website/guide/plugins.md`.
    Keep the "100+" count phrasing in `guide/what-is-kravn.md` roughly current if the catalog grows a lot.
+   **Scope boundary:** the public site says *what* an integration is and *that* it exists — it is NOT where
+   operational / field-level / troubleshooting detail lives (how to find a value, per-field gotchas, error
+   fixes). That belongs **in the plugin config where the user actually sets it up**: the `configSchema` field
+   `description`s and the manifest `setup` text (rendered as Markdown in the operator). Don't duplicate config
+   help into `guide/plugins.md`.
 
 ## Development, validation & release workflow
 
