@@ -1073,6 +1073,15 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   Odoo.sh database-name guidance in the field help + setup + public Plugins page. **Mercado Libre** logo
   (Mercado Pago glyph in yellow via a `DERIVED` entry).
 
+## ✅ PASS 61 — Odoo aggregation tools + website-deploy fix (v0.1.67)
+- **`odoo_read_group`** (server-side aggregation via Odoo `read_group(domain, aggregates, groupby, {lazy:false})`)
+  + **`odoo_search_count`** (`search_count` → integer). Read-only, reuse `execKw`; "invoiced in June by currency"
+  is now one call instead of paging + summing 300 records. `listTools()` verified (15 tools, correct schemas).
+- **Website deploy fix:** `website.yml` ran `vitepress build` without building `@kravn/contracts` first, whose
+  dist is gitignored → the gallery data loader failed to resolve it on a clean CI checkout, so the site deploy
+  had been failing since the gallery landed (kravn.ai/integrations never updated). Added a "build workspace
+  deps" step. Reproduced the failure + verified the fix locally.
+
 ### Deferred to later phases (intentional, not missing)
 Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

@@ -12,12 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.67] — 2026-07-05
 
 - 🧩 **Odoo: answer "how much / how many" in one call.** Two new read-only tools — `odoo_read_group`
   (server-side aggregation: totals and sums grouped by any field, e.g. invoiced-per-currency for a month in a
   single query) and `odoo_search_count` (a plain count, e.g. active customers). No more paging through
   hundreds of records and summing client-side.
+- 🐛 **The integrations gallery is now actually live on the site.** The website deploy had been failing since
+  the gallery landed (its data loader imports a workspace package that CI wasn't building first), so
+  kravn.ai/integrations wasn't updating — fixed, and the full gallery now publishes.
 
 ## [0.1.66] — 2026-07-05
 
