@@ -89,18 +89,29 @@ auto-unsubscribing on unmount. To add a new live signal: add an event name to `K
 the mutation site, and handle it in the view's `useEventStream` callback. Do NOT introduce `setInterval`
 polling of `/api/*` for freshness.
 
-### 7. Every integration ships a brand icon
+### 7. Every integration ships a brand icon AND is documented on the public site
 Each catalog server and native `mcp-server` plugin shows a **brand logo** in the operator so users can
-tell products apart at a glance (unified catalog cards, detail modal, installed list — and reuse it
-anywhere a tool's origin is shown). Logos are baked from **simple-icons** (a build-time devDependency)
-into `apps/operator/src/lib/brand-icons.ts` as `{ path, hex }` per integration id — nothing imports
-simple-icons at runtime, and the operator CSP blocks remote images so icons must stay inlined/baked.
-`IntegrationIcon.vue` renders the baked logo on a light tile, or a deterministic coloured **monogram**
-fallback for ids with no brand logo. **When you add a new integration** (a `MCP_SERVER_CATALOG` entry or
-a native mcp-server plugin), regenerate the map: `node apps/operator/scripts/gen-brand-icons.mjs`, then
-rebuild the operator. If the logo doesn't match (id doesn't normalise to the simple-icons slug), add an
-entry to `OVERRIDE` (catalog) or `NATIVE` (plugin) in that script; if simple-icons genuinely lacks the
-brand (niche/removed for trademark), the monogram fallback is expected — leave it.
+tell products apart at a glance (unified catalog cards, detail modal, installed list — reused anywhere a
+tool's origin is shown, e.g. the grouped Tools/Resources/Prompts lists — and on the public website's
+integrations gallery). Logos are baked from **simple-icons** (a build-time devDependency) into
+`packages/contracts/src/brand-icons.ts` as `{ path, hex }` per integration id, so **both** the operator
+(`IntegrationIcon.vue`) and the website render from one source — nothing imports simple-icons at runtime,
+and the operator CSP blocks remote images so icons must stay inlined/baked. Missing brand → a deterministic
+coloured **monogram** fallback.
+
+**When you add a new integration, do ALL of the following:**
+1. **Icon** — regenerate the shared map: `node apps/operator/scripts/gen-brand-icons.mjs`, then rebuild.
+   If the logo doesn't match (id doesn't normalise to the simple-icons slug), add an entry to `OVERRIDE`
+   (catalog) or `NATIVE`/`DERIVED` (plugin/shared-glyph) in that script; if simple-icons genuinely lacks the
+   brand (niche/removed for trademark), the monogram fallback is expected — leave it.
+2. **Public website** — a new integration is user-facing, so it MUST appear on the site. The integrations
+   gallery (`apps/website/.vitepress/integrations.data.ts` + `theme/IntegrationsGallery.vue`, shown on the
+   landing page and `/integrations`) is **generated from the shared catalog**, so:
+   - **Catalog server** (`MCP_SERVER_CATALOG` entry) → it appears in the gallery automatically. Nothing else
+     to write (do NOT hand-add a per-integration page).
+   - **Native mcp-server plugin** → add it to `NATIVE_INTEGRATIONS` in `packages/contracts/src/server-catalog.ts`
+     (so the gallery + landing list it) **and** add a row to the built-in table in `apps/website/guide/plugins.md`.
+   Keep the "100+" count phrasing in `guide/what-is-kravn.md` roughly current if the catalog grows a lot.
 
 ## Development, validation & release workflow
 

@@ -40,9 +40,9 @@ corporate systems they need:
   tamper-evident audit trail.
 - **Ships native integrations** for the systems enterprises already run — SharePoint, Microsoft Teams,
   Jira, Confluence — over Microsoft Graph / the vendor API, no separate MCP server to operate.
-- **A catalog of ready-to-add integrations** — browse 95+ curated public MCP servers (Notion, Linear,
+- **A catalog of ready-to-add integrations** — browse 100+ curated public MCP servers (Notion, Linear,
   Sentry, Stripe, Supabase, Vercel, Hugging Face, Google, and more) and add one to your registry in a
-  click, instead of hand-wiring every URL.
+  click, instead of hand-wiring every URL. See the full [integrations gallery](/integrations).
 
 ## Highlights
 

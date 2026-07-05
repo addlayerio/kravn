@@ -753,3 +753,38 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
 export function catalogDetail(id: string): CatalogDetail {
   return CATALOG_SETUP[id] ?? {};
 }
+
+/**
+ * Built-in (native) integrations to external products — mcp-server plugins that run in-process.
+ * `id` matches the plugin manifest id and the BRAND_ICONS key. Kept here (not derived from the
+ * gateway plugin code) so the shared contracts + the public website can list them statically.
+ */
+export interface NativeIntegration {
+  id: string;
+  name: string;
+  category: string;
+  description: string;
+}
+
+export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
+  {
+    id: 'kravn-jira', name: 'Jira', category: 'Project Management',
+    description: 'Query and read issues via the Jira REST API.',
+  },
+  {
+    id: 'kravn-confluence', name: 'Confluence', category: 'Documentation',
+    description: 'Search and read Confluence pages.',
+  },
+  {
+    id: 'kravn-sharepoint', name: 'SharePoint', category: 'Document Management',
+    description: 'Search, browse document libraries and read documents (Word/PDF/Excel/text) over Microsoft Graph.',
+  },
+  {
+    id: 'kravn-teams', name: 'Microsoft Teams', category: 'Communication',
+    description: 'Find people, read chats and channel posts, list teams/channels over Microsoft Graph.',
+  },
+  {
+    id: 'kravn-odoo', name: 'Odoo', category: 'CRM',
+    description: 'CRM & ERP over Odoo JSON-RPC — leads, contacts, sales orders, invoices, products, tasks, employees. Works with Odoo Online, Odoo.sh and self-hosted.',
+  },
+];

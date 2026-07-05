@@ -33,6 +33,8 @@ them.
 
 ## Integrations catalog
 
+> Browse the full, always-current list in the **[integrations gallery](/integrations)**.
+
 Every integration lives in one place: the **Catalog** tab on the *MCP Servers* page. It lists the built-in
 integrations above (Jira, Teams, SharePoint, Confluence) **and** a curated set of public MCP servers —
 Notion, Linear, Sentry, Stripe, Supabase, Vercel, Hugging Face, Google (Maps / BigQuery), Attio, Semgrep and

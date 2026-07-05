@@ -69,6 +69,13 @@ Then open the console, complete the first-run setup wizard, connect your first u
 publish it as an MCP endpoint your teams can consume. The full walkthrough is in the
 [Quickstart](/guide/getting-started) and the [Installation Manual](/guide/installation).
 
+## Connect the tools you already use
+
+Native connectors for the systems enterprises run, plus a curated catalog of public MCP servers — added in
+one click and re-exposed **under your own governance**. Breadth, without the data leaving your perimeter.
+
+<IntegrationsGallery :featured="true" />
+
 ## Built for the corporate world
 
 | | |

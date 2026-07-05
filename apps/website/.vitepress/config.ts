@@ -94,6 +94,7 @@ export default defineConfig({
 
     nav: [
       { text: 'Why Kravn', link: '/guide/what-is-kravn', activeMatch: '/guide/what-is-kravn' },
+      { text: 'Integrations', link: '/integrations' },
       { text: 'Get Started', link: '/guide/getting-started' },
       { text: 'Install', link: '/guide/installation' },
       {

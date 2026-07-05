@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Public integrations gallery on the website.** kravn.ai now shows every integration Kravn can connect
+  — built-in connectors + the full catalog of public MCP servers — with logos, search and category filter,
+  on the landing page and a dedicated `/integrations` page. It's generated from the same catalog the product
+  ships, so it's always current.
 - 📣 **Tools, Resources and Prompts are now grouped by their origin server too.** The same server grouping
   from the endpoint composer now applies to the browse pages — each list is collapsible per server (with its
   logo) and has a search box, so the origin of every tool/resource/prompt is obvious even with hundreds of

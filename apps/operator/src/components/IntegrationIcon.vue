@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed } from 'vue';
-import { BRAND_ICONS } from '../lib/brand-icons';
+import { BRAND_ICONS } from '@kravn/contracts';
 
 const props = withDefaults(defineProps<{ id?: string; name: string; size?: number }>(), { size: 30 });
 
