@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import type { UpstreamServer, Transport, AuthType, CatalogServer, PluginView } from '@kravn/contracts';
-import { MCP_SERVER_CATALOG, CATALOG_CATEGORIES } from '@kravn/contracts';
+import { MCP_SERVER_CATALOG, CATALOG_CATEGORIES, catalogDetail } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
@@ -69,6 +69,17 @@ interface CatalogItem {
   remote?: CatalogServer;
   installed?: boolean;
   plugin?: PluginView;
+  setup?: string;
+  docsUrl?: string;
+}
+
+/** Generic, always-accurate "what you need" text derived from the auth class. */
+function authGuidance(auth?: CatalogServer['auth']): string {
+  if (auth === 'apikey')
+    return 'Create an API key in your provider account and paste it as the token when you add this server. It is sent as a Bearer header and stored encrypted.';
+  if (auth === 'oauth')
+    return 'No token to manage — add it, then click Connect and sign in with the provider. Kravn completes the OAuth flow and stores the tokens encrypted, refreshing them automatically.';
+  return 'No credential needed — add it and it connects immediately.';
 }
 
 const catalogItems = computed<CatalogItem[]>(() => {
@@ -83,7 +94,8 @@ const catalogItems = computed<CatalogItem[]>(() => {
   for (const s of MCP_SERVER_CATALOG) {
     if (cat && s.category !== cat) continue;
     if (q && !(s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || (s.tags ?? []).some((t) => t.includes(q)))) continue;
-    items.push({ kind: 'remote', key: `r:${s.id}`, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url) });
+    const d = catalogDetail(s.id);
+    items.push({ kind: 'remote', key: `r:${s.id}`, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url), setup: d.setup, docsUrl: d.docsUrl });
   }
   return items.sort((a, b) => a.name.localeCompare(b.name, undefined, { sensitivity: 'base' }));
 });
@@ -374,6 +386,11 @@ async function remove(srv: UpstreamServer) {
           <span class="muted">Connects with</span>
           <span>{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}<template v-if="detailItem.auth === 'oauth'"> — sign in after adding</template></span>
         </div>
+        <div class="setup-note">
+          <div class="setup-title">Getting set up</div>
+          {{ detailItem.setup || authGuidance(detailItem.auth) }}
+          <a v-if="detailItem.docsUrl" :href="detailItem.docsUrl" target="_blank" rel="noopener noreferrer" class="docs-link">Provider docs ↗</a>
+        </div>
         <div v-if="detailItem.tags && detailItem.tags.length" class="cc-tags">
           <span v-for="t in detailItem.tags" :key="t" class="badge">{{ t }}</span>
         </div>
@@ -618,6 +635,16 @@ async function remove(srv: UpstreamServer) {
   font-weight: 600;
   margin-bottom: 0.3rem;
   white-space: normal;
+}
+.docs-link {
+  display: inline-block;
+  margin-top: 0.5rem;
+  color: var(--accent, #6c8cff);
+  text-decoration: none;
+  white-space: normal;
+}
+.docs-link:hover {
+  text-decoration: underline;
 }
 .cc-auth {
   font-size: 0.72em;

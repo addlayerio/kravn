@@ -652,3 +652,93 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
 
 /** Distinct categories present in the catalog, for the browse filter. */
 export const CATALOG_CATEGORIES: string[] = Array.from(new Set(MCP_SERVER_CATALOG.map((s) => s.category))).sort();
+
+/**
+ * Optional per-server setup detail shown in the catalog's detail view: a `docsUrl` and a `setup` guide
+ * (what it needs + how to get the credential/token). Entries without a specific `setup` fall back to
+ * generic guidance derived from the auth class (open/apikey/oauth). Keyed by catalog id.
+ */
+export interface CatalogDetail {
+  docsUrl?: string;
+  setup?: string;
+}
+
+export const CATALOG_SETUP: Record<string, CatalogDetail> = {
+  github: {
+    docsUrl: 'https://github.com/github/github-mcp-server',
+    setup:
+      "GitHub's official MCP server uses OAuth — no token to create. Add it, then click Connect and authorize Kravn; in GitHub's screen choose the account/organization and the repositories to grant access to.",
+  },
+  stripe: {
+    docsUrl: 'https://docs.stripe.com/mcp',
+    setup:
+      'Two ways to connect: click Connect for OAuth, or add a Stripe API key as the token. For a key, go to the Stripe Dashboard → Developers → API keys → “Create restricted key”, grant only the resources you need (read-only where possible), and paste it.',
+  },
+  notion: {
+    docsUrl: 'https://developers.notion.com/docs/mcp',
+    setup:
+      'Click Connect and sign in with Notion, then pick exactly which pages/databases to share with the integration — it can only see what you share.',
+  },
+  linear: { setup: 'Click Connect and authorize your Linear workspace. No token to manage.' },
+  sentry: {
+    docsUrl: 'https://docs.sentry.io/product/sentry-mcp/',
+    setup: 'Click Connect and authorize your Sentry organization. Access follows your Sentry role.',
+  },
+  supabase: {
+    docsUrl: 'https://supabase.com/docs/guides/getting-started/mcp',
+    setup: 'Click Connect and authorize; scope the grant to the specific project you want the AI to reach.',
+  },
+  vercel: { setup: 'Click Connect and authorize the Vercel account or team you want to expose.' },
+  neon: { setup: 'Click Connect and authorize your Neon account.' },
+  atlassian: {
+    setup:
+      'Click Connect and authorize Jira/Confluence for your Atlassian site. Prefer a single service identity with no per-user sign-in? Use the built-in Jira / Confluence integrations instead (app-only, tighter scoping).',
+  },
+  paypal: { setup: 'Click Connect and sign in with PayPal. Access follows your PayPal account permissions.' },
+  plaid: { setup: 'Click Connect and authorize from your Plaid dashboard.' },
+  hubspot: {
+    docsUrl: 'https://developers.hubspot.com/docs/guides/apps/private-apps/overview',
+    setup:
+      'Create a HubSpot Private App token: HubSpot → Settings → Integrations → Private Apps → “Create a private app” → grant the scopes you need (e.g. crm.objects.contacts.read/write) → copy the token, and paste it as the token here.',
+  },
+  apify: {
+    docsUrl: 'https://docs.apify.com/platform/integrations/mcp',
+    setup: 'Copy your API token from Apify Console → Settings → Integrations (API), and paste it as the token.',
+  },
+  zapier: {
+    setup: 'Open Zapier MCP settings, generate an MCP endpoint + API key, and paste the key as the token.',
+  },
+  'mercado-libre': {
+    setup:
+      'Create an access token from your Mercado Libre developer app (developers.mercadolibre.com) and paste it as the token.',
+  },
+  'mercado-pago': {
+    docsUrl: 'https://www.mercadopago.com/developers',
+    setup:
+      'Copy your Mercado Pago Access Token from your developer credentials (Your integrations → credentials) and paste it as the token. Use a test token first.',
+  },
+  shortio: { setup: 'Copy your API key from Short.io → Settings → Integrations & API, and paste it as the token.' },
+  telnyx: { setup: 'Create a V2 API key in the Telnyx Portal → Auth → API Keys, and paste it as the token.' },
+  'google-maps': {
+    docsUrl: 'https://developers.google.com/maps',
+    setup:
+      'Create an API key in Google Cloud Console → APIs & Services → Credentials → Create credentials → API key, enable the Maps/Places APIs you need, restrict the key, and paste it as the token.',
+  },
+  'google-bigquery': {
+    setup:
+      'Create an API key (or use a service-account token) in Google Cloud Console → APIs & Services → Credentials, enable the BigQuery API, and paste it as the token.',
+  },
+  'hugging-face': {
+    docsUrl: 'https://huggingface.co/settings/tokens',
+    setup:
+      'Works with no credential for public models/datasets. For private or gated content, create a Hugging Face access token (huggingface.co → Settings → Access Tokens) and add it as a Bearer header.',
+  },
+  semgrep: { setup: 'Click Connect and authorize with your Semgrep account.' },
+  'cloudflare-workers': { setup: 'Click Connect and authorize your Cloudflare account (scoped to Workers bindings).' },
+  'cloudflare-observability': { setup: 'Click Connect and authorize your Cloudflare account (observability/logs).' },
+};
+
+/** Setup detail for a catalog id (empty object if none). */
+export function catalogDetail(id: string): CatalogDetail {
+  return CATALOG_SETUP[id] ?? {};
+}

@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.57] — 2026-07-05
+
+- 📣 **Catalog cards now tell you how to set each integration up.** Open a catalog integration and the detail
+  view explains what you need and **how to get the credential** — e.g. GitHub (authorize via Connect, choose
+  repos), HubSpot (create a Private App token with the right scopes), Stripe (a restricted API key), Google
+  (an API key in Cloud Console), and more — plus a link to the provider's docs. Integrations without a
+  specific guide still get accurate guidance based on how they authenticate (no-auth / API key / OAuth).
+
 ## [0.1.56] — 2026-07-05
 
 - 📣 **The product tour is now interactive.** Instead of a static card, the tour **spotlights the real
@@ -204,6 +212,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.57]: https://github.com/addlayerio/kravn/releases/tag/v0.1.57
 [0.1.56]: https://github.com/addlayerio/kravn/releases/tag/v0.1.56
 [0.1.55]: https://github.com/addlayerio/kravn/releases/tag/v0.1.55
 [0.1.54]: https://github.com/addlayerio/kravn/releases/tag/v0.1.54

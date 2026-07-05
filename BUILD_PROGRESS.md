@@ -938,6 +938,15 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Catalog alphabetical.** `catalogItems` is sorted by name (`localeCompare`, case-insensitive).
 - Operator build green.
 
+## ✅ PASS 51 — Catalog setup guidance per integration (v0.1.57)
+- **Self-service config.** The catalog detail view now shows a **Getting set up** section: what the
+  integration needs and **how to get the credential/token**. Two layers: `CATALOG_SETUP` in
+  `@kravn/contracts` (24 curated provider guides — GitHub, Stripe, HubSpot, Google, Apify, Mercado Pago… —
+  with `setup` steps + optional `docsUrl`, keyed by catalog id, validated against real ids) plus an
+  always-accurate `authGuidance()` fallback derived from the auth class (open / apikey / oauth) so every one
+  of the 104 has useful guidance. A "Provider docs ↗" link opens where present.
+- Operator + contracts build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
