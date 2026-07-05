@@ -48,7 +48,7 @@ bypass a global one. Built-in hooks include:
 | Hook | What it does |
 |---|---|
 | **Secrets Redactor** | Detects and strips private keys, cloud/API tokens, JWTs and credentials from results before they reach the model. |
-| **PII Tokenizer** | Replaces emails, IPs, credit cards (Luhn-checked) and phone numbers with stable, deterministic tokens so the model reasons consistently without seeing the real values. |
+| **PII Tokenizer** | Replaces emails, IPs, IBANs (mod-97), credit cards (Luhn), Argentina CBU + CUIT/CUIL (check-digit) and phone numbers with stable, deterministic tokens so the model reasons consistently without seeing the real values. Bank/tax-id detectors are checksum-validated to limit false positives. |
 | **Prompt-Injection Guard** | Flags/neutralizes indirect prompt injection in tool output ("ignore previous instructions", role-tag spoofing, exfiltration directives) — the #1 MCP-specific risk. |
 | **Content Safety Filter** | Lexicon-based self-harm / violence / hate detection with redact or annotate, and optional request blocking. |
 | **Deny List Filter** | Block requests and/or redact results by phrase or regex. |

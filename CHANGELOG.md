@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔒 **Deeper PII detection.** The PII Tokenizer now also catches **IBANs** (mod-97), **Argentina CBU**
+  bank accounts and **CUIT/CUIL** tax ids — all **checksum-validated** to limit false positives — on top of
+  emails, IPs, credit cards and phones. Each is replaced with a stable token so the model never sees the
+  real value.
 - 📣 **OpenTelemetry tracing (OTLP).** Export distributed traces of requests, MCP tool calls and LLM calls to
   your observability stack (Jaeger/Tempo/Grafana/Datadog…). Off by default — enable with
   `KRAVN_OTEL_ENABLED=true` and the standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME`. No request

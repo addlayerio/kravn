@@ -609,11 +609,49 @@ function luhnOk(digits: string): boolean {
   }
   return digits.length >= 13 && sum % 10 === 0;
 }
+/** IBAN mod-97 checksum (ISO 13616). Cuts false positives on the loose letter+digit pattern. */
+function ibanOk(s: string): boolean {
+  const t = s.toUpperCase().replace(/\s/g, '');
+  if (!/^[A-Z]{2}\d{2}[A-Z0-9]{11,30}$/.test(t)) return false;
+  const rearr = t.slice(4) + t.slice(0, 4);
+  let rem = 0;
+  for (const ch of rearr) {
+    const code = ch >= 'A' && ch <= 'Z' ? String(ch.charCodeAt(0) - 55) : ch;
+    for (const dc of code) rem = (rem * 10 + (dc.charCodeAt(0) - 48)) % 97;
+  }
+  return rem === 1;
+}
+/** Argentina CUIT/CUIL (tax/worker id) mod-11 check digit. */
+function cuitOk(s: string): boolean {
+  const d = s.replace(/\D/g, '');
+  if (d.length !== 11) return false;
+  const w = [5, 4, 3, 2, 7, 6, 5, 4, 3, 2];
+  let sum = 0;
+  for (let i = 0; i < 10; i++) sum += (d.charCodeAt(i) - 48) * w[i];
+  let cd = 11 - (sum % 11);
+  if (cd === 11) cd = 0;
+  if (cd === 10) return false;
+  return cd === d.charCodeAt(10) - 48;
+}
+/** Argentina CBU (bank account) — two weighted check digits (bank block + account block). */
+function cbuOk(s: string): boolean {
+  const d = s.replace(/\D/g, '');
+  if (d.length !== 22) return false;
+  const block = (digs: string, weights: number[]): boolean => {
+    let sum = 0;
+    for (let i = 0; i < weights.length; i++) sum += (digs.charCodeAt(i) - 48) * weights[i];
+    return (10 - (sum % 10)) % 10 === digs.charCodeAt(weights.length) - 48;
+  };
+  return block(d.slice(0, 8), [7, 1, 3, 9, 7, 1, 3]) && block(d.slice(8), [3, 9, 7, 1, 3, 9, 7, 1, 3, 9, 7, 1, 3]);
+}
 const PII = {
   EMAIL: /\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}\b/g,
   IP: /\b(?:(?:25[0-5]|2[0-4]\d|1?\d?\d)\.){3}(?:25[0-5]|2[0-4]\d|1?\d?\d)\b/g,
   PHONE: /(?<![\w.])\+?\d(?:[\d ().-]{7,16})\d(?![\w.])/g,
   CARD: /\b(?:\d[ -]?){13,19}\b/g,
+  IBAN: /\b[A-Z]{2}\d{2}[A-Z0-9]{11,30}\b/g,
+  CUIT: /\b(?:20|23|24|27|30|33|34)-?\d{8}-?\d\b/g,
+  CBU: /\b\d{22}\b/g,
 };
 
 function piiTokenizer(): HookPlugin {
@@ -630,7 +668,10 @@ function piiTokenizer(): HookPlugin {
       let out = s;
       if (on('email')) out = out.replace(PII.EMAIL, (m) => token(salt, 'EMAIL', m));
       if (on('ip')) out = out.replace(PII.IP, (m) => token(salt, 'IP', m));
+      if (on('iban')) out = out.replace(PII.IBAN, (m) => (ibanOk(m) ? token(salt, 'IBAN', m) : m));
       if (on('card')) out = out.replace(PII.CARD, (m) => (luhnOk(m.replace(/[ -]/g, '')) ? token(salt, 'CARD', m) : m));
+      if (on('cbu')) out = out.replace(PII.CBU, (m) => (cbuOk(m) ? token(salt, 'BANK_ACCT', m) : m));
+      if (on('cuit')) out = out.replace(PII.CUIT, (m) => (cuitOk(m) ? token(salt, 'TAX_ID', m) : m));
       if (on('phone')) out = out.replace(PII.PHONE, (m) => (m.replace(/\D/g, '').length >= 8 ? token(salt, 'PHONE', m) : m));
       return out;
     });
@@ -642,7 +683,7 @@ function piiTokenizer(): HookPlugin {
       version: '0.1.0',
       type: 'hook',
       description:
-        'Detects PII in results (emails, IPs, credit cards [Luhn-checked], phone numbers) and replaces each with a stable deterministic token (⟦EMAIL_ab12⟧) so the model reasons consistently without seeing the real value. Reversible restore-to-user (never to the model) is a follow-up.',
+        'Detects PII in results (emails, IPs, IBANs [mod-97], credit cards [Luhn], Argentina CBU + CUIT/CUIL [check-digit], phone numbers) and replaces each with a stable deterministic token (⟦EMAIL_ab12⟧) so the model reasons consistently without seeing the real value. Bank/tax-id detectors are checksum-validated to limit false positives. Reversible restore-to-user (never to the model) is a follow-up.',
       author: 'Kravn',
       priority: 12,
       configSchema: {
@@ -651,7 +692,10 @@ function piiTokenizer(): HookPlugin {
           salt: { type: 'string', title: 'Token salt (optional — defaults to the deployment secret; keeps tokens stable + unguessable)' },
           email: { type: 'boolean', title: 'Tokenize emails', default: true },
           ip: { type: 'boolean', title: 'Tokenize IP addresses', default: true },
+          iban: { type: 'boolean', title: 'Tokenize IBANs (mod-97 checked)', default: true },
           card: { type: 'boolean', title: 'Tokenize credit-card numbers (Luhn-valid)', default: true },
+          cbu: { type: 'boolean', title: 'Tokenize Argentina CBU bank accounts (check-digit)', default: true },
+          cuit: { type: 'boolean', title: 'Tokenize Argentina CUIT/CUIL tax ids (check-digit)', default: true },
           phone: { type: 'boolean', title: 'Tokenize phone numbers', default: true },
         },
       },
