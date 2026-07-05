@@ -3,6 +3,7 @@ import { createServerSchema, updateServerSchema } from '@kravn/contracts';
 import type { Services } from '../services.js';
 import { currentUser } from '../auth/plugin.js';
 import { deriveBaseUrl } from '../http/baseurl.js';
+import { OAuthClientRequiredError } from '../auth/upstream-oauth.service.js';
 import { parse, sendError } from './_helpers.js';
 
 export function serverRoutes(app: FastifyInstance, s: Services): void {
@@ -81,13 +82,17 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
   // admin's browser must visit to sign in; the AS then redirects to the public /oauth/upstream/callback.
   app.post('/api/servers/:id/oauth/authorize', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
+    const body = (req.body ?? {}) as { clientId?: string; clientSecret?: string };
     const server = await s.registry.getServer(id);
     if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');
     const redirectUri = `${deriveBaseUrl(req, s.settings, s.env)}/oauth/upstream/callback`;
+    const manualClient = body.clientId ? { clientId: body.clientId, clientSecret: body.clientSecret } : undefined;
     try {
-      const authorizationUrl = await s.upstreamOAuth.startAuthorization(server, redirectUri);
+      const authorizationUrl = await s.upstreamOAuth.startAuthorization(server, redirectUri, manualClient);
       return { authorizationUrl };
     } catch (err) {
+      // No auto-registration + no client provided → ask the UI to collect client credentials.
+      if (err instanceof OAuthClientRequiredError) return sendError(reply, 400, 'oauth_needs_client', err.message);
       return sendError(reply, 400, 'oauth_start_failed', err instanceof Error ? err.message : 'Could not start OAuth authorization.');
     }
   });

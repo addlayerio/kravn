@@ -78,7 +78,7 @@ function authGuidance(auth?: CatalogServer['auth']): string {
   if (auth === 'apikey')
     return 'Create an API key in your provider account and paste it as the token when you add this server. It is sent as a Bearer header and stored encrypted.';
   if (auth === 'oauth')
-    return 'No token to manage — add it, then click Connect and sign in with the provider. Kravn completes the OAuth flow and stores the tokens encrypted, refreshing them automatically.';
+    return 'No token to manage — add it, then click Connect and sign in with the provider. Kravn stores the tokens encrypted and refreshes them automatically. Some providers (e.g. GitHub) require you to register an OAuth app first — Kravn will show the exact redirect URL and ask for the Client ID/secret if so.';
   return 'No credential needed — add it and it connects immediately.';
 }
 
@@ -191,10 +191,18 @@ function addFromDetail() {
   }
 }
 
-// OAuth 2.1 servers: open the provider sign-in, then poll until the callback connects the server.
-async function connectOAuth(srv: UpstreamServer) {
+// OAuth client credentials the operator must supply for providers without Dynamic Client Registration.
+const oauthClient = ref<{ id: string; name: string } | null>(null);
+const oauthClientForm = reactive({ clientId: '', clientSecret: '' });
+const oauthCallbackUrl = `${window.location.origin}/oauth/upstream/callback`;
+
+// OAuth 2.1 servers: open the provider sign-in, then poll until the callback connects the server. If the
+// provider can't auto-register an app (e.g. GitHub), the backend asks for client credentials and we collect
+// them, then retry with them.
+async function connectOAuth(srv: UpstreamServer, manualClient?: { clientId: string; clientSecret?: string }) {
   try {
-    const res = await api.post<{ authorizationUrl: string }>(`/api/servers/${srv.id}/oauth/authorize`);
+    const res = await api.post<{ authorizationUrl: string }>(`/api/servers/${srv.id}/oauth/authorize`, manualClient ?? {});
+    oauthClient.value = null;
     const win = window.open(res.authorizationUrl, '_blank', 'width=560,height=720');
     if (!win) {
       toast.error('Popup blocked — allow popups for this site and try Connect again.');
@@ -209,8 +217,22 @@ async function connectOAuth(srv: UpstreamServer) {
       if ((cur && cur.status === 'online') || tries >= 12) clearInterval(timer);
     }, 3000);
   } catch (e) {
+    if (e instanceof ApiError && e.code === 'oauth_needs_client') {
+      oauthClientForm.clientId = '';
+      oauthClientForm.clientSecret = '';
+      oauthClient.value = { id: srv.id, name: srv.name };
+      return;
+    }
     toast.error(e instanceof ApiError ? e.message : 'Could not start OAuth authorization.');
   }
+}
+
+function submitOAuthClient() {
+  const c = oauthClient.value;
+  const clientId = oauthClientForm.clientId.trim();
+  if (!c || !clientId) return;
+  const srv = servers.value.find((x) => x.id === c.id);
+  if (srv) connectOAuth(srv, { clientId, clientSecret: oauthClientForm.clientSecret.trim() || undefined });
 }
 
 function parseHeaders(): Record<string, string> {
@@ -280,7 +302,7 @@ async function remove(srv: UpstreamServer) {
     <div class="btn-row">
       <div class="segmented" role="tablist">
         <button :class="{ active: tab === 'installed' }" @click="tab = 'installed'">Installed</button>
-        <button :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog</button>
+        <button data-tour="catalog-tab" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog</button>
       </div>
       <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ Add server</button>
     </div>
@@ -323,7 +345,7 @@ async function remove(srv: UpstreamServer) {
   <template v-else>
     <div class="card">
       <div class="catalog-toolbar">
-        <input v-model="catalogSearch" class="catalog-search" placeholder="Search integrations…" />
+        <input v-model="catalogSearch" data-tour="catalog-search" class="catalog-search" placeholder="Search integrations…" />
         <select v-model="catalogCategory">
           <option value="">All categories</option>
           <option v-for="c in allCategories" :key="c" :value="c">{{ c }}</option>
@@ -338,7 +360,7 @@ async function remove(srv: UpstreamServer) {
       </p>
     </div>
 
-    <div class="catalog-grid">
+    <div class="catalog-grid" data-tour="catalog-grid">
       <div v-for="e in catalogItems" :key="e.key" class="catalog-card">
         <div class="cc-body" role="button" tabindex="0" title="View details" @click="detailItem = e" @keydown.enter="detailItem = e">
           <div class="cc-head">
@@ -418,6 +440,34 @@ async function remove(srv: UpstreamServer) {
   </div>
 
   <PluginConfigModal v-if="configPlugin" :plugin="configPlugin" @close="configPlugin = null" @saved="onPluginSaved" />
+
+  <!-- OAuth client credentials (providers without automatic app registration, e.g. GitHub) -->
+  <div v-if="oauthClient" class="modal-backdrop" @click.self="oauthClient = null">
+    <div class="modal" style="max-width: 560px">
+      <h2>Connect {{ oauthClient.name }}</h2>
+      <p class="muted" style="margin-top: -0.25rem">
+        This provider needs a pre-registered OAuth app (it doesn't support automatic registration). Create one
+        in the provider's developer settings using the redirect URL below, then paste its Client ID (and
+        secret) here.
+      </p>
+      <div class="field">
+        <label>Redirect URL — register this at the provider</label>
+        <input :value="oauthCallbackUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+      </div>
+      <div class="field">
+        <label>Client ID</label>
+        <input v-model="oauthClientForm.clientId" placeholder="the OAuth app's Client ID" />
+      </div>
+      <div class="field">
+        <label>Client Secret <span class="muted">(if the app has one)</span></label>
+        <input v-model="oauthClientForm.clientSecret" type="password" autocomplete="new-password" placeholder="leave blank for a public/PKCE app" />
+      </div>
+      <div class="btn-row" style="justify-content: flex-end">
+        <button class="btn" @click="oauthClient = null">Cancel</button>
+        <button class="btn primary" :disabled="!oauthClientForm.clientId.trim()" @click="submitOAuthClient">Continue</button>
+      </div>
+    </div>
+  </div>
 
   <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">
     <div class="modal">

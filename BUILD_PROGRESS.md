@@ -947,6 +947,21 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   of the 104 has useful guidance. A "Provider docs ↗" link opens where present.
 - Operator + contracts build green.
 
+## ✅ PASS 52 — Upstream OAuth for providers without DCR + multi-page interactive tour (v0.1.58)
+- **OAuth without Dynamic Client Registration (the GitHub blocker).** `startAuthorization` now resolves a
+  client in priority order: operator-supplied `manualClient` → stored client → DCR; if the AS can't
+  auto-register and none supplied, it throws `OAuthClientRequiredError` (carries the redirect URL). Also
+  wraps `registerClient` so a DCR *failure* falls into the same path. The authorize route accepts
+  `{ clientId, clientSecret }` and maps the error to `oauth_needs_client`; the operator catches that code and
+  opens a modal showing the redirect URL to register + fields for Client ID/secret, then retries. Manual
+  client (incl. secret) is stored encrypted like everything else. Validated on real sqlite + a no-DCR mock
+  AS (8/8): correct error without a client, manual-client auth URL, encrypted storage, full code exchange +
+  token. DCR-supporting path unchanged.
+- **Interactive tour drives the app.** Rebuilt `lib/tour.ts` so the tour navigates to `/servers`, clicks the
+  Catalog tab, and spotlights the real search/grid before the nav-anchored steps — fixing the earlier
+  "Open the Catalog didn't open the Catalog". Added `data-tour` anchors to the Catalog tab/search/grid.
+- Full monorepo build green.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

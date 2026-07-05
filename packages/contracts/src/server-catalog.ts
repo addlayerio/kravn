@@ -665,9 +665,9 @@ export interface CatalogDetail {
 
 export const CATALOG_SETUP: Record<string, CatalogDetail> = {
   github: {
-    docsUrl: 'https://github.com/github/github-mcp-server',
+    docsUrl: 'https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app',
     setup:
-      "GitHub's official MCP server uses OAuth — no token to create. Add it, then click Connect and authorize Kravn; in GitHub's screen choose the account/organization and the repositories to grant access to.",
+      "GitHub's MCP server uses OAuth but doesn't auto-register apps, so create one: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App. Set the Authorization callback URL to the redirect URL Kravn shows when you click Connect, then paste the app's Client ID and Client Secret. You'll then authorize which org/repositories to grant.",
   },
   stripe: {
     docsUrl: 'https://docs.stripe.com/mcp',

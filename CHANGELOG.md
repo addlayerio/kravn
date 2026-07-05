@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.58] — 2026-07-05
+
+- 📣 🔒 **Connect OAuth providers that need a registered app (e.g. GitHub).** Some providers don't support
+  automatic app registration. Now when you Connect one, Kravn shows the exact **redirect URL** to register at
+  the provider and asks for the **Client ID (and secret)** — then completes the sign-in. Providers that do
+  support auto-registration are unchanged (just click Connect). Client credentials are stored encrypted.
+- **The tour now drives the app.** Instead of just describing things, it navigates to MCP Servers, **opens
+  the Catalog for you**, and spotlights the real controls step by step before covering endpoints, access,
+  governance and settings.
+
 ## [0.1.57] — 2026-07-05
 
 - 📣 **Catalog cards now tell you how to set each integration up.** Open a catalog integration and the detail
@@ -212,6 +222,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.58]: https://github.com/addlayerio/kravn/releases/tag/v0.1.58
 [0.1.57]: https://github.com/addlayerio/kravn/releases/tag/v0.1.57
 [0.1.56]: https://github.com/addlayerio/kravn/releases/tag/v0.1.56
 [0.1.55]: https://github.com/addlayerio/kravn/releases/tag/v0.1.55

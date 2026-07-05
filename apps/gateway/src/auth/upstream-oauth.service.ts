@@ -34,6 +34,21 @@ import type { SsrfGuard } from '../http/ssrf.js';
 const PENDING_TTL_SEC = 600;
 const REFRESH_SKEW_SEC = 60; // refresh this long before the token actually expires
 
+/**
+ * Thrown when the authorization server can't auto-register a client (no Dynamic Client Registration — e.g.
+ * GitHub) and the operator hasn't supplied one. The operator must register an OAuth app at the provider
+ * (with `redirectUri`) and provide its Client ID (+ secret). Surfaced to the UI as `oauth_needs_client`.
+ */
+export class OAuthClientRequiredError extends Error {
+  constructor(readonly redirectUri: string) {
+    super(
+      `This provider doesn't support automatic app registration. Register an OAuth app at the provider with ` +
+        `redirect URL ${redirectUri}, then provide its Client ID (and secret) to connect.`,
+    );
+    this.name = 'OAuthClientRequiredError';
+  }
+}
+
 interface Deps {
   repos: Repos;
   encryptor: Encryptor;
@@ -44,8 +59,17 @@ interface Deps {
 export class UpstreamOAuthService {
   constructor(private d: Deps) {}
 
-  /** Discover, (re)register a client, build the authorization URL, and persist the pending round-trip. */
-  async startAuthorization(server: UpstreamServer, redirectUri: string): Promise<string> {
+  /**
+   * Discover, obtain a client, build the authorization URL, and persist the pending round-trip. A client is
+   * resolved in priority order: an operator-supplied `manualClient` (for providers without Dynamic Client
+   * Registration, e.g. GitHub), then a client already stored for this server, then DCR. If none apply and
+   * the AS can't auto-register, throws OAuthClientRequiredError so the UI can ask for client credentials.
+   */
+  async startAuthorization(
+    server: UpstreamServer,
+    redirectUri: string,
+    manualClient?: { clientId: string; clientSecret?: string },
+  ): Promise<string> {
     if (server.transport === 'stdio' || server.transport === 'plugin' || !server.url) {
       throw new Error('OAuth is only available for remote (HTTP/SSE) MCP servers.');
     }
@@ -61,12 +85,21 @@ export class UpstreamOAuthService {
 
     const scope = (resourceMeta.scopes_supported ?? asMeta.scopes_supported ?? []).join(' ') || undefined;
 
-    // Reuse a client already registered for this exact authorization server; otherwise register one (DCR).
     let clientInfo: OAuthClientInformationFull;
     const existing = await this.d.repos.serverOAuth.getConfig(server.id);
-    if (existing && existing.authServerUrl === authServerUrl && existing.clientInfoEnc) {
+    if (manualClient?.clientId) {
+      // Operator-registered OAuth app (provider without DCR, or a preferred fixed app).
+      clientInfo = {
+        client_id: manualClient.clientId,
+        ...(manualClient.clientSecret ? { client_secret: manualClient.clientSecret } : {}),
+        redirect_uris: [redirectUri],
+        grant_types: ['authorization_code', 'refresh_token'],
+        response_types: ['code'],
+        token_endpoint_auth_method: manualClient.clientSecret ? 'client_secret_post' : 'none',
+      } as OAuthClientInformationFull;
+    } else if (existing && existing.authServerUrl === authServerUrl && existing.clientInfoEnc) {
       clientInfo = JSON.parse(this.d.encryptor.decrypt(existing.clientInfoEnc)) as OAuthClientInformationFull;
-    } else {
+    } else if (asMeta.registration_endpoint) {
       const clientMetadata: OAuthClientMetadata = {
         client_name: 'Kravn',
         redirect_uris: [redirectUri],
@@ -74,7 +107,13 @@ export class UpstreamOAuthService {
         response_types: ['code'],
         ...(scope ? { scope } : {}),
       };
-      clientInfo = await registerClient(authServerUrl, { metadata: asMeta, clientMetadata, scope });
+      try {
+        clientInfo = await registerClient(authServerUrl, { metadata: asMeta, clientMetadata, scope });
+      } catch {
+        throw new OAuthClientRequiredError(redirectUri);
+      }
+    } else {
+      throw new OAuthClientRequiredError(redirectUri);
     }
 
     const state = randomToken(32);
