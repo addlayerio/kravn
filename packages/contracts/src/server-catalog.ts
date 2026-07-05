@@ -803,4 +803,8 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-odoo', name: 'Odoo', category: 'CRM',
     description: 'CRM & ERP over Odoo JSON-RPC — CRUD, server-side aggregation & counts, and search across leads, contacts, sales orders, invoices, products, tasks, employees. Works with Odoo Online, Odoo.sh and self-hosted.',
   },
+  {
+    id: 'kravn-zoho', name: 'Zoho CRM', category: 'CRM',
+    description: 'Zoho CRM over its v6 REST API — read/search/CRUD on any module, COQL queries with GROUP BY and COUNT/SUM/AVG aggregates, and convenience search for Leads, Contacts, Accounts and Deals. Server-to-server OAuth 2.0, region-aware.',
+  },
 ];

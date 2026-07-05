@@ -59,6 +59,7 @@ const NATIVE = [
   { id: 'kravn-odoo', slug: 'odoo' },
   { id: 'kravn-sharepoint', slug: 'microsoftsharepoint' },
   { id: 'kravn-teams', slug: 'microsoftteams' },
+  { id: 'kravn-zoho', slug: 'zoho' },
 ];
 
 const out = new Map();

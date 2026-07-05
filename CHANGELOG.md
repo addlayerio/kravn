@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **New built-in integration: Zoho CRM.** Connect Zoho CRM (server-to-server OAuth 2.0 — a Self Client +
+  refresh token, region-aware) and get read/search/CRUD over any module plus **COQL** queries with `GROUP BY`
+  and `COUNT`/`SUM`/`AVG` aggregates (the "how much / how many" tool), and convenience search for Leads,
+  Contacts, Accounts and Deals. Credentials encrypted at rest; adversarially security-reviewed.
+- 📣 **Filter the integrations gallery by kind.** The website gallery (`/integrations`) now has All /
+  Built-in / Catalog chips (with counts) alongside search and category.
+
 ## [0.1.67] — 2026-07-05
 
 - 🧩 **Odoo: answer "how much / how many" in one call.** Two new read-only tools — `odoo_read_group`

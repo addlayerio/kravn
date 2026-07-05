@@ -5,6 +5,7 @@ import { teamsPlugin } from './teams.js';
 import { jiraPlugin } from './jira.js';
 import { confluencePlugin } from './confluence.js';
 import { odooPlugin } from './odoo.js';
+import { zohoPlugin } from './zoho.js';
 import { nativeHookPlugins } from './native-hooks.js';
 
 /**
@@ -87,5 +88,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): KravnPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), ...nativeHookPlugins()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), ...nativeHookPlugins()];
 }

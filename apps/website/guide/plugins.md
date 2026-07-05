@@ -25,8 +25,9 @@ reaches the service:
 
 - **Built-in** connectors are `mcp-server` plugins **maintained by Kravn** that speak the vendor's own API
   directly (Microsoft Graph, REST, JSON-RPC) from inside the gateway — nothing extra to deploy or operate.
-  Kravn ships them for common corporate systems — **SharePoint, Microsoft Teams, Jira, Confluence, Odoo** —
-  plus a **Code Interpreter** (Python in a Pyodide/WASM sandbox for reading and transforming attached files).
+  Kravn ships them for common corporate systems — **SharePoint, Microsoft Teams, Jira, Confluence, Odoo,
+  Zoho CRM** — plus a **Code Interpreter** (Python in a Pyodide/WASM sandbox for reading and transforming
+  attached files).
 - **Remote MCP servers** are public MCP endpoints you point Kravn at (Notion, Linear, Sentry, Stripe,
   Supabase, Vercel, Hugging Face, Google, and dozens more). Servers with no auth or an API key connect
   immediately; for **OAuth 2.1** servers, click **Connect** — Kravn runs the whole flow (discovery, dynamic
