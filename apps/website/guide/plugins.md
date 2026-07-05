@@ -20,21 +20,21 @@ there's no separate class to manage. Browse the full, always-current list in the
 **[integrations gallery](/integrations)**, or the **Catalog** tab on the *MCP Servers* page in the console.
 Click any card for its detail (what it does, how it connects, setup) and filter by category.
 
-Integrations differ only in **where they run**:
+The catalog mixes two kinds of connector, which you use identically — the only difference is how Kravn
+reaches the service:
 
-- **Built-in** — a native `mcp-server` plugin that runs **in-process** inside Kravn: no separate MCP server
-  to operate, an app-only credential, and nothing leaving your perimeter. You enter credentials once and its
-  tools join the catalog. Kravn ships built-in connectors for the corporate systems you already run —
-  **SharePoint, Microsoft Teams, Jira, Confluence, Odoo** — plus a **Code Interpreter** (Python in a
-  Pyodide/WASM sandbox for reading and transforming attached files).
-- **Remote MCP servers** — a curated set of public servers you add in one click (Notion, Linear, Sentry,
-  Stripe, Supabase, Vercel, Hugging Face, Google, and dozens more across project management, payments, CRM,
-  databases, observability, documentation and search). Servers with no auth or an API key connect
-  immediately; for **OAuth 2.1** servers, click **Connect** to sign in with the provider — Kravn runs the
-  whole flow (discovery, dynamic client registration, PKCE) and stores the tokens encrypted, refreshing them
-  automatically.
+- **Built-in** connectors are `mcp-server` plugins **maintained by Kravn** that speak the vendor's own API
+  directly (Microsoft Graph, REST, JSON-RPC) from inside the gateway — nothing extra to deploy or operate.
+  Kravn ships them for common corporate systems — **SharePoint, Microsoft Teams, Jira, Confluence, Odoo** —
+  plus a **Code Interpreter** (Python in a Pyodide/WASM sandbox for reading and transforming attached files).
+- **Remote MCP servers** are public MCP endpoints you point Kravn at (Notion, Linear, Sentry, Stripe,
+  Supabase, Vercel, Hugging Face, Google, and dozens more). Servers with no auth or an API key connect
+  immediately; for **OAuth 2.1** servers, click **Connect** — Kravn runs the whole flow (discovery, dynamic
+  client registration, PKCE) and stores the tokens encrypted, refreshing them automatically.
 
-Either way, a credential is only needed when the server requires one, **credentials are encrypted at rest**,
+Both reach the target system over the network, so **whether data stays on-prem depends on the target**, not
+on the connector kind — a self-hosted Odoo/SharePoint stays inside your perimeter; a cloud service does not.
+Either way, a credential is only needed when the service requires one, **credentials are encrypted at rest**,
 and every integration's tools flow into the same registry and **team-governed MCP endpoints** — you compose
 them into a restricted endpoint for the teams allowed to use them.
 
