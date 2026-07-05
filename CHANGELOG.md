@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Six enterprise connectors added to the catalog:** Salesforce, ServiceNow, Slack, Snowflake, Datadog and
+  GitLab — all official first-party MCP servers, one-click add with OAuth. Their setup cards note the
+  specifics (per-instance URLs for ServiceNow/Snowflake/self-managed GitLab, Slack's pre-registered app,
+  Datadog/GitLab preview/beta status).
 - 🔒 **Signed, verifiable releases.** Every release image now ships a CycloneDX **SBOM** (bill of materials)
   and **SLSA build provenance**, and both the image and the Helm chart are **cosign-signed** (keyless). You
   can verify an artifact is the genuine, untampered build and see exactly what's in it before deploying — the

@@ -660,6 +660,42 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
     url: 'https://api.read.ai/mcp/', transport: 'streamable-http', auth: 'oauth', provider: 'Read AI',
     tags: ['meetings', 'transcription', 'notetaker', 'productivity'],
   },
+  {
+    id: 'salesforce', name: 'Salesforce', category: 'CRM',
+    description: 'Salesforce CRM — query, search and update records across your org (Hosted MCP)',
+    url: 'https://api.salesforce.com/platform/mcp/v1/platform/sobject-all', transport: 'streamable-http', auth: 'oauth', provider: 'Salesforce',
+    tags: ['crm', 'sales', 'salesforce'],
+  },
+  {
+    id: 'servicenow', name: 'ServiceNow', category: 'IT Service Management',
+    description: 'ServiceNow ITSM — incidents, requests and records via your instance MCP server',
+    url: 'https://<your-instance>.service-now.com/sncapps/mcp-server/mcp/sn_mcp_server_default', transport: 'streamable-http', auth: 'oauth', provider: 'ServiceNow',
+    tags: ['itsm', 'tickets', 'incidents', 'servicenow'],
+  },
+  {
+    id: 'slack', name: 'Slack', category: 'Communication',
+    description: 'Slack — search and read messages and post to channels (official hosted MCP)',
+    url: 'https://mcp.slack.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Slack',
+    tags: ['communication', 'chat', 'slack'],
+  },
+  {
+    id: 'snowflake', name: 'Snowflake', category: 'Data Analytics',
+    description: 'Snowflake — query your data via a Snowflake-managed Cortex MCP server',
+    url: 'https://<account>.snowflakecomputing.com/api/v2/databases/<database>/schemas/<schema>/mcp-servers/<mcp_server>', transport: 'streamable-http', auth: 'oauth', provider: 'Snowflake',
+    tags: ['database', 'data-analytics', 'snowflake'],
+  },
+  {
+    id: 'datadog', name: 'Datadog', category: 'Observability',
+    description: 'Datadog — query metrics, logs, monitors and incidents (official MCP, preview)',
+    url: 'https://mcp.datadoghq.com/api/unstable/mcp-server/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Datadog',
+    tags: ['observability', 'monitoring', 'datadog'],
+  },
+  {
+    id: 'gitlab', name: 'GitLab', category: 'Software Development',
+    description: 'GitLab — issues, merge requests, pipelines and code (official MCP, beta)',
+    url: 'https://gitlab.com/api/v4/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'GitLab',
+    tags: ['development', 'devops', 'gitlab'],
+  },
 ];
 
 /** Distinct categories present in the catalog, for the browse filter. */
@@ -688,6 +724,47 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
     setup:
       'Click **Connect** and sign in with your Read AI account. The AI can then read your **meeting reports, ' +
       'transcripts, summaries and action items** — following your Read AI account permissions. No token to manage.',
+  },
+  salesforce: {
+    docsUrl: 'https://developer.salesforce.com/docs/platform/hosted-mcp-servers/guide/hosted-mcp-servers-overview.html',
+    setup:
+      'Salesforce **Hosted MCP** uses one central host (`api.salesforce.com`) — **not** your `my.salesforce.com` URL; your org is resolved at sign-in.\n\n' +
+      '1. An admin enables **Hosted MCP Servers** in Setup and creates an **External Client App** (OAuth) with scopes `api`, `sfap_api`, `refresh_token`.\n' +
+      "2. Enter that app's **Consumer Key** as the OAuth **Client ID** here, click **Connect** and sign in — every call runs as you, with field-level security and sharing enforced.\n\n" +
+      'Read-only variant: change `sobject-all` → `sobject-reads` in the URL. Sandbox org: insert `/sandbox/` after `/v1`.',
+  },
+  servicenow: {
+    docsUrl: 'https://www.servicenow.com/docs/r/intelligent-experiences/mcp-client.html',
+    setup:
+      'Replace `<your-instance>` in the URL with your ServiceNow subdomain. Requires a **Zurich (or later)** instance with the **MCP Server Console** and a published MCP server (the out-of-box one is `sn_mcp_server_default`).\n\n' +
+      'An admin registers Kravn as an inbound **OAuth** client (Application Registry) and clears the *"Allow access only to APIs in selected scope"* toggle so the token can reach `/sncapps/mcp-server`. Then click **Connect** and sign in. ' +
+      '_Tip: an unauthenticated GET to the path returns 401 if routing is enabled, 404 if path-forwarding still needs to be turned on._',
+  },
+  slack: {
+    docsUrl: 'https://docs.slack.dev/ai/slack-mcp-server/',
+    setup:
+      "Slack's **official hosted** MCP. It does **not** support automatic client registration, so you must pre-register an app:\n\n" +
+      '1. Create a Slack app at [api.slack.com](https://api.slack.com/apps) (published or internal) and add the user scopes you need (e.g. `search:read.public`, `channels:history`, `chat:write`, `users:read`).\n' +
+      "2. Paste the app's **Client ID** and **Client Secret** into the OAuth config here, then click **Connect** and approve — Kravn receives a per-user token.",
+  },
+  snowflake: {
+    docsUrl: 'https://docs.snowflake.com/en/user-guide/snowflake-cortex/cortex-agents-mcp',
+    setup:
+      'Use a **Snowflake-managed** MCP server. In Snowflake, create one (`CREATE MCP SERVER …`) and copy its URL, then replace the placeholders in ' +
+      '`https://<account>.snowflakecomputing.com/api/v2/databases/<database>/schemas/<schema>/mcp-servers/<mcp_server>` with your account, database, schema and server name.\n\n' +
+      'Auth is **OAuth** — click **Connect** and sign in. _(Not available on government / VPS / VPC regions.)_',
+  },
+  datadog: {
+    docsUrl: 'https://docs.datadoghq.com/mcp_server/',
+    setup:
+      "Datadog's **official** MCP server (currently **preview** — the `unstable` path may change). The URL is per **site**: use `mcp.datadoghq.com` for US1, " +
+      'or your region host instead (e.g. `mcp.datadoghq.eu`, `us3`/`us5`, `ap1`). Click **Connect** and authorize your Datadog org — access follows your Datadog permissions.',
+  },
+  gitlab: {
+    docsUrl: 'https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/',
+    setup:
+      "GitLab's **official** MCP server (**beta**, GitLab **18.6+**, requires GitLab Duo). For SaaS use `https://gitlab.com/api/v4/mcp`; for **Self-Managed / Dedicated** replace the host with your own GitLab domain. " +
+      'Click **Connect** and authorize with **OAuth**.',
   },
   github: {
     docsUrl: 'https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app',
