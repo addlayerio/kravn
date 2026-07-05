@@ -39,6 +39,10 @@ jobs:
           cache: pnpm
       - name: Install dependencies
         run: pnpm install --frozen-lockfile
+      # The integrations gallery data loader imports @kravn/contracts, whose dist is gitignored —
+      # build it first so VitePress can resolve it (otherwise the site build fails on a clean checkout).
+      - name: Build workspace deps
+        run: pnpm --filter @kravn/contracts build
       - name: Build the site
         run: pnpm --filter @kravn/website build
       - uses: actions/configure-pages@v5
