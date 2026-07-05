@@ -24,6 +24,7 @@ Talk to the corporate systems you already run — no separate MCP server to oper
 | **Microsoft Teams** | Find people, find/list/read chats (scopable by a date range), list teams/channels and read channel posts, over Microsoft Graph (app-only). |
 | **Jira** | Query and read issues via the Jira REST API. |
 | **Confluence** | Search and read pages. |
+| **Odoo** | CRM & ERP over Odoo's JSON-RPC API — generic CRUD on any model plus search for leads, contacts, sales orders, invoices, products, tasks and employees. Works with Odoo Online, Odoo.sh and self-hosted. |
 | **Code Interpreter** | Run Python in a WASM sandbox (Pyodide — no host filesystem or network) to read and transform attached files, e.g. complete a spreadsheet and return it. |
 
 Credentials for these are stored **encrypted at rest**, and access is governed by the same team model as

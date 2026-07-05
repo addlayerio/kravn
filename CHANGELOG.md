@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.60] — 2026-07-05
+
+- 📣 🧩 **Odoo integration (built-in).** A new native Odoo plugin talks to your Odoo (CRM & ERP) over its
+  JSON-RPC API — **works with Odoo Online, Odoo.sh and self-hosted**. It exposes generic read/create/update/
+  delete over *any* Odoo model, plus ready-made search for leads/opportunities, contacts, sales orders,
+  invoices, products, project tasks and employees. Configure it with your Odoo URL, database, username and
+  API key; enable it from the Catalog. The user's Odoo access rights govern what it can do.
+
 ## [0.1.59] — 2026-07-05
 
 - 📣 **Full manual OAuth config for any provider.** When a provider can't be auto-configured (no metadata,
@@ -230,6 +238,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.60]: https://github.com/addlayerio/kravn/releases/tag/v0.1.60
 [0.1.59]: https://github.com/addlayerio/kravn/releases/tag/v0.1.59
 [0.1.58]: https://github.com/addlayerio/kravn/releases/tag/v0.1.58
 [0.1.57]: https://github.com/addlayerio/kravn/releases/tag/v0.1.57

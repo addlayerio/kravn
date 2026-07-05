@@ -973,8 +973,21 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Validated** on real sqlite + mocks: no-DCR fallback (8/8, v0.1.58) and undiscoverable + manual-endpoints
   (5/5) — correct error without config, manual auth URL/scope/PKCE, exchange via the manual token endpoint.
 
+## ✅ PASS 54 — Native Odoo plugin (CRM & ERP over JSON-RPC) (v0.1.60)
+- **Works with any Odoo hosting** (Odoo Online, Odoo.sh, self-hosted) — all expose the same JSON-RPC external
+  API (`/jsonrpc` → `common.authenticate` → `object.execute_kw`), so one plugin covers them. No XML-RPC dep
+  (fetch only). `apps/gateway/src/plugins/odoo.ts`, registered in `native.ts`.
+- **13 tools:** 6 generic (`odoo_list_models`, `odoo_fields`, `odoo_search_read`, `odoo_create`,
+  `odoo_write`, `odoo_unlink` — full CRUD over ANY model) + 7 domain shortcuts (crm.lead, res.partner,
+  sale.order, account.move, product.product, project.task, hr.employee). Config: url/db/username/apiKey
+  (secret, encrypted). uid cached by config fingerprint; URL normalized (http(s), blocks loopback/link-local/
+  IPv6 literal); requests `redirect:'error'` + 30s timeout + 10 MB cap.
+- **Validated structurally** (13 unique well-formed tools, secret apiKey, setup text, graceful errors:
+  unconfigured / localhost blocked / unknown tool). Full runtime against a live Odoo not exercised here (no
+  instance) — verify on deploy. Gateway build green.
+
 ### Deferred to later phases (intentional, not missing)
-Native **Odoo** + **Zoho** plugins (requested) — Odoo via XML-RPC/JSON-RPC (CRM/ERP tools), Zoho CRM via OAuth · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·
