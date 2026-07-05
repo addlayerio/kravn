@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **OpenTelemetry tracing (OTLP).** Export distributed traces of requests, MCP tool calls and LLM calls to
+  your observability stack (Jaeger/Tempo/Grafana/Datadog…). Off by default — enable with
+  `KRAVN_OTEL_ENABLED=true` and the standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME`. No request
+  bodies or tokens in spans; zero overhead when disabled.
 - 🔒 **See and revoke your active sessions, plus idle timeout.** Settings now lists every browser/device
   you're signed in on — revoke any one, or "log out other sessions". An operator can set an **idle timeout**
   (Settings → *Idle timeout*, on top of the absolute session TTL). Logout and revocation take effect

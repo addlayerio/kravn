@@ -4,6 +4,7 @@ import {
   type UpstreamServer,
 } from '@kravn/contracts';
 import { newId, slugify, shortHash } from '../crypto.js';
+import { withSpan } from '../otel.js';
 import type { Encryptor } from '../crypto.js';
 import type { Repos } from '../db/repos.js';
 import type { SettingsService } from '../settings/settings.service.js';
@@ -365,21 +366,26 @@ export class RegistryService {
     await this.ensureConnected(tool.serverId);
     const vsId = ctx?.mcpEndpointId;
 
-    // Apigee-style request hook: plugins may mutate the arguments or block the call.
-    const callArgs = await this.d.plugins.applyToolPre(tool.serverId, tool.name, args, actor, vsId);
-
-    try {
-      // Carry the caller + file workspace to plugin shims (ignored by remote MCP upstreams).
-      let result = await this.d.upstream.callTool(tool.serverId, tool.name, callArgs, { actor: actor && { id: actor.id, email: actor.email, role: actor.role }, files: ctx?.files });
-      // Response hook: plugins may mutate the result.
-      result = await this.d.plugins.applyToolPost(tool.serverId, tool.name, result, actor, vsId);
-      this.d.metrics.toolCalls.inc({ server: tool.serverId, tool: tool.name });
-      this.d.logstore.add('info', `Tool "${tool.name}" invoked`, { server: tool.serverId });
-      return result;
-    } catch (err) {
-      this.d.metrics.toolErrors.inc({ server: tool.serverId, tool: tool.name });
-      throw err;
-    }
+    return withSpan(
+      `mcp.tool ${tool.name}`,
+      async () => {
+        // Apigee-style request hook: plugins may mutate the arguments or block the call.
+        const callArgs = await this.d.plugins.applyToolPre(tool.serverId, tool.name, args, actor, vsId);
+        try {
+          // Carry the caller + file workspace to plugin shims (ignored by remote MCP upstreams).
+          let result = await this.d.upstream.callTool(tool.serverId, tool.name, callArgs, { actor: actor && { id: actor.id, email: actor.email, role: actor.role }, files: ctx?.files });
+          // Response hook: plugins may mutate the result.
+          result = await this.d.plugins.applyToolPost(tool.serverId, tool.name, result, actor, vsId);
+          this.d.metrics.toolCalls.inc({ server: tool.serverId, tool: tool.name });
+          this.d.logstore.add('info', `Tool "${tool.name}" invoked`, { server: tool.serverId });
+          return result;
+        } catch (err) {
+          this.d.metrics.toolErrors.inc({ server: tool.serverId, tool: tool.name });
+          throw err;
+        }
+      },
+      { 'mcp.tool.name': tool.name, 'mcp.server.id': tool.serverId, ...(vsId ? { 'mcp.endpoint.id': vsId } : {}) },
+    );
   }
 
   /** Reconcile plugin-backed (transport='plugin') servers with the set of enabled mcp-server plugins. */

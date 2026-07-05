@@ -23,6 +23,7 @@ That means you configure Kravn the way you operate it: infra as code, policy in 
 | `KRAVN_ADMIN_EMAIL` / `KRAVN_ADMIN_PASSWORD` | — | Optionally seed the first admin non-interactively (otherwise use the setup wizard). |
 | `KRAVN_CLIENT_URL` | — | Base URL of the separate end-user chat app, used as an SSO return target. |
 | `KRAVN_METRICS_TOKEN` | — | Bearer token required to scrape `/metrics`. |
+| `KRAVN_OTEL_ENABLED` | `false` | Export **OpenTelemetry** traces (requests, MCP tool calls, LLM calls) via OTLP. Set the endpoint with the standard `OTEL_EXPORTER_OTLP_ENDPOINT` / `OTEL_SERVICE_NAME`. |
 | `KRAVN_ALLOW_STDIO` | `false` | Allow `stdio`-transport upstream MCP servers (they run local processes — off by default). |
 | `KRAVN_REDIS_URL` | — | Shared-store endpoint (`redis://` / `rediss://`) for multi-replica state. On the chart, `redis.enabled: true` provisions Dragonfly and sets this for you. |
 | `KRAVN_KMS_PROVIDER` | `none` | Encrypt secrets at rest with an external **KMS/HSM** (`vault` / `azure`) instead of the local key. Provider-specific vars and setup: [Key management](/guide/key-management). |

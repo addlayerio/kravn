@@ -1,6 +1,8 @@
 import { loadEnv } from './config/env.js';
 import { createServices, startBackground, shutdownServices, runDbMigrations } from './services.js';
 import { buildApp } from './app.js';
+import { initOtel, shutdownOtel } from './otel.js';
+import { APP_VERSION } from './version.js';
 
 async function main(): Promise<void> {
   const env = loadEnv();
@@ -11,6 +13,9 @@ async function main(): Promise<void> {
     await runDbMigrations(env);
     process.exit(0);
   }
+
+  // OpenTelemetry tracing (opt-in). Manual instrumentation, so init order isn't critical.
+  await initOtel({ enabled: env.otelEnabled, version: APP_VERSION, log: console });
 
   const services = await createServices(env);
   const app = await buildApp(services);
@@ -27,6 +32,7 @@ async function main(): Promise<void> {
     try {
       await app.close();
       await shutdownServices(services);
+      await shutdownOtel();
     } finally {
       process.exit(0);
     }

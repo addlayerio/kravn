@@ -2,6 +2,7 @@ import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type 
 import { newId, type Encryptor } from '../crypto.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { safeFetch } from '../http/client.js';
+import { withSpan } from '../otel.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
 import type { PluginManager } from '../plugins/manager.js';
@@ -267,7 +268,15 @@ export class ChatService {
     return (p.baseUrl || DEFAULT_BASE[p.type] || '').replace(/\/$/, '');
   }
 
-  private async complete(p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+  private complete(p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+    return withSpan(
+      `llm.chat ${p.type}`,
+      () => this.completeInner(p, key, model, messages, tools),
+      { 'llm.provider': p.type, 'llm.model': model },
+    );
+  }
+
+  private async completeInner(p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
     const base = this.baseUrl(p);
     if (!base) throw new Error('Provider has no base URL.');
     if (!model) throw new Error('Conversation has no model.');

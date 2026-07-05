@@ -1,4 +1,6 @@
 import Fastify, { type FastifyInstance } from 'fastify';
+import { SpanKind, SpanStatusCode } from '@opentelemetry/api';
+import { otelTracer } from './otel.js';
 import cookie from '@fastify/cookie';
 import cors from '@fastify/cors';
 import formbody from '@fastify/formbody';
@@ -68,6 +70,31 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   });
 
   app.decorate('services', services);
+
+  // OpenTelemetry: one SERVER span per request (opt-in). Uses the low-cardinality route pattern as the span
+  // name; exported via OTLP. No bodies/headers/tokens — method, route, and status only.
+  if (services.env.otelEnabled) {
+    const REQ_SPAN = Symbol('otelSpan');
+    app.addHook('onRequest', async (req) => {
+      const t = otelTracer();
+      if (!t) return;
+      const route = req.routeOptions?.url ?? req.url.split('?')[0];
+      (req as unknown as Record<symbol, unknown>)[REQ_SPAN] = t.startSpan(`${req.method} ${route}`, {
+        kind: SpanKind.SERVER,
+        attributes: { 'http.request.method': req.method, 'url.path': req.url.split('?')[0], 'http.route': route },
+      });
+    });
+    app.addHook('onResponse', async (req, reply) => {
+      const span = (req as unknown as Record<symbol, unknown>)[REQ_SPAN] as
+        | { setAttribute: (k: string, v: number) => void; setStatus: (s: { code: number }) => void; end: () => void }
+        | undefined;
+      if (span) {
+        span.setAttribute('http.response.status_code', reply.statusCode);
+        if (reply.statusCode >= 500) span.setStatus({ code: SpanStatusCode.ERROR });
+        span.end();
+      }
+    });
+  }
 
   await app.register(cookie);
 

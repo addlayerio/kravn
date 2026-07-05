@@ -37,6 +37,9 @@ const envSchema = z.object({
   KRAVN_DB_SCHEMA: z.string().default(''),
   /** Bearer token that /metrics requires (for Prometheus). Empty -> /metrics needs a signed-in Kravn user. */
   KRAVN_METRICS_TOKEN: z.string().default(''),
+  /** Enable OpenTelemetry tracing (OTLP/HTTP). Set the endpoint via the standard OTEL_EXPORTER_OTLP_ENDPOINT
+   *  (and OTEL_SERVICE_NAME / OTEL_EXPORTER_OTLP_HEADERS). Off by default — zero overhead when disabled. */
+  KRAVN_OTEL_ENABLED: z.enum(['true', 'false']).default('false'),
   /** Allow stdio upstream servers (spawn a local process). Admin-only anyway; set 'false' to forbid entirely. */
   KRAVN_ALLOW_STDIO: z.enum(['true', 'false']).default('true'),
   /** How Fastify trusts proxy headers for req.ip: 'false' (direct), 'true', a hop count, or a CIDR/IP list. */
@@ -114,6 +117,8 @@ export interface Env {
   clientUrl: string;
   /** Bearer token required by /metrics (Prometheus); '' -> /metrics requires a signed-in user. */
   metricsToken: string;
+  /** OpenTelemetry tracing enabled (OTLP endpoint via the standard OTEL_* env). */
+  otelEnabled: boolean;
   /** Whether stdio upstream servers (local process spawn) may be created (admin-only regardless). */
   allowStdio: boolean;
   /** Fastify trustProxy value (false | true | hop count | CIDR/IP list). */
@@ -287,6 +292,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     role: raw.KRAVN_ROLE,
     clientUrl: absoluteUrlOrEmpty('KRAVN_CLIENT_URL', raw.KRAVN_CLIENT_URL),
     metricsToken: raw.KRAVN_METRICS_TOKEN,
+    otelEnabled: raw.KRAVN_OTEL_ENABLED === 'true',
     allowStdio: raw.KRAVN_ALLOW_STDIO === 'true',
     trustProxy: parseTrustProxy(raw.KRAVN_TRUST_PROXY),
     redisUrl: raw.KRAVN_REDIS_URL.trim(),
