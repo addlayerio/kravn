@@ -996,6 +996,20 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   `/prompts`) else the overview; the sidebar button passes the current route. Added `data-tour` anchors
   (nav tools/resources/prompts, prompt-new). Operator build green.
 
+## ✅ PASS 56 — OAuth token-exchange fix (GitHub) + persistent/editable OAuth config (v0.1.62)
+- **GitHub token exchange.** Passed a `jsonFetch` (`Accept: application/json`) `fetchFn` to
+  `registerClient`/`exchangeAuthorization`/`refreshAuthorization` — GitHub returns form-encoded tokens
+  without it, which parsed as `access_token: undefined`.
+- **Persistent, editable OAuth config.** So a failed Connect no longer discards what was typed. Migration 013
+  adds `server_oauth.operator_config_enc` (nullable, encrypted JSON of the operator's OAuth input).
+  `UpstreamOAuthService.saveConfig`/`getConfigForDisplay` (secret never returned; blank keeps stored) +
+  `effectiveConfig` merges the stored config under any per-call override, so `startAuthorization({})` uses the
+  saved config. Routes `GET`/`PUT /api/servers/:id/oauth/config` (servers.read/write). Operator: the Add/Edit
+  server form shows Client ID/Secret + Authorization/Token URL + Scopes + the redirect URL when authType is
+  oauth, loaded on edit, saved on save; the inline needs-client modal also persists before connecting.
+- **Validated** on real sqlite + a no-metadata mock (5/5): migration applied, save→display (no secret),
+  blank-secret-kept, `startAuthorization({})` uses stored config, full exchange with the stored secret.
+
 ### Deferred to later phases (intentional, not missing)
 Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

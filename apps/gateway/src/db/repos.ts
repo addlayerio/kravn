@@ -1355,6 +1355,7 @@ export interface ServerOAuthRow {
   accessTokenEnc: string;
   refreshTokenEnc: string;
   expiresAt: string;
+  operatorConfigEnc: string;
 }
 
 export interface ServerOAuthPendingRow {
@@ -1409,7 +1410,22 @@ export class ServerOAuthRepo {
       accessTokenEnc: r.access_token_enc ?? '',
       refreshTokenEnc: r.refresh_token_enc ?? '',
       expiresAt: r.expires_at ?? '',
+      operatorConfigEnc: r.operator_config_enc ?? '',
     };
+  }
+
+  /** Persist the operator's raw OAuth config (encrypted), creating a minimal row if none exists yet. */
+  async saveOperatorConfig(serverId: string, enc: string): Promise<void> {
+    const existing = await this.store.get<{ server_id: string }>('SELECT server_id FROM server_oauth WHERE server_id = ?', [serverId]);
+    if (existing) {
+      await this.store.run('UPDATE server_oauth SET operator_config_enc = ?, updated_at = ? WHERE server_id = ?', [enc, now(), serverId]);
+    } else {
+      await this.store.run(
+        `INSERT INTO server_oauth (server_id, auth_server_url, metadata, client_info_enc, resource, scope, access_token_enc, refresh_token_enc, expires_at, operator_config_enc, created_at, updated_at)
+         VALUES (?, '', '{}', '', '', '', '', '', '', ?, ?, ?)`,
+        [serverId, enc, now(), now()],
+      );
+    }
   }
 
   async saveTokens(serverId: string, t: { accessTokenEnc: string; refreshTokenEnc: string; expiresAt: string }): Promise<void> {

@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.62] — 2026-07-05
+
+- 🐛 **GitHub (and similar) OAuth now completes.** The token exchange failed with "access_token: expected
+  string, received undefined" because GitHub returns a form-encoded token response by default — Kravn now
+  requests JSON (`Accept: application/json`) on the token/registration calls, so the exchange succeeds.
+- 📣 **OAuth config is now saved and editable — no more re-typing on every retry.** Configure an OAuth
+  server's Client ID/Secret, Authorization URL, Token URL and Scopes right in the server's **Edit** form
+  (with the redirect URL to register), Save, then Connect. If a Connect fails, your config is kept — go back
+  to **Edit**, adjust, and Connect again. The secret is stored encrypted and never shown back.
+
 ## [0.1.61] — 2026-07-05
 
 - 📣 **The tour now changes pages as it goes** — it navigates to each section and waits for it to load before
@@ -247,6 +257,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.62]: https://github.com/addlayerio/kravn/releases/tag/v0.1.62
 [0.1.61]: https://github.com/addlayerio/kravn/releases/tag/v0.1.61
 [0.1.60]: https://github.com/addlayerio/kravn/releases/tag/v0.1.60
 [0.1.59]: https://github.com/addlayerio/kravn/releases/tag/v0.1.59

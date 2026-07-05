@@ -32,8 +32,41 @@ const blank = () => ({
   authValue: '',
   headersText: '',
   enabled: true,
+  // Persisted OAuth config (shown when authType === 'oauth'); edited here, used by Connect.
+  oauthClientId: '',
+  oauthClientSecret: '',
+  oauthAuthUrl: '',
+  oauthTokenUrl: '',
+  oauthScope: '',
+  oauthSecretSet: false,
 });
 const form = reactive(blank());
+const callbackUrl = `${window.location.origin}/oauth/upstream/callback`;
+
+async function loadOAuthConfig(id: string) {
+  try {
+    const res = await api.get<{ config: { clientId: string; authorizationUrl: string; tokenUrl: string; scope: string; clientSecretSet: boolean } | null }>(`/api/servers/${id}/oauth/config`);
+    const c = res.config;
+    if (c) {
+      form.oauthClientId = c.clientId;
+      form.oauthAuthUrl = c.authorizationUrl;
+      form.oauthTokenUrl = c.tokenUrl;
+      form.oauthScope = c.scope;
+      form.oauthSecretSet = c.clientSecretSet;
+    }
+  } catch {
+    /* no saved config yet */
+  }
+}
+async function saveOAuthConfig(id: string) {
+  await api.put(`/api/servers/${id}/oauth/config`, {
+    clientId: form.oauthClientId.trim(),
+    clientSecret: form.oauthClientSecret.trim(), // blank keeps the stored one
+    authorizationUrl: form.oauthAuthUrl.trim(),
+    tokenUrl: form.oauthTokenUrl.trim(),
+    scope: form.oauthScope.trim(),
+  });
+}
 
 // URLs already registered, so a catalog card shows "Added" instead of "Add".
 const installedUrls = computed(() => new Set(servers.value.map((s) => s.url).filter(Boolean)));
@@ -151,7 +184,7 @@ function openCreate() {
   showModal.value = true;
 }
 function openEdit(s: UpstreamServer) {
-  Object.assign(form, {
+  Object.assign(form, blank(), {
     name: s.name,
     description: s.description,
     transport: s.transport,
@@ -166,6 +199,7 @@ function openEdit(s: UpstreamServer) {
   editingId.value = s.id;
   error.value = '';
   showModal.value = true;
+  if (s.authType === 'oauth') void loadOAuthConfig(s.id);
 }
 
 // Prefill the Add form from a catalog entry — the admin only supplies a credential if the server needs one.
@@ -227,20 +261,23 @@ async function connectOAuth(srv: UpstreamServer, cfg?: OAuthCfg) {
   }
 }
 
-function submitOAuthClient() {
+async function submitOAuthClient() {
   const c = oauthClient.value;
   const clientId = oauthClientForm.clientId.trim();
   if (!c || !clientId) return;
   const srv = servers.value.find((x) => x.id === c.id);
-  const t = (v: string) => v.trim() || undefined;
-  if (srv)
-    connectOAuth(srv, {
+  if (!srv) return;
+  // Persist first (so it survives a failure + is editable from Edit), then connect using the stored config.
+  await api
+    .put(`/api/servers/${c.id}/oauth/config`, {
       clientId,
-      clientSecret: t(oauthClientForm.clientSecret),
-      authorizationUrl: t(oauthClientForm.authorizationUrl),
-      tokenUrl: t(oauthClientForm.tokenUrl),
-      scope: t(oauthClientForm.scope),
-    });
+      clientSecret: oauthClientForm.clientSecret.trim(),
+      authorizationUrl: oauthClientForm.authorizationUrl.trim(),
+      tokenUrl: oauthClientForm.tokenUrl.trim(),
+      scope: oauthClientForm.scope.trim(),
+    })
+    .catch(() => {});
+  connectOAuth(srv);
 }
 
 function parseHeaders(): Record<string, string> {
@@ -268,13 +305,17 @@ async function save() {
       authType: form.authType,
       enabled: form.enabled,
     };
+    let serverId = editingId.value;
     if (editingId.value) {
       const patch: Record<string, unknown> = { ...base };
       if (form.authValue) patch.authValue = form.authValue;
       await api.patch(`/api/servers/${editingId.value}`, patch);
     } else {
-      await api.post('/api/servers', { ...base, transport: form.transport, authValue: form.authValue, env: {} });
+      const res = await api.post<{ server: UpstreamServer }>('/api/servers', { ...base, transport: form.transport, authValue: form.authValue, env: {} });
+      serverId = res.server?.id ?? null;
     }
+    // Persist the editable OAuth config so Connect uses it and it isn't lost on a failed attempt.
+    if (form.authType === 'oauth' && serverId) await saveOAuthConfig(serverId);
     showModal.value = false;
     toast.success(editingId.value ? 'Server updated.' : 'Server added.');
     tab.value = 'installed';
@@ -545,10 +586,38 @@ async function remove(srv: UpstreamServer) {
         <label>Credential {{ editingId ? '(leave blank to keep current)' : '' }}</label>
         <input v-model="form.authValue" type="password" maxlength="8192" :placeholder="form.authType === 'basic' ? 'user:password' : 'token'" />
       </div>
-      <p v-else-if="form.authType === 'oauth'" class="muted oauth-note">
-        Save this server, then click <strong>Connect</strong> to sign in with the provider. Kravn stores the
-        tokens encrypted and refreshes them automatically.
-      </p>
+      <template v-else-if="form.authType === 'oauth'">
+        <p class="muted oauth-note">
+          Configure OAuth and Save, then click <strong>Connect</strong>. Most providers auto-discover — just
+          add a Client ID/Secret if needed and leave the URLs blank. For providers like GitHub, register an
+          OAuth app with the redirect URL below and fill all fields. Saved here, so a failed Connect never
+          loses it.
+        </p>
+        <div class="field">
+          <label>Redirect URL — register this at the provider</label>
+          <input :value="callbackUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
+        </div>
+        <div class="field">
+          <label>Client ID</label>
+          <input v-model="form.oauthClientId" placeholder="the OAuth app's Client ID" />
+        </div>
+        <div class="field">
+          <label>Client Secret <span class="muted">{{ form.oauthSecretSet ? '(set — leave blank to keep)' : '(if the app has one)' }}</span></label>
+          <input v-model="form.oauthClientSecret" type="password" autocomplete="new-password" :placeholder="form.oauthSecretSet ? '•••••• (leave blank to keep)' : 'leave blank for a public/PKCE app'" />
+        </div>
+        <div class="field">
+          <label>Authorization URL <span class="muted">(blank = auto-discover)</span></label>
+          <input v-model="form.oauthAuthUrl" placeholder="e.g. https://github.com/login/oauth/authorize" />
+        </div>
+        <div class="field">
+          <label>Token URL</label>
+          <input v-model="form.oauthTokenUrl" placeholder="e.g. https://github.com/login/oauth/access_token" />
+        </div>
+        <div class="field">
+          <label>Scopes <span class="muted">(space-separated)</span></label>
+          <input v-model="form.oauthScope" placeholder="e.g. repo read:org read:user" />
+        </div>
+      </template>
 
       <div class="field">
         <label>Extra headers (JSON, optional)</label>

@@ -87,27 +87,30 @@ export class UpstreamOAuthService {
       throw new Error('OAuth is only available for remote (HTTP/SSE) MCP servers.');
     }
 
+    // Merge the operator config saved on the server (editable, persistent) with any values passed to this call.
+    const eff = await this.effectiveConfig(server.id, cfg);
+
     let asMeta: AuthorizationServerMetadata;
     let authServerUrl: string;
     let discoveredScopes: string[] | undefined;
 
-    if (cfg.authorizationUrl && cfg.tokenUrl) {
+    if (eff.authorizationUrl && eff.tokenUrl) {
       // Fully manual endpoints — no discovery (the provider doesn't advertise metadata).
-      await this.d.ssrf.assertUrlAllowed(cfg.authorizationUrl);
-      await this.d.ssrf.assertUrlAllowed(cfg.tokenUrl);
-      authServerUrl = (cfg.issuer?.trim() || originOf(cfg.authorizationUrl)).replace(/\/$/, '');
+      await this.d.ssrf.assertUrlAllowed(eff.authorizationUrl);
+      await this.d.ssrf.assertUrlAllowed(eff.tokenUrl);
+      authServerUrl = (eff.issuer?.trim() || originOf(eff.authorizationUrl)).replace(/\/$/, '');
       asMeta = {
         issuer: authServerUrl,
-        authorization_endpoint: cfg.authorizationUrl,
-        token_endpoint: cfg.tokenUrl,
+        authorization_endpoint: eff.authorizationUrl,
+        token_endpoint: eff.tokenUrl,
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],
       } as AuthorizationServerMetadata;
-    } else if (cfg.issuer) {
+    } else if (eff.issuer) {
       // Discover from an explicit issuer URL.
-      await this.d.ssrf.assertUrlAllowed(cfg.issuer);
-      authServerUrl = cfg.issuer.trim().replace(/\/$/, '');
+      await this.d.ssrf.assertUrlAllowed(eff.issuer);
+      authServerUrl = eff.issuer.trim().replace(/\/$/, '');
       const m = await discoverAuthorizationServerMetadata(authServerUrl);
       if (!m) throw new Error('Could not discover authorization-server metadata at the issuer URL.');
       asMeta = m;
@@ -125,19 +128,19 @@ export class UpstreamOAuthService {
       discoveredScopes = resourceMeta?.scopes_supported;
     }
 
-    const scope = cfg.scope?.trim() || (discoveredScopes ?? asMeta.scopes_supported ?? []).join(' ') || undefined;
+    const scope = eff.scope?.trim() || (discoveredScopes ?? asMeta.scopes_supported ?? []).join(' ') || undefined;
 
     let clientInfo: OAuthClientInformationFull;
     const existing = await this.d.repos.serverOAuth.getConfig(server.id);
-    if (cfg.clientId) {
+    if (eff.clientId) {
       // Operator-registered OAuth app (provider without DCR, or a preferred fixed app).
       clientInfo = {
-        client_id: cfg.clientId,
-        ...(cfg.clientSecret ? { client_secret: cfg.clientSecret } : {}),
+        client_id: eff.clientId,
+        ...(eff.clientSecret ? { client_secret: eff.clientSecret } : {}),
         redirect_uris: [redirectUri],
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
-        token_endpoint_auth_method: cfg.clientSecret ? 'client_secret_post' : 'none',
+        token_endpoint_auth_method: eff.clientSecret ? 'client_secret_post' : 'none',
       } as OAuthClientInformationFull;
     } else if (existing && existing.authServerUrl === authServerUrl && existing.clientInfoEnc) {
       clientInfo = JSON.parse(this.d.encryptor.decrypt(existing.clientInfoEnc)) as OAuthClientInformationFull;
@@ -150,7 +153,7 @@ export class UpstreamOAuthService {
         ...(scope ? { scope } : {}),
       };
       try {
-        clientInfo = await registerClient(authServerUrl, { metadata: asMeta, clientMetadata, scope });
+        clientInfo = await registerClient(authServerUrl, { metadata: asMeta, clientMetadata, scope, fetchFn: jsonFetch });
       } catch {
         throw new OAuthClientRequiredError(redirectUri);
       }
@@ -188,6 +191,63 @@ export class UpstreamOAuthService {
     return authorizationUrl.toString();
   }
 
+  /** Decrypt the persisted operator OAuth config for a server ('{}' if none/unreadable). */
+  private async readOperatorConfig(serverId: string): Promise<UpstreamOAuthInput> {
+    const existing = await this.d.repos.serverOAuth.getConfig(serverId);
+    if (!existing?.operatorConfigEnc) return {};
+    try {
+      return JSON.parse(this.d.encryptor.decrypt(existing.operatorConfigEnc)) as UpstreamOAuthInput;
+    } catch {
+      return {};
+    }
+  }
+
+  /** Stored operator config as the base, overridden by any non-empty field passed to this call. */
+  private async effectiveConfig(serverId: string, cfg: UpstreamOAuthInput): Promise<UpstreamOAuthInput> {
+    const out: UpstreamOAuthInput = { ...(await this.readOperatorConfig(serverId)) };
+    for (const k of ['clientId', 'clientSecret', 'authorizationUrl', 'tokenUrl', 'issuer', 'scope'] as const) {
+      const v = cfg[k];
+      if (v != null && String(v).trim() !== '') out[k] = v;
+    }
+    return out;
+  }
+
+  /** Persist the operator OAuth config so it survives failed Connects and is editable from the server form.
+   * A blank client secret keeps the previously-stored one; the other fields are replaced by the form values. */
+  async saveConfig(serverId: string, input: UpstreamOAuthInput): Promise<void> {
+    const stored = await this.readOperatorConfig(serverId);
+    const merged: UpstreamOAuthInput = {
+      clientId: input.clientId ?? '',
+      authorizationUrl: input.authorizationUrl ?? '',
+      tokenUrl: input.tokenUrl ?? '',
+      issuer: input.issuer ?? '',
+      scope: input.scope ?? '',
+      clientSecret: input.clientSecret && input.clientSecret !== '' ? input.clientSecret : stored.clientSecret,
+    };
+    await this.d.repos.serverOAuth.saveOperatorConfig(serverId, this.d.encryptor.encrypt(JSON.stringify(merged)));
+  }
+
+  /** The saved OAuth config for display/editing — never returns the client secret, only whether one is set. */
+  async getConfigForDisplay(serverId: string): Promise<{
+    clientId: string;
+    authorizationUrl: string;
+    tokenUrl: string;
+    issuer: string;
+    scope: string;
+    clientSecretSet: boolean;
+  } | null> {
+    const o = await this.readOperatorConfig(serverId);
+    if (!Object.keys(o).length) return null;
+    return {
+      clientId: o.clientId ?? '',
+      authorizationUrl: o.authorizationUrl ?? '',
+      tokenUrl: o.tokenUrl ?? '',
+      issuer: o.issuer ?? '',
+      scope: o.scope ?? '',
+      clientSecretSet: !!o.clientSecret,
+    };
+  }
+
   /** Complete the round-trip: single-use state → exchange the code for tokens → store them. Returns serverId. */
   async completeAuthorization(state: string, code: string): Promise<string> {
     const pending = await this.d.repos.serverOAuth.takePending(state);
@@ -209,6 +269,7 @@ export class UpstreamOAuthService {
       codeVerifier,
       redirectUri: pending.redirectUri,
       resource: new URL(cfg.resource),
+      fetchFn: jsonFetch,
     });
     await this.persistTokens(pending.serverId, tokens);
     return pending.serverId;
@@ -237,6 +298,7 @@ export class UpstreamOAuthService {
       clientInformation: clientInfo,
       refreshToken: this.d.encryptor.decrypt(cfg.refreshTokenEnc),
       resource: new URL(cfg.resource),
+      fetchFn: jsonFetch,
     });
     await this.persistTokens(serverId, tokens, cfg.refreshTokenEnc);
     return tokens.access_token;
@@ -264,6 +326,16 @@ function randomToken(bytes = 32): string {
 function originOf(url: string): string {
   return new URL(url).origin;
 }
+/**
+ * Force `Accept: application/json` on token/registration requests. Some providers (notably GitHub) otherwise
+ * return `application/x-www-form-urlencoded` bodies that the token parser reads as empty — surfacing as
+ * "access_token: expected string, received undefined".
+ */
+const jsonFetch: typeof fetch = (input, init) => {
+  const headers = new Headers(init?.headers);
+  headers.set('accept', 'application/json');
+  return fetch(input, { ...(init ?? {}), headers });
+};
 function isoIn(sec: number): string {
   return new Date(Date.now() + sec * 1000).toISOString();
 }

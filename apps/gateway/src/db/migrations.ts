@@ -580,8 +580,29 @@ const serverOAuth: Migration = {
   },
 };
 
+/**
+ * 013 — Persist the operator-provided upstream-OAuth config (endpoints + client) so it survives a failed
+ * Connect and can be edited from the server form, instead of being re-typed each attempt. Nullable text
+ * (no default — MySQL forbids defaults on TEXT); the app treats null as "no saved config".
+ */
+const serverOAuthOperatorConfig: Migration = {
+  name: '013_server_oauth_operator_config',
+  async up(knex) {
+    if ((await knex.schema.hasTable('server_oauth')) && !(await knex.schema.hasColumn('server_oauth', 'operator_config_enc'))) {
+      await knex.schema.alterTable('server_oauth', (t) => {
+        t.text('operator_config_enc').nullable(); // encrypted JSON of the operator's raw OAuth input
+      });
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('server_oauth')) && (await knex.schema.hasColumn('server_oauth', 'operator_config_enc'))) {
+      await knex.schema.alterTable('server_oauth', (t) => t.dropColumn('operator_config_enc'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

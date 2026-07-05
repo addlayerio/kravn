@@ -109,4 +109,20 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
       return sendError(reply, 400, 'oauth_start_failed', err instanceof Error ? err.message : 'Could not start OAuth authorization.');
     }
   });
+
+  // Read the saved OAuth config for a server (never returns the client secret) — for the edit form.
+  app.get('/api/servers/:id/oauth/config', { preHandler: [app.authenticate, app.authorize('servers.read')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    if (!(await s.registry.getServer(id))) return sendError(reply, 404, 'not_found', 'Server not found.');
+    return { config: await s.upstreamOAuth.getConfigForDisplay(id) };
+  });
+
+  // Persist the OAuth config (endpoints + client) so it survives failed Connects and is editable.
+  app.put('/api/servers/:id/oauth/config', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const b = (req.body ?? {}) as { clientId?: string; clientSecret?: string; authorizationUrl?: string; tokenUrl?: string; issuer?: string; scope?: string };
+    if (!(await s.registry.getServer(id))) return sendError(reply, 404, 'not_found', 'Server not found.');
+    await s.upstreamOAuth.saveConfig(id, b);
+    return reply.code(204).send();
+  });
 }
