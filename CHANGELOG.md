@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.65] — 2026-07-05
 
 - 📣 **Pick tools by server, not from an endless checkbox wall.** Composing an MCP endpoint now groups
   every tool, resource and prompt under its **origin server** (with that server's logo), collapsed by

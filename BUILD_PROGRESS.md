@@ -1035,6 +1035,27 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Validated** by booting the real gateway (SSE): 401 without auth, 200 text/event-stream with a token, a
   fired `registry` event delivered over the stream, initial connected comment. Full monorepo build green.
 
+## ✅ PASS 59 — Brand icons + grouped tool picker + Bluedot + deep-link fix (v0.1.65)
+- **Brand icons for every integration.** `IntegrationIcon.vue` renders a simple-icons logo baked into
+  `apps/operator/src/lib/brand-icons.ts` (`{path,hex}` per id; simple-icons is a build-time devDependency,
+  nothing loads it at runtime; operator CSP blocks remote images) or a deterministic coloured monogram
+  fallback. Shown on catalog cards, the detail modal and the installed-servers list. Regenerator committed at
+  `apps/operator/scripts/gen-brand-icons.mjs`; documented as AGENTS.md principle #7. 47/110 matched, rest
+  monogram (many niche/removed-for-trademark).
+- **Grouped tool/resource/prompt picker** in the mcp-endpoint composer. New reusable `GroupedSelect.vue`
+  (v-model `string[]`) buckets each catalog by **origin server** (`serverId`), collapsed by default, with a
+  per-server tri-state select-all, search across rows, an "only selected" filter, and a running
+  "N selected · M servers" summary — replacing the flat wall of checkboxes. Shared `lib/server-icon.ts`
+  `serverIconId()` resolves both remote (URL→catalog id) and native-plugin (`plg_<id>` → `kravn-*`) origins;
+  ServersView refactored onto it. Save payload unchanged (`toolIds/resourceIds/promptIds`).
+- **Bluedot** added to the catalog (OAuth, `https://app.bluedothq.com/api/v1/mcp`) + setup guide.
+- **Deep-link 404 fix:** the SPA history fallback matched API prefixes with raw `startsWith`, so
+  `/mcp-endpoints` collided with `/mcp` and 404'd on F5 — now segment-aware (SECURITY.md v0.1.65 row).
+- **Rigor (ultracode):** a mapping workflow (4 parallel readers) confirmed grouping-by-origin is feasible on
+  existing data; an adversarial review workflow (3 dimensions × cross-verifier) found + fixed 2 real bugs
+  (filter-dependent server count; auto-expand not firing when editing an existing endpoint due to an
+  intervening `await`). typecheck + build green; data path validated by booting the gateway.
+
 ### Deferred to later phases (intentional, not missing)
 Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
