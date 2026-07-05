@@ -240,6 +240,40 @@ const GENERIC_TOOLS: McpToolDef[] = [
       required: ['model', 'ids'],
     },
   },
+  {
+    name: 'odoo_read_group',
+    description:
+      'Aggregate & sum records SERVER-SIDE (Odoo read_group) — the right tool for totals/counts instead of ' +
+      'paging through hundreds of records. `groupby` are the group fields (JSON array, e.g. ["currency_id"], ' +
+      'or a date bucket like ["invoice_date:month"]); empty = one total over the whole domain. `aggregates` ' +
+      'are measures as "field:agg" (JSON array, e.g. ["amount_untaxed:sum","amount_total:sum"]; agg ∈ ' +
+      'sum/avg/min/max/count). Each result row has the group value(s), the summed measures, and __count. ' +
+      'Example — invoiced in a month by currency: model account.move, domain ' +
+      '[["move_type","=","out_invoice"],["state","=","posted"],["invoice_date",">=","2026-06-01"],["invoice_date","<=","2026-06-30"]], ' +
+      'groupby ["currency_id"], aggregates ["amount_untaxed:sum","amount_total:sum"].',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'Technical model name, e.g. account.move.' },
+        domain: { type: 'string', description: 'Odoo domain as a JSON array. Empty = all.' },
+        groupby: { type: 'string', description: 'JSON array of group fields, e.g. ["currency_id"] or ["invoice_date:month"]. Empty = one total over the whole domain.' },
+        aggregates: { type: 'string', description: 'JSON array of measures as "field:agg", e.g. ["amount_total:sum"].' },
+      },
+      required: ['model'],
+    },
+  },
+  {
+    name: 'odoo_search_count',
+    description: 'Count records matching a domain SERVER-SIDE (Odoo search_count) — returns a single integer (e.g. active customers) without fetching the records.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        model: { type: 'string', description: 'Technical model name, e.g. res.partner.' },
+        domain: { type: 'string', description: 'Odoo domain as a JSON array, e.g. [["customer_rank",">",0]]. Empty = all.' },
+      },
+      required: ['model'],
+    },
+  },
 ];
 
 const DEFAULT_FIELDS = ['id', 'display_name', 'name'];
@@ -296,6 +330,26 @@ async function unlinkRecord(cfg: OdooConfig, args: Record<string, unknown>): Pro
   return text(`Deleted ${model} ${JSON.stringify(ids)}.`);
 }
 
+async function readGroup(cfg: OdooConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const model = String(args.model ?? '').trim();
+  if (!model) return text('Error: model is required.', true);
+  const domain = (parseJson(args.domain, 'domain') as unknown[]) ?? [];
+  const aggregates = (parseJson(args.aggregates, 'aggregates') as string[]) ?? [];
+  const groupby = (parseJson(args.groupby, 'groupby') as string[]) ?? [];
+  // read_group(domain, fields, groupby, offset, limit, orderby, lazy); lazy:false groups by ALL groupby
+  // fields at once (and, with an empty groupby, returns a single total row over the whole domain).
+  const rows = (await execKw(cfg, model, 'read_group', [domain, aggregates, groupby], { lazy: false })) as Record<string, unknown>[];
+  return text(`${rows.length} group(s) for ${model}:\n\n${clip(JSON.stringify(rows, null, 2))}`);
+}
+
+async function searchCount(cfg: OdooConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const model = String(args.model ?? '').trim();
+  if (!model) return text('Error: model is required.', true);
+  const domain = (parseJson(args.domain, 'domain') as unknown[]) ?? [];
+  const count = (await execKw(cfg, model, 'search_count', [domain])) as number;
+  return text(`${count} matching ${model} record(s).`);
+}
+
 const DOMAIN_TOOLS: McpToolDef[] = DOMAIN.map((spec) => ({
   name: spec.tool,
   description: `${spec.desc} Optional \`query\` (text filter) and \`limit\`.`,
@@ -319,9 +373,10 @@ export function odooPlugin(): McpServerPlugin {
       type: 'mcp-server',
       description:
         'Interact with Odoo (CRM & ERP) over MCP via its JSON-RPC external API — works with any hosting: ' +
-        'Odoo Online (odoo.com), Odoo.sh, and self-hosted. Generic CRUD over any model plus convenience ' +
-        'search for leads, contacts, sales orders, invoices, products, tasks and employees. Requires the ' +
-        'Odoo URL, database, username and API key.',
+        'Odoo Online (odoo.com), Odoo.sh, and self-hosted. Generic CRUD over any model, server-side ' +
+        'aggregation (read_group) and counts (search_count), plus convenience search for leads, contacts, ' +
+        'sales orders, invoices, products, tasks and employees. Requires the Odoo URL, database, username ' +
+        'and API key.',
       author: 'Kravn',
       priority: 100,
       setup:
@@ -376,6 +431,10 @@ export function odooPlugin(): McpServerPlugin {
               return await writeRecord(cfg, args);
             case 'odoo_unlink':
               return await unlinkRecord(cfg, args);
+            case 'odoo_read_group':
+              return await readGroup(cfg, args);
+            case 'odoo_search_count':
+              return await searchCount(cfg, args);
             default:
               return text(`Unknown tool: ${name}`, true);
           }

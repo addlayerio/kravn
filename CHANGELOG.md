@@ -12,6 +12,13 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Odoo: answer "how much / how many" in one call.** Two new read-only tools — `odoo_read_group`
+  (server-side aggregation: totals and sums grouped by any field, e.g. invoiced-per-currency for a month in a
+  single query) and `odoo_search_count` (a plain count, e.g. active customers). No more paging through
+  hundreds of records and summing client-side.
+
 ## [0.1.66] — 2026-07-05
 
 - 📣 **Integration setup guides now render as formatted docs, not a wall of text.** In the catalog detail
