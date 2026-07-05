@@ -255,6 +255,10 @@ export const createServerSchema = z
     authType: authTypeSchema.default('none'),
     /** Plaintext credential on the way in; encrypted at rest, never read back. */
     authValue: z.string().max(8192).default(''),
+    /** TLS to the upstream: custom CA bundle + mTLS client cert (PEM); the client key is write-only. */
+    tlsCa: z.string().max(65536).default(''),
+    tlsClientCert: z.string().max(65536).default(''),
+    tlsClientKey: z.string().max(65536).default(''),
     enabled: z.boolean().default(true),
   })
   .superRefine((v, ctx) => {
@@ -278,6 +282,9 @@ export const updateServerSchema = z.object({
   headers: z.record(z.string().max(8192)).optional(),
   authType: authTypeSchema.optional(),
   authValue: z.string().max(8192).optional(),
+  tlsCa: z.string().max(65536).optional(),
+  tlsClientCert: z.string().max(65536).optional(),
+  tlsClientKey: z.string().max(65536).optional(),
   enabled: z.boolean().optional(),
 });
 export type UpdateServerRequest = z.infer<typeof updateServerSchema>;

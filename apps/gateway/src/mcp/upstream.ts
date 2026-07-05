@@ -115,7 +115,7 @@ export class UpstreamManager {
     };
   }
 
-  async connect(server: UpstreamServer, authPlain: string): Promise<ClientLike> {
+  async connect(server: UpstreamServer, authPlain: string, dispatcher?: import('undici').Dispatcher): Promise<ClientLike> {
     await this.disconnect(server.id);
 
     // Plugin-backed servers delegate to an in-process MCP-server plugin.
@@ -128,6 +128,10 @@ export class UpstreamManager {
 
     const client = new Client({ name: 'kravn-gateway', version: APP_VERSION }, { capabilities: {} });
     const headers = { ...server.headers, ...authHeaders(server.authType, authPlain) };
+    // `dispatcher` (undici) carries the per-server TLS (custom CA / mTLS client cert) while keeping the SSRF
+    // pinning; undici's global fetch honors it on the RequestInit even though the DOM type omits it.
+    const requestInit: RequestInit = { headers };
+    if (dispatcher) (requestInit as { dispatcher?: unknown }).dispatcher = dispatcher;
 
     let transport;
     if (server.transport === 'stdio') {
@@ -140,11 +144,11 @@ export class UpstreamManager {
       });
     } else if (server.transport === 'sse') {
       transport = new SSEClientTransport(new URL(server.url), {
-        requestInit: { headers },
+        requestInit,
       });
     } else {
       transport = new StreamableHTTPClientTransport(new URL(server.url), {
-        requestInit: { headers },
+        requestInit,
       });
     }
 

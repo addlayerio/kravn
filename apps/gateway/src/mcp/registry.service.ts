@@ -142,6 +142,9 @@ export class RegistryService {
       headers: req.headers,
       authType: req.authType,
       authValueEncrypted,
+      tlsCa: req.tlsCa,
+      tlsClientCert: req.tlsClientCert,
+      tlsClientKeyEncrypted: req.tlsClientKey ? this.d.encryptor.encrypt(req.tlsClientKey) : '',
       enabled: req.enabled,
     });
     this.d.logstore.add('info', `Server "${server.name}" registered`, { id });
@@ -164,6 +167,12 @@ export class RegistryService {
     if (req.authType !== undefined) patch.authType = req.authType;
     if (req.authType === 'none') patch.authValueEncrypted = '';
     else if (req.authValue !== undefined) patch.authValueEncrypted = this.d.encryptor.encrypt(req.authValue);
+
+    // TLS: CA + client cert are public (updatable incl. clearing); the client key is write-only —
+    // a non-empty value replaces it, blank/undefined keeps the stored key.
+    if (req.tlsCa !== undefined) patch.tlsCa = req.tlsCa;
+    if (req.tlsClientCert !== undefined) patch.tlsClientCert = req.tlsClientCert;
+    if (req.tlsClientKey) patch.tlsClientKeyEncrypted = this.d.encryptor.encrypt(req.tlsClientKey);
 
     if (typeof patch.url === 'string' && patch.url && existing.transport !== 'stdio') {
       await this.d.ssrf.assertUrlAllowed(patch.url);
@@ -205,7 +214,19 @@ export class RegistryService {
         server.authType === 'oauth'
           ? await this.d.upstreamOAuth.accessTokenFor(id)
           : this.d.encryptor.decrypt(await this.d.repos.servers.getAuthValueEncrypted(id));
-      await this.d.upstream.connect(server, authPlain);
+      // Per-server TLS (custom CA / mTLS client cert) → an SSRF-preserving dispatcher, for http/sse only.
+      let dispatcher: import('undici').Dispatcher | undefined;
+      if (server.transport !== 'stdio') {
+        const tls = await this.d.repos.servers.getTls(id);
+        if (tls.ca || tls.cert || tls.keyEncrypted) {
+          dispatcher = this.d.ssrf.dispatcherFor({
+            ca: tls.ca || undefined,
+            cert: tls.cert || undefined,
+            key: tls.keyEncrypted ? this.d.encryptor.decrypt(tls.keyEncrypted) : undefined,
+          });
+        }
+      }
+      await this.d.upstream.connect(server, authPlain, dispatcher);
       await this.syncCatalog(server);
       await this.d.repos.servers.setStatus(id, 'online');
       this.d.logstore.add('info', `Synced catalog from "${server.name}"`, { id });

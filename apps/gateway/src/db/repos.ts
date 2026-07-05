@@ -159,6 +159,9 @@ function mapServer(r: any): UpstreamServer {
     headers: JSON.parse(r.headers || '{}'),
     authType: r.auth_type ?? 'none',
     authValueSet: typeof r.auth_value === 'string' && r.auth_value.length > 0,
+    tlsCa: r.tls_ca ?? '',
+    tlsClientCert: r.tls_client_cert ?? '',
+    tlsClientKeySet: typeof r.tls_client_key === 'string' && r.tls_client_key.length > 0,
     enabled: bool(r.enabled),
     status: r.status ?? 'unknown',
     lastError: r.last_error ?? '',
@@ -182,6 +185,10 @@ export interface ServerInsert {
   authType: UpstreamServer['authType'];
   /** Already-encrypted credential (or '' for none). */
   authValueEncrypted: string;
+  tlsCa?: string;
+  tlsClientCert?: string;
+  /** Already-encrypted client key (or '' for none). */
+  tlsClientKeyEncrypted?: string;
   enabled: boolean;
 }
 
@@ -192,12 +199,13 @@ export class ServersRepo {
     const ts = now();
     await this.store.run(
       `INSERT INTO servers (id, name, slug, description, transport, url, command, args, env, headers,
-        auth_type, auth_value, enabled, status, last_error, last_seen_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        auth_type, auth_value, tls_ca, tls_client_cert, tls_client_key, enabled, status, last_error, last_seen_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id, s.name, s.slug, s.description, s.transport, s.url, s.command,
         JSON.stringify(s.args), JSON.stringify(s.env), JSON.stringify(s.headers),
-        s.authType, s.authValueEncrypted, intify(s.enabled), 'unknown', '', null, ts, ts,
+        s.authType, s.authValueEncrypted, s.tlsCa ?? '', s.tlsClientCert ?? '', s.tlsClientKeyEncrypted ?? '',
+        intify(s.enabled), 'unknown', '', null, ts, ts,
       ],
     );
     return (await this.getById(s.id))!;
@@ -216,6 +224,14 @@ export class ServersRepo {
     const r = await this.store.get<{ auth_value: string }>('SELECT auth_value FROM servers WHERE id = ?', [id]);
     return r?.auth_value ?? '';
   }
+  /** Raw TLS material for connection-time use (CA/cert in PEM; the client key is still encrypted). */
+  async getTls(id: string): Promise<{ ca: string; cert: string; keyEncrypted: string }> {
+    const r = await this.store.get<{ tls_ca: string; tls_client_cert: string; tls_client_key: string }>(
+      'SELECT tls_ca, tls_client_cert, tls_client_key FROM servers WHERE id = ?',
+      [id],
+    );
+    return { ca: r?.tls_ca ?? '', cert: r?.tls_client_cert ?? '', keyEncrypted: r?.tls_client_key ?? '' };
+  }
   async list(): Promise<UpstreamServer[]> {
     const rows = await this.store.all('SELECT * FROM servers ORDER BY created_at ASC');
     return rows.map(mapServer);
@@ -224,7 +240,8 @@ export class ServersRepo {
     const cols: Record<string, string> = {
       name: 'name', slug: 'slug', description: 'description', url: 'url', command: 'command',
       args: 'args', env: 'env', headers: 'headers', authType: 'auth_type',
-      authValueEncrypted: 'auth_value', enabled: 'enabled', status: 'status',
+      authValueEncrypted: 'auth_value', tlsCa: 'tls_ca', tlsClientCert: 'tls_client_cert',
+      tlsClientKeyEncrypted: 'tls_client_key', enabled: 'enabled', status: 'status',
       lastError: 'last_error', lastSeenAt: 'last_seen_at',
     };
     const sets: string[] = [];

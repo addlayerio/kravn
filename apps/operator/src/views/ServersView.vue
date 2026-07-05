@@ -44,8 +44,14 @@ const blank = () => ({
   oauthScope: '',
   oauthTokenAuthMethod: '',
   oauthSecretSet: false,
+  // TLS to the upstream (http/sse): custom CA + mTLS client cert/key (key is write-only).
+  tlsCa: '',
+  tlsClientCert: '',
+  tlsClientKey: '',
+  tlsClientKeySet: false,
 });
 const form = reactive(blank());
+const showTls = ref(false);
 const callbackUrl = `${window.location.origin}/oauth/upstream/callback`;
 
 async function loadOAuthConfig(id: string) {
@@ -221,10 +227,14 @@ function openEdit(s: UpstreamServer) {
     authValue: '',
     headersText: Object.keys(s.headers).length ? JSON.stringify(s.headers, null, 2) : '',
     enabled: s.enabled,
+    tlsCa: s.tlsCa,
+    tlsClientCert: s.tlsClientCert,
+    tlsClientKeySet: s.tlsClientKeySet,
   });
   editingId.value = s.id;
   error.value = '';
   showModal.value = true;
+  showTls.value = !!(s.tlsCa || s.tlsClientCert || s.tlsClientKeySet);
   if (s.authType === 'oauth') void loadOAuthConfig(s.id);
 }
 
@@ -323,15 +333,18 @@ async function save() {
       args,
       headers,
       authType: form.authType,
+      tlsCa: form.tlsCa,
+      tlsClientCert: form.tlsClientCert,
       enabled: form.enabled,
     };
     let serverId = editingId.value;
     if (editingId.value) {
       const patch: Record<string, unknown> = { ...base };
       if (form.authValue) patch.authValue = form.authValue;
+      if (form.tlsClientKey) patch.tlsClientKey = form.tlsClientKey;
       await api.patch(`/api/servers/${editingId.value}`, patch);
     } else {
-      const res = await api.post<{ server: UpstreamServer }>('/api/servers', { ...base, transport: form.transport, authValue: form.authValue, env: {} });
+      const res = await api.post<{ server: UpstreamServer }>('/api/servers', { ...base, transport: form.transport, authValue: form.authValue, tlsClientKey: form.tlsClientKey, env: {} });
       serverId = res.server?.id ?? null;
     }
     // Persist the editable OAuth config so Connect uses it and it isn't lost on a failed attempt.
@@ -662,6 +675,30 @@ async function remove(srv: UpstreamServer) {
       <div class="field">
         <label>Extra headers (JSON, optional)</label>
         <textarea v-model="form.headersText" rows="2" placeholder='{ "X-Tenant": "acme" }'></textarea>
+      </div>
+
+      <div v-if="form.transport !== 'stdio'" class="field">
+        <label style="cursor: pointer" @click="showTls = !showTls">
+          {{ showTls ? '▾' : '▸' }} TLS / mTLS to the upstream <span class="muted">(advanced)</span>
+        </label>
+        <div v-if="showTls" class="card" style="margin: 0; background: var(--bg-page)">
+          <small class="muted" style="display: block; margin-bottom: 0.5rem">
+            For internal upstreams behind a corporate/self-signed CA, or that require a client certificate
+            (mutual TLS). PEM format. The client key is stored encrypted and never shown back.
+          </small>
+          <div class="field">
+            <label>Custom CA bundle (PEM)</label>
+            <textarea v-model="form.tlsCa" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;…"></textarea>
+          </div>
+          <div class="field">
+            <label>Client certificate (PEM) — for mTLS</label>
+            <textarea v-model="form.tlsClientCert" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;…"></textarea>
+          </div>
+          <div class="field">
+            <label>Client private key (PEM) — for mTLS</label>
+            <textarea v-model="form.tlsClientKey" rows="3" spellcheck="false" :placeholder="form.tlsClientKeySet ? 'set — leave blank to keep' : 'Paste the PEM private key'"></textarea>
+          </div>
+        </div>
       </div>
 
       <div class="field checkbox">

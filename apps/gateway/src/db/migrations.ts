@@ -601,8 +601,29 @@ const serverOAuthOperatorConfig: Migration = {
   },
 };
 
+const serverTls: Migration = {
+  name: '014_server_tls',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('servers'))) return;
+    const add: Array<[string, () => void]> = [];
+    if (!(await knex.schema.hasColumn('servers', 'tls_ca'))) add.push(['tls_ca', () => {}]);
+    if (!(await knex.schema.hasColumn('servers', 'tls_client_cert'))) add.push(['tls_client_cert', () => {}]);
+    if (!(await knex.schema.hasColumn('servers', 'tls_client_key'))) add.push(['tls_client_key', () => {}]);
+    if (!add.length) return;
+    await knex.schema.alterTable('servers', (t) => {
+      for (const [col] of add) t.text(col).nullable(); // PEM: CA bundle, client cert, encrypted client key
+    });
+  },
+  async down(knex) {
+    if (!(await knex.schema.hasTable('servers'))) return;
+    for (const col of ['tls_ca', 'tls_client_cert', 'tls_client_key']) {
+      if (await knex.schema.hasColumn('servers', col)) await knex.schema.alterTable('servers', (t) => t.dropColumn(col));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

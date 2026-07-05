@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔒 **Connect to internal upstreams with a custom CA or mutual TLS.** An MCP server can now carry a **custom
+  CA bundle** (trust a corporate/self-signed CA) and a **client certificate + key** for **mTLS**. The private
+  key is encrypted at rest and write-only. The SSRF guard still applies, and server-cert verification stays
+  on. Set it under *TLS / mTLS (advanced)* on the server form.
 - 📣 **Disaster recovery & continuity, documented and automatable.** A full DR/BCP runbook
   ([`DR_BCP.md`](https://github.com/addlayerio/kravn/blob/main/DR_BCP.md) + a [website guide](/guide/dr-bcp))
   covers exactly what to back up (database **and** encryption key, together), per-engine backup/restore

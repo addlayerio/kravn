@@ -30,6 +30,12 @@ export const upstreamServerSchema = z.object({
   authType: authTypeSchema.default('none'),
   /** Stored encrypted at rest; never returned to clients in plaintext. */
   authValueSet: z.boolean().default(false),
+  /** Custom CA bundle (PEM) to trust for this upstream — for internal/self-signed TLS. */
+  tlsCa: z.string().default(''),
+  /** Client certificate (PEM) for mutual TLS. */
+  tlsClientCert: z.string().default(''),
+  /** mTLS client private key is stored encrypted at rest; never returned in plaintext. */
+  tlsClientKeySet: z.boolean().default(false),
   enabled: z.boolean().default(true),
   status: z.enum(SERVER_STATUS).default('unknown'),
   lastError: z.string().default(''),
