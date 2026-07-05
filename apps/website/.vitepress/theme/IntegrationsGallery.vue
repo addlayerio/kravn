@@ -6,6 +6,13 @@ const props = withDefaults(defineProps<{ featured?: boolean }>(), { featured: fa
 
 const search = ref('');
 const category = ref('');
+const kind = ref<'' | 'built-in' | 'catalog'>('');
+
+const KINDS = [
+  { value: '' as const, label: 'All', count: data.total },
+  { value: 'built-in' as const, label: 'Built-in', count: data.builtInCount },
+  { value: 'catalog' as const, label: 'Catalog', count: data.catalogCount },
+];
 
 const featuredItems = computed<GalleryItem[]>(() => {
   const byId = new Map(data.items.map((i) => [i.id, i]));
@@ -16,6 +23,7 @@ const filtered = computed<GalleryItem[]>(() => {
   const q = search.value.trim().toLowerCase();
   return data.items.filter(
     (i) =>
+      (!kind.value || i.kind === kind.value) &&
       (!category.value || i.category === category.value) &&
       (!q ||
         i.name.toLowerCase().includes(q) ||
@@ -42,6 +50,19 @@ function monogram(name: string) {
 <template>
   <div class="ig">
     <div v-if="!featured" class="ig-toolbar">
+      <div class="ig-kinds" role="group" aria-label="Filter by kind">
+        <button
+          v-for="k in KINDS"
+          :key="k.value"
+          type="button"
+          class="ig-chip"
+          :class="{ active: kind === k.value }"
+          :aria-pressed="kind === k.value"
+          @click="kind = k.value"
+        >
+          {{ k.label }} <span class="ig-chip-n">{{ k.count }}</span>
+        </button>
+      </div>
       <input v-model="search" class="ig-search" placeholder="Search integrations…" aria-label="Search integrations" />
       <select v-model="category" class="ig-select" aria-label="Filter by category">
         <option value="">All categories</option>
@@ -103,6 +124,34 @@ function monogram(name: string) {
 }
 .ig-search { flex: 1 1 240px; min-width: 180px; }
 .ig-count { color: var(--vp-c-text-3); font-size: 0.85rem; font-variant-numeric: tabular-nums; }
+
+.ig-kinds { display: inline-flex; gap: 0.3rem; }
+.ig-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--vp-c-divider);
+  border-radius: 999px;
+  background: var(--vp-c-bg);
+  color: var(--vp-c-text-2);
+  font-size: 0.85rem;
+  font-weight: 500;
+  cursor: pointer;
+  transition: border-color 0.15s ease, color 0.15s ease, background 0.15s ease;
+}
+.ig-chip:hover { border-color: var(--vp-c-brand-1); }
+.ig-chip.active {
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+  background: var(--vp-c-brand-soft);
+}
+.ig-chip-n {
+  font-size: 0.72rem;
+  color: var(--vp-c-text-3);
+  font-variant-numeric: tabular-nums;
+}
+.ig-chip.active .ig-chip-n { color: var(--vp-c-brand-1); }
 
 .ig-grid {
   display: grid;
