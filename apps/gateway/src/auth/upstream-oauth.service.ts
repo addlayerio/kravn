@@ -5,8 +5,6 @@ import {
   discoverAuthorizationServerMetadata,
   registerClient,
   startAuthorization,
-  exchangeAuthorization,
-  refreshAuthorization,
 } from '@modelcontextprotocol/sdk/client/auth.js';
 import type {
   OAuthClientInformationFull,
@@ -62,6 +60,12 @@ export interface UpstreamOAuthInput {
   tokenUrl?: string; // token_endpoint
   issuer?: string; // authorization server URL (for discovery, or as the AS identity)
   scope?: string; // space-separated scopes
+  /**
+   * How the client authenticates at the token endpoint. There is no universal default: GitHub expects the
+   * secret in the POST body ('client_secret_post'), Notion requires HTTP Basic ('client_secret_basic', per
+   * RFC 6749 §2.3.1). Empty -> 'client_secret_post' when a secret is set, else 'none' (public + PKCE).
+   */
+  tokenAuthMethod?: string; // '' | 'client_secret_basic' | 'client_secret_post' | 'none'
 }
 
 interface Deps {
@@ -106,6 +110,7 @@ export class UpstreamOAuthService {
         response_types_supported: ['code'],
         grant_types_supported: ['authorization_code', 'refresh_token'],
         code_challenge_methods_supported: ['S256'],
+        token_endpoint_auth_methods_supported: ['client_secret_basic', 'client_secret_post', 'none'],
       } as AuthorizationServerMetadata;
     } else if (eff.issuer) {
       // Discover from an explicit issuer URL.
@@ -140,7 +145,7 @@ export class UpstreamOAuthService {
         redirect_uris: [redirectUri],
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
-        token_endpoint_auth_method: eff.clientSecret ? 'client_secret_post' : 'none',
+        token_endpoint_auth_method: eff.tokenAuthMethod || (eff.clientSecret ? 'client_secret_post' : 'none'),
       } as OAuthClientInformationFull;
     } else if (existing && existing.authServerUrl === authServerUrl && existing.clientInfoEnc) {
       clientInfo = JSON.parse(this.d.encryptor.decrypt(existing.clientInfoEnc)) as OAuthClientInformationFull;
@@ -205,7 +210,7 @@ export class UpstreamOAuthService {
   /** Stored operator config as the base, overridden by any non-empty field passed to this call. */
   private async effectiveConfig(serverId: string, cfg: UpstreamOAuthInput): Promise<UpstreamOAuthInput> {
     const out: UpstreamOAuthInput = { ...(await this.readOperatorConfig(serverId)) };
-    for (const k of ['clientId', 'clientSecret', 'authorizationUrl', 'tokenUrl', 'issuer', 'scope'] as const) {
+    for (const k of ['clientId', 'clientSecret', 'authorizationUrl', 'tokenUrl', 'issuer', 'scope', 'tokenAuthMethod'] as const) {
       const v = cfg[k];
       if (v != null && String(v).trim() !== '') out[k] = v;
     }
@@ -222,6 +227,7 @@ export class UpstreamOAuthService {
       tokenUrl: input.tokenUrl ?? '',
       issuer: input.issuer ?? '',
       scope: input.scope ?? '',
+      tokenAuthMethod: input.tokenAuthMethod ?? '',
       clientSecret: input.clientSecret && input.clientSecret !== '' ? input.clientSecret : stored.clientSecret,
     };
     await this.d.repos.serverOAuth.saveOperatorConfig(serverId, this.d.encryptor.encrypt(JSON.stringify(merged)));
@@ -234,6 +240,7 @@ export class UpstreamOAuthService {
     tokenUrl: string;
     issuer: string;
     scope: string;
+    tokenAuthMethod: string;
     clientSecretSet: boolean;
   } | null> {
     const o = await this.readOperatorConfig(serverId);
@@ -244,6 +251,7 @@ export class UpstreamOAuthService {
       tokenUrl: o.tokenUrl ?? '',
       issuer: o.issuer ?? '',
       scope: o.scope ?? '',
+      tokenAuthMethod: o.tokenAuthMethod ?? '',
       clientSecretSet: !!o.clientSecret,
     };
   }
@@ -261,16 +269,13 @@ export class UpstreamOAuthService {
     const asMeta = JSON.parse(cfg.metadataJson) as AuthorizationServerMetadata;
     const clientInfo = JSON.parse(this.d.encryptor.decrypt(cfg.clientInfoEnc)) as OAuthClientInformationFull;
     const codeVerifier = this.d.encryptor.decrypt(pending.codeVerifierEnc);
+    if (!asMeta.token_endpoint) throw new Error('The authorization server has no token endpoint.');
 
-    const tokens = await exchangeAuthorization(cfg.authServerUrl, {
-      metadata: asMeta,
-      clientInformation: clientInfo,
-      authorizationCode: code,
-      codeVerifier,
-      redirectUri: pending.redirectUri,
-      resource: new URL(cfg.resource),
-      fetchFn: jsonFetch,
-    });
+    const tokens = await tokenRequest(
+      asMeta.token_endpoint,
+      { grant_type: 'authorization_code', code, redirect_uri: pending.redirectUri, code_verifier: codeVerifier },
+      clientInfo,
+    );
     await this.persistTokens(pending.serverId, tokens);
     return pending.serverId;
   }
@@ -293,13 +298,12 @@ export class UpstreamOAuthService {
     await this.d.ssrf.assertUrlAllowed(cfg.authServerUrl);
     const asMeta = JSON.parse(cfg.metadataJson) as AuthorizationServerMetadata;
     const clientInfo = JSON.parse(this.d.encryptor.decrypt(cfg.clientInfoEnc)) as OAuthClientInformationFull;
-    const tokens = await refreshAuthorization(cfg.authServerUrl, {
-      metadata: asMeta,
-      clientInformation: clientInfo,
-      refreshToken: this.d.encryptor.decrypt(cfg.refreshTokenEnc),
-      resource: new URL(cfg.resource),
-      fetchFn: jsonFetch,
-    });
+    if (!asMeta.token_endpoint) throw new Error('The authorization server has no token endpoint.');
+    const tokens = await tokenRequest(
+      asMeta.token_endpoint,
+      { grant_type: 'refresh_token', refresh_token: this.d.encryptor.decrypt(cfg.refreshTokenEnc) },
+      clientInfo,
+    );
     await this.persistTokens(serverId, tokens, cfg.refreshTokenEnc);
     return tokens.access_token;
   }
@@ -327,15 +331,62 @@ function originOf(url: string): string {
   return new URL(url).origin;
 }
 /**
- * Force `Accept: application/json` on token/registration requests. Some providers (notably GitHub) otherwise
- * return `application/x-www-form-urlencoded` bodies that the token parser reads as empty — surfacing as
- * "access_token: expected string, received undefined".
+ * Force `Accept: application/json` on registration requests. Some providers (notably GitHub) otherwise
+ * return `application/x-www-form-urlencoded` bodies that the parser reads as empty.
  */
 const jsonFetch: typeof fetch = (input, init) => {
   const headers = new Headers(init?.headers);
   headers.set('accept', 'application/json');
   return fetch(input, { ...(init ?? {}), headers });
 };
+
+/**
+ * Hand-rolled token request (authorization_code / refresh_token) — instead of the SDK helper, so we can:
+ *  - force `Accept: application/json` AND parse a form-encoded body (GitHub's default),
+ *  - honor client_secret_basic vs client_secret_post,
+ *  - surface the provider's real `error`/`error_description` instead of a masked "access_token undefined".
+ */
+async function tokenRequest(
+  tokenEndpoint: string,
+  grant: Record<string, string>,
+  clientInfo: OAuthClientInformationFull,
+): Promise<OAuthTokens> {
+  const body = new URLSearchParams(grant);
+  const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
+  const secret = clientInfo.client_secret;
+  if (clientInfo.token_endpoint_auth_method === 'client_secret_basic' && secret) {
+    headers.authorization = `Basic ${Buffer.from(`${clientInfo.client_id}:${secret}`).toString('base64')}`;
+    body.set('client_id', clientInfo.client_id);
+  } else {
+    body.set('client_id', clientInfo.client_id);
+    if (secret) body.set('client_secret', secret);
+  }
+
+  let res: Response;
+  try {
+    res = await fetch(tokenEndpoint, { method: 'POST', headers, body: body.toString(), redirect: 'error', signal: AbortSignal.timeout(20_000) });
+  } catch (err) {
+    throw new Error(`Token request to ${new URL(tokenEndpoint).host} failed: ${(err as Error).message}`);
+  }
+  const raw = (await res.text()).slice(0, 100_000);
+  let data: Record<string, unknown>;
+  try {
+    data = JSON.parse(raw);
+  } catch {
+    data = Object.fromEntries(new URLSearchParams(raw)); // GitHub returns form-encoded by default
+  }
+  if (data.error) throw new Error(`OAuth token error: ${String(data.error_description || data.error)}`);
+  if (typeof data.access_token !== 'string' || !data.access_token) {
+    throw new Error(`Token endpoint returned no access_token (HTTP ${res.status}). ${raw.slice(0, 200)}`);
+  }
+  return {
+    access_token: data.access_token,
+    token_type: (typeof data.token_type === 'string' && data.token_type) || 'Bearer',
+    expires_in: data.expires_in != null ? Number(data.expires_in) : undefined,
+    refresh_token: typeof data.refresh_token === 'string' ? data.refresh_token : undefined,
+    scope: typeof data.scope === 'string' ? data.scope : undefined,
+  } as OAuthTokens;
+}
 function isoIn(sec: number): string {
   return new Date(Date.now() + sec * 1000).toISOString();
 }

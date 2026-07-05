@@ -38,6 +38,7 @@ const blank = () => ({
   oauthAuthUrl: '',
   oauthTokenUrl: '',
   oauthScope: '',
+  oauthTokenAuthMethod: '',
   oauthSecretSet: false,
 });
 const form = reactive(blank());
@@ -45,13 +46,14 @@ const callbackUrl = `${window.location.origin}/oauth/upstream/callback`;
 
 async function loadOAuthConfig(id: string) {
   try {
-    const res = await api.get<{ config: { clientId: string; authorizationUrl: string; tokenUrl: string; scope: string; clientSecretSet: boolean } | null }>(`/api/servers/${id}/oauth/config`);
+    const res = await api.get<{ config: { clientId: string; authorizationUrl: string; tokenUrl: string; scope: string; tokenAuthMethod: string; clientSecretSet: boolean } | null }>(`/api/servers/${id}/oauth/config`);
     const c = res.config;
     if (c) {
       form.oauthClientId = c.clientId;
       form.oauthAuthUrl = c.authorizationUrl;
       form.oauthTokenUrl = c.tokenUrl;
       form.oauthScope = c.scope;
+      form.oauthTokenAuthMethod = c.tokenAuthMethod;
       form.oauthSecretSet = c.clientSecretSet;
     }
   } catch {
@@ -65,6 +67,7 @@ async function saveOAuthConfig(id: string) {
     authorizationUrl: form.oauthAuthUrl.trim(),
     tokenUrl: form.oauthTokenUrl.trim(),
     scope: form.oauthScope.trim(),
+    tokenAuthMethod: form.oauthTokenAuthMethod,
   });
 }
 
@@ -616,6 +619,15 @@ async function remove(srv: UpstreamServer) {
         <div class="field">
           <label>Scopes <span class="muted">(space-separated)</span></label>
           <input v-model="form.oauthScope" placeholder="e.g. repo read:org read:user" />
+        </div>
+        <div class="field">
+          <label>Client authentication <span class="muted">(how the secret is sent to the token endpoint)</span></label>
+          <select v-model="form.oauthTokenAuthMethod">
+            <option value="">Auto / POST body (default — GitHub, most)</option>
+            <option value="client_secret_basic">Basic auth header (required by Notion)</option>
+            <option value="client_secret_post">POST body</option>
+            <option value="none">None (public app + PKCE)</option>
+          </select>
         </div>
       </template>
 

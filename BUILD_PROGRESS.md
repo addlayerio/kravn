@@ -1010,8 +1010,21 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Validated** on real sqlite + a no-metadata mock (5/5): migration applied, save→display (no secret),
   blank-secret-kept, `startAuthorization({})` uses stored config, full exchange with the stored secret.
 
+## ✅ PASS 57 — OAuth token exchange hardened (GitHub) + client-auth method (Notion) (v0.1.63)
+- **Forge cross-check finding.** Reviewing mcp-context-forge surfaced a real quirk class beyond GitHub:
+  `token_endpoint_auth_method` — Notion requires `client_secret_basic` (RFC 6749 §2.3.1), GitHub uses
+  `client_secret_post`; the forge exposes it as a field. Added `tokenAuthMethod` to the OAuth config (UI select
+  Auto/Basic/Post/None), threaded through save/effective/clientInfo → `token_endpoint_auth_method`.
+- **Hand-rolled token exchange.** Replaced the SDK `exchangeAuthorization`/`refreshAuthorization` with a direct
+  `tokenRequest` that: forces `Accept: application/json` AND parses a form-encoded body (GitHub's default);
+  honors basic vs post; **surfaces the provider's real `error`/`error_description`** instead of masking it as
+  "access_token undefined". Discovery + auth-URL building still use the SDK.
+- **Validated** on real sqlite + mocks: existing suites still green (dcr 8/8, manual 5/5, persist 5/5),
+  tokenAuthMethod flows to the stored clientInfo (basic/post), GitHub-style **form-encoded** token response
+  parses + token usable, and a provider error surfaces its real message. Full monorepo build green.
+
 ### Deferred to later phases (intentional, not missing)
-Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+**Server-Sent Events** for the operator (replace status polling on MCP Servers/Plugins) · Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·

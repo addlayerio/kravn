@@ -89,6 +89,7 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
       tokenUrl?: string;
       issuer?: string;
       scope?: string;
+      tokenAuthMethod?: string;
     };
     const server = await s.registry.getServer(id);
     if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');
@@ -101,6 +102,7 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
         tokenUrl: b.tokenUrl,
         issuer: b.issuer,
         scope: b.scope,
+        tokenAuthMethod: b.tokenAuthMethod,
       });
       return { authorizationUrl };
     } catch (err) {
@@ -120,7 +122,7 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
   // Persist the OAuth config (endpoints + client) so it survives failed Connects and is editable.
   app.put('/api/servers/:id/oauth/config', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const b = (req.body ?? {}) as { clientId?: string; clientSecret?: string; authorizationUrl?: string; tokenUrl?: string; issuer?: string; scope?: string };
+    const b = (req.body ?? {}) as { clientId?: string; clientSecret?: string; authorizationUrl?: string; tokenUrl?: string; issuer?: string; scope?: string; tokenAuthMethod?: string };
     if (!(await s.registry.getServer(id))) return sendError(reply, 404, 'not_found', 'Server not found.');
     await s.upstreamOAuth.saveConfig(id, b);
     return reply.code(204).send();

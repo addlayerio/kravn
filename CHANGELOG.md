@@ -12,6 +12,17 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.63] — 2026-07-05
+
+- 🐛 **OAuth token exchange, hardened for real providers.** Kravn now performs the token exchange/refresh
+  itself instead of relying on the SDK helper — it accepts both JSON and GitHub's form-encoded token
+  responses, and **surfaces the provider's real error** (e.g. "the code is incorrect or expired") instead of a
+  cryptic "access_token: expected string, received undefined". This fixes GitHub and makes any OAuth failure
+  legible.
+- 📣 **Choose how the client secret is sent** (from reviewing other providers). New **Client authentication**
+  option on OAuth servers — POST body (default, GitHub) or **Basic auth header** (required by Notion) — so
+  providers with different token-endpoint conventions all work.
+
 ## [0.1.62] — 2026-07-05
 
 - 🐛 **GitHub (and similar) OAuth now completes.** The token exchange failed with "access_token: expected
@@ -257,6 +268,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.63]: https://github.com/addlayerio/kravn/releases/tag/v0.1.63
 [0.1.62]: https://github.com/addlayerio/kravn/releases/tag/v0.1.62
 [0.1.61]: https://github.com/addlayerio/kravn/releases/tag/v0.1.61
 [0.1.60]: https://github.com/addlayerio/kravn/releases/tag/v0.1.60
