@@ -1102,8 +1102,26 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   /api/overview and upstream/downstream MCP client/serverInfo. Validated by boot (env → 0.1.68, none → 0.1.0).
   Takes effect from this release's image onward.
 
+## ✅ PASS 64 — Bank-readiness Tier-2/3 batch + enterprise catalog (v0.1.70)
+- **Supply chain (#4, the free half):** release pipeline emits a CycloneDX **SBOM** + **SLSA** provenance and
+  **cosign-signs** the image + chart (keyless); website Security guide documents verification. SOC2/pentest
+  intentionally skipped (source-available).
+- **6 enterprise catalog connectors:** Salesforce, ServiceNow, Slack, Snowflake, Datadog, GitLab (official
+  MCP servers; per-tenant/preview caveats in the setup cards). Okta excluded (stdio-only, no hosted URL).
+- **DR/BCP (Tier-3):** DR_BCP.md runbook + optional backup CronJob in the chart + website guide.
+- **TLS/mTLS to upstreams (Tier-2):** per-server custom CA + client cert (encrypted, write-only); SSRF-preserving
+  per-server dispatcher. Migration 014. Adversarially reviewed.
+- **Session hardening (Tier-2):** sessions table (migration 015), idle timeout, list/revoke sessions, refresh;
+  revocation fail-closed. Adversarially reviewed.
+- **OpenTelemetry (Tier-3):** opt-in OTLP tracing (request/MCP/LLM spans), dynamic-import gated, zero-cost off.
+- **DLP depth (Tier-2):** PII Tokenizer gains checksum-validated IBAN / Argentina CBU / CUIT-CUIL detectors.
+- **Model governance (Tier-2):** `security.allowedModels` allowlist enforced at chat (exact or `*` glob).
+- All security-sensitive changes adversarially reviewed (SECURITY.md rows); each feature typecheck+build green
+  and boot/behaviour-validated; shipped incrementally then bumped together.
+
 ### Deferred to later phases (intentional, not missing)
-ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+Per-team model policy (global allowlist done) · per-detector DLP metrics (needs metrics in the hook context) ·
+step-up auth (folds into maker-checker #5) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·

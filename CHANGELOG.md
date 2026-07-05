@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.70] — 2026-07-06
 
 - 🔒 **Model governance — allowlist which LLM models may be used.** Settings → *Allowed LLM models* restricts
   the chat to an approved set (exact ids or `*` globs like `claude-*`; empty = any). A conversation on a
