@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.68] — 2026-07-05
 
 - 🧩 **New built-in integration: Zoho CRM.** Connect Zoho CRM (server-to-server OAuth 2.0 — a Self Client +
   refresh token, region-aware) and get read/search/CRUD over any module plus **COQL** queries with `GROUP BY`

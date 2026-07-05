@@ -1082,8 +1082,18 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   had been failing since the gallery landed (kravn.ai/integrations never updated). Added a "build workspace
   deps" step. Reproduced the failure + verified the fix locally.
 
+## ✅ PASS 62 — Native Zoho CRM plugin + gallery kind filter (v0.1.68)
+- **Zoho CRM** built-in `mcp-server` plugin (`apps/gateway/src/plugins/zoho.ts`): Zoho v6 REST API, server-to-server
+  OAuth 2.0 (Self Client + refresh token, both `secret:true`), region-aware (accounts host per DC; API host from
+  the token response, pinned to a `zohoapis.<tld>` allowlist). Access-token cache + auto-refresh + one 401 retry.
+  13 tools: modules/fields/get_records/search/get_record/**coql** (GROUP BY + COUNT/SUM/AVG)/create/update/delete +
+  Leads/Contacts/Accounts/Deals convenience. Registered in native.ts + NATIVE_INTEGRATIONS; brand icon (simple-icons
+  'zoho'); website built-in list + gallery card. API confirmed against Zoho v6 docs; adversarially security-reviewed
+  (no exploitable finding; api_domain host check tightened) — SECURITY.md v0.1.68 row. No live Zoho tested.
+- **Gallery kind filter:** All/Built-in/Catalog chips (with counts) on `/integrations`.
+
 ### Deferred to later phases (intentional, not missing)
-Native **Zoho CRM** plugin (requested) — Zoho REST API over OAuth 2.0 (self-client/refresh token) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·
