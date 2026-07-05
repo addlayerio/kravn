@@ -18,6 +18,7 @@ import { SsrfGuard } from './http/ssrf.js';
 import { installGlobalSsrfDispatcher } from './http/client.js';
 import { UpstreamManager } from './mcp/upstream.js';
 import { RegistryService } from './mcp/registry.service.js';
+import { AuditService } from './audit/audit.service.js';
 import { DownstreamMcp } from './mcp/downstream.js';
 import { LogStore } from './logstore.js';
 import { Metrics } from './metrics.js';
@@ -48,6 +49,8 @@ export interface Services {
   interpreter: CodeExecutor;
   logstore: LogStore;
   metrics: Metrics;
+  /** Immutable, hash-chained, SIEM-exported audit trail (config changes, etc.). */
+  audit: AuditService;
   /** Cross-replica shared state (rate-limit counters, in-flight OIDC login); memory-backed when no Redis URL. */
   sharedStore: SharedStore;
 }
@@ -122,6 +125,9 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const ssrf = new SsrfGuard(settings, log);
   installGlobalSsrfDispatcher(ssrf);
 
+  const audit = new AuditService({ repos, log, ssrf, settings });
+  await audit.init();
+
   const upstream = new UpstreamManager(log, () => settings.get().mcp.requestTimeoutMs);
   // The code interpreter is shipped as a native plugin (privileged runtime); build it with the executor injected.
   const interpreter = new PyodideExecutor(log);
@@ -149,7 +155,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, downstream, plugins, chat, interpreter, logstore, metrics, audit, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */

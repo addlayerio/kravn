@@ -486,8 +486,43 @@ const pipelineOptIn: Migration = {
   },
 };
 
+/**
+ * 010 — Immutable audit log. Append-only + hash-chained (each row's `hash` = sha256(prev_hash + canonical
+ * content)) so tampering is detectable, and exported off-box to a SIEM by the AuditService. Grows unbounded
+ * by design — retention is managed at the DB/SIEM level, not auto-pruned like the in-memory log ring buffer.
+ * The repo exposes only append/read (no update/delete) so the app layer can't rewrite history.
+ */
+const auditLog: Migration = {
+  name: '010_audit_log',
+  async up(knex) {
+    await createIfMissing(knex, 'audit_log', (t) => {
+      t.bigIncrements('seq'); // monotonic order (DB-assigned)
+      t.string('id', 64).notNullable().unique();
+      t.string('ts', 40).notNullable();
+      t.string('category', 32).notNullable(); // config | auth | access | tool | system
+      t.string('action', 191).notNullable();
+      t.string('actor_id', 64);
+      t.string('actor_email', 255);
+      t.string('actor_role', 32);
+      t.string('resource_type', 64);
+      t.string('resource_id', 191);
+      t.string('outcome', 16).notNullable(); // success | failure
+      t.string('ip', 64);
+      t.text('details'); // redacted JSON
+      t.string('prev_hash', 64).notNullable();
+      t.string('hash', 64).notNullable();
+      t.index(['ts']);
+      t.index(['category']);
+      t.index(['actor_id']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('audit_log');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

@@ -1181,6 +1181,7 @@ export interface Repos {
   chat: ChatRepo;
   tokens: TokensRepo;
   oauth: OAuthRepo;
+  auditLog: AuditLogRepo;
 }
 
 export interface OAuthClient {
@@ -1341,6 +1342,82 @@ export class OAuthRepo {
   }
 }
 
+export interface AuditRecord {
+  seq?: number;
+  id: string;
+  ts: string;
+  category: string;
+  action: string;
+  actorId: string | null;
+  actorEmail: string | null;
+  actorRole: string | null;
+  resourceType: string | null;
+  resourceId: string | null;
+  outcome: string;
+  ip: string | null;
+  details: string; // redacted JSON string
+  prevHash: string;
+  hash: string;
+}
+
+function mapAudit(r: Record<string, unknown>): AuditRecord {
+  return {
+    seq: r.seq != null ? Number(r.seq) : undefined,
+    id: String(r.id),
+    ts: String(r.ts),
+    category: String(r.category),
+    action: String(r.action),
+    actorId: (r.actor_id as string) ?? null,
+    actorEmail: (r.actor_email as string) ?? null,
+    actorRole: (r.actor_role as string) ?? null,
+    resourceType: (r.resource_type as string) ?? null,
+    resourceId: (r.resource_id as string) ?? null,
+    outcome: String(r.outcome),
+    ip: (r.ip as string) ?? null,
+    details: (r.details as string) ?? '{}',
+    prevHash: String(r.prev_hash),
+    hash: String(r.hash),
+  };
+}
+
+/**
+ * The immutable audit trail. Exposes ONLY append + read — no update/delete — so the app layer cannot rewrite
+ * history. Tamper-evidence comes from the hash chain (AuditService); durable immutability at scale is
+ * reinforced by the off-box SIEM export.
+ */
+export class AuditLogRepo {
+  constructor(private store: Store) {}
+
+  async append(r: AuditRecord): Promise<void> {
+    await this.store.run(
+      `INSERT INTO audit_log (id, ts, category, action, actor_id, actor_email, actor_role, resource_type, resource_id, outcome, ip, details, prev_hash, hash)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [r.id, r.ts, r.category, r.action, r.actorId, r.actorEmail, r.actorRole, r.resourceType, r.resourceId, r.outcome, r.ip, r.details, r.prevHash, r.hash],
+    );
+  }
+
+  /** Hash of the most recent row — seeds the chain at startup. */
+  async lastHash(): Promise<string | undefined> {
+    const r = await this.store.get<{ hash: string }>('SELECT hash FROM audit_log WHERE seq = (SELECT MAX(seq) FROM audit_log)');
+    return r?.hash;
+  }
+
+  async count(): Promise<number> {
+    const r = await this.store.get<{ n: number }>('SELECT COUNT(*) AS n FROM audit_log');
+    return Number(r?.n ?? 0);
+  }
+
+  /** Most recent `limit` events, newest first (clamped 1..1000). */
+  async recent(limit: number): Promise<AuditRecord[]> {
+    const n = Math.min(1000, Math.max(1, Math.trunc(Number(limit)) || 100));
+    const sql =
+      this.store.kind === 'mssql'
+        ? `SELECT TOP (${n}) * FROM audit_log ORDER BY seq DESC`
+        : `SELECT * FROM audit_log ORDER BY seq DESC LIMIT ${n}`;
+    return (await this.store.all(sql)).map(mapAudit);
+  }
+}
+
 export function createRepos(store: Store): Repos {
   return {
     users: new UsersRepo(store),
@@ -1357,5 +1434,6 @@ export function createRepos(store: Store): Repos {
     chat: new ChatRepo(store),
     tokens: new TokensRepo(store),
     oauth: new OAuthRepo(store),
+    auditLog: new AuditLogRepo(store),
   };
 }

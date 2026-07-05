@@ -836,6 +836,24 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Validated** on the real method (5/5: serialized same-server / parallel diff-server / no leak / error not
   wedged). Gateway typecheck green.
 
+## ✅ PASS 44 — Immutable, SIEM-exportable audit trail + admin config-change auditing (v0.1.49)
+- **Tier-1 compliance** (first item from the bank-readiness gap list). New `audit_log` table (migration 010):
+  **append-only + hash-chained** (`hash = sha256(prev_hash + canonical content)`). `AuditLogRepo` exposes
+  only append/read (no update/delete) so the app can't rewrite history.
+- **`AuditService`**: serialized `record()` (chain consistency), durable persist, and **off-box export per
+  event** — a structured stdout line (`audit:true`, k8s→SIEM shipping) + optional **SSRF-guarded SIEM
+  webhook** (`assertUrlAllowed` + `redirect:'error'` + timeout). Secrets deep-redacted (key-matched) + values
+  capped before store/export. `verify()` recomputes the chain and reports the first break.
+- **Admin config-change audit**: a global `onResponse` hook records every mutating, authenticated
+  control-plane `/api/*` call (who/what/when/outcome/IP); data-plane chat + auth-token churn excluded.
+- **Read/verify API** (`GET /api/audit`, `POST /api/audit/verify`) gated by a new `audit.read` permission
+  (admin-only; grantable to a dedicated auditor role for SoD). New `observability.auditWebhookUrl` setting.
+- **Validated** end-to-end on real sqlite (10/10): persistence, genesis→chain linkage, redaction of
+  clientSecret/password, per-event stdout export, `verify()` ok on a valid chain, and `verify()` DETECTING a
+  direct-DB tamper. Full monorepo build green.
+- **Documented limits:** per-replica chain (off-box SIEM export is the cross-replica tamper-proofing);
+  unbounded growth by design (retention managed at the DB/SIEM layer).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

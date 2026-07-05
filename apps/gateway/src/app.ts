@@ -25,6 +25,7 @@ import { teamRoutes } from './routes/teams.routes.js';
 import { chatRoutes } from './routes/chat.routes.js';
 import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
+import { auditRoutes } from './routes/audit.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
@@ -132,6 +133,35 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     plugins: services.plugins,
   });
 
+  // Administrative config-change audit: record every mutating control-plane API call an authenticated user
+  // makes (who, what, when, from where, outcome) to the immutable audit log. Broad by design; data-plane
+  // (chat) + auth-token churn + read/noise paths are excluded. Runs at onResponse, so it adds no client
+  // latency, and never throws into the request. Bodies are redacted of secrets by the AuditService.
+  const AUDIT_MUTATING = new Set(['POST', 'PUT', 'PATCH', 'DELETE']);
+  const AUDIT_SKIP = /^\/api\/(bootstrap|logs|audit|conversations|projects|chat|auth\/(login|register|logout|refresh|exchange|token)|oauth)\b/;
+  app.addHook('onResponse', async (req, reply) => {
+    try {
+      if (!AUDIT_MUTATING.has(req.method)) return;
+      const url = (req.raw.url ?? '').split('?')[0];
+      if (!url.startsWith('/api/') || AUDIT_SKIP.test(url)) return;
+      const actor = (req as { user?: { id: string; email: string; role: string } | null }).user ?? null;
+      if (!actor) return; // only audit authenticated actions here (unauth probes are access-log/rate-limit territory)
+      const seg = url.split('/').filter(Boolean); // ['api', '<resource>', '<id>']
+      await services.audit.record({
+        category: 'config',
+        action: `${req.method} ${url}`,
+        actor: { id: actor.id, email: actor.email, role: actor.role },
+        resourceType: seg[1],
+        resourceId: seg[2],
+        outcome: reply.statusCode < 400 ? 'success' : 'failure',
+        details: { status: reply.statusCode, body: req.body },
+        ip: req.ip,
+      });
+    } catch (err) {
+      services.log.warn({ err }, 'config-change audit hook failed');
+    }
+  });
+
   app.setErrorHandler((err, req, reply) => {
     if (err instanceof AuthError) return reply.code(err.status).send({ error: { code: err.code, message: err.message } });
     if (err instanceof ZodError) {
@@ -174,6 +204,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     userRoutes(app, services);
     scimRoutes(app, services);
     logRoutes(app, services);
+    auditRoutes(app, services);
     mcpRoutes(app, services);
     overviewRoutes(app, services);
   }

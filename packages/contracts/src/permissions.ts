@@ -39,6 +39,7 @@ export const PERMISSIONS = [
   'teams.read',
   'teams.write',
   'logs.read',
+  'audit.read',
   'mcp.invoke',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];

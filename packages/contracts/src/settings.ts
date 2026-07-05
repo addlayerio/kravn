@@ -91,6 +91,8 @@ export const appSettingsSchema = z
         metricsEnabled: z.boolean().default(true),
         otlpEndpoint: z.string().default(''),
         logLevel: z.enum(LOG_LEVELS).default('info'),
+        /** Optional HTTP endpoint the audit log is POSTed to per event (Splunk HEC / generic SIEM). SSRF-guarded. */
+        auditWebhookUrl: z.string().default(''),
       })
       .default({}),
   })
@@ -219,6 +221,7 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'observability.metricsEnabled', label: 'Prometheus /metrics', control: 'boolean' },
       { path: 'observability.otlpEndpoint', label: 'OTLP endpoint', control: 'string' },
       { path: 'observability.logLevel', label: 'Log level', control: 'enum', options: LOG_LEVELS },
+      { path: 'observability.auditWebhookUrl', label: 'Audit SIEM webhook (POST each audit event)', control: 'string' },
     ],
   },
 ];
