@@ -1,15 +1,22 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { computed, onMounted, ref } from 'vue';
 import type { Tool, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import GroupedList, { type GroupListMeta } from '../components/GroupedList.vue';
+import { serverIconId } from '../lib/server-icon';
 
 const auth = useAuthStore();
 const toast = useToastStore();
 const tools = ref<Tool[]>([]);
 const servers = ref<Record<string, UpstreamServer>>({});
 const loading = ref(true);
+
+const serverMeta = computed<Record<string, GroupListMeta>>(() =>
+  Object.fromEntries(Object.values(servers.value).map((s) => [s.id, { name: s.name, iconId: serverIconId(s) }])),
+);
+const toolItems = computed(() => tools.value.map((t) => ({ ...t, groupId: t.serverId })));
 
 const playground = ref<Tool | null>(null);
 const argsText = ref('{}');
@@ -69,29 +76,23 @@ async function invoke() {
   <div class="card">
     <p v-if="loading" class="muted">Loading…</p>
     <div v-else-if="tools.length === 0" class="empty">No tools discovered yet. Add and sync a server first.</div>
-    <table v-else>
-      <thead>
-        <tr><th>Tool</th><th>Server</th><th>Description</th><th>Enabled</th><th></th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="t in tools" :key="t.id">
-          <td style="font-weight: 600">{{ t.name }}</td>
-          <td><small class="muted">{{ servers[t.serverId]?.name || t.serverId }}</small></td>
-          <td><small class="muted">{{ t.description }}</small></td>
-          <td>
-            <span class="badge" :class="t.enabled ? 'online' : 'disabled'">{{ t.enabled ? 'on' : 'off' }}</span>
-          </td>
-          <td>
-            <div class="btn-row">
-              <button v-if="auth.user?.role === 'admin'" class="btn" @click="openPlayground(t)">Test</button>
-              <button v-if="auth.can('registry.write')" class="btn" @click="toggle(t)">
-                {{ t.enabled ? 'Disable' : 'Enable' }}
-              </button>
-            </div>
-          </td>
-        </tr>
-      </tbody>
-    </table>
+    <GroupedList v-else :items="toolItems" :groups="serverMeta" noun="tool" :search-text="(t) => `${t.name} ${t.description}`">
+      <template #row="{ item: t }">
+        <div class="rl-row">
+          <div class="rl-main">
+            <div class="rl-name">{{ t.name }}</div>
+            <small v-if="t.description" class="muted">{{ t.description }}</small>
+          </div>
+          <span class="badge" :class="t.enabled ? 'online' : 'disabled'">{{ t.enabled ? 'on' : 'off' }}</span>
+          <div class="btn-row">
+            <button v-if="auth.user?.role === 'admin'" class="btn" @click="openPlayground(t)">Test</button>
+            <button v-if="auth.can('registry.write')" class="btn" @click="toggle(t)">
+              {{ t.enabled ? 'Disable' : 'Enable' }}
+            </button>
+          </div>
+        </div>
+      </template>
+    </GroupedList>
   </div>
 
   <div v-if="playground" class="modal-backdrop" @click.self="playground = null">

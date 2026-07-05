@@ -647,3 +647,31 @@ pre.code {
     transform: translateY(0);
   }
 }
+
+/* Row layout for grouped browse lists (GroupedList row slot): main info + trailing actions. */
+.rl-row {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+}
+.rl-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.1rem;
+}
+.rl-name {
+  font-weight: 600;
+  font-size: 0.88rem;
+}
+.rl-main small {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.rl-mono {
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 0.82rem;
+  font-weight: 600;
+}

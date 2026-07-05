@@ -1,9 +1,11 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import type { Prompt, LocalPrompt, LocalPromptArgument, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import GroupedList, { type GroupListMeta } from '../components/GroupedList.vue';
+import { serverIconId } from '../lib/server-icon';
 
 const auth = useAuthStore();
 const toast = useToastStore();
@@ -12,6 +14,11 @@ const locals = ref<LocalPrompt[]>([]);
 const discovered = ref<Prompt[]>([]);
 const servers = ref<Record<string, UpstreamServer>>({});
 const loading = ref(true);
+
+const serverMeta = computed<Record<string, GroupListMeta>>(() =>
+  Object.fromEntries(Object.values(servers.value).map((s) => [s.id, { name: s.name, iconId: serverIconId(s) }])),
+);
+const discoveredItems = computed(() => discovered.value.map((p) => ({ ...p, groupId: p.serverId })));
 
 const showModal = ref(false);
 const editingId = ref<string | null>(null);
@@ -168,18 +175,20 @@ async function remove(p: LocalPrompt) {
     <h3>Discovered prompts</h3>
     <p class="muted" style="margin-top: -0.25rem">Imported from upstream servers (read-only).</p>
     <div v-if="!loading && discovered.length === 0" class="empty">No discovered prompts.</div>
-    <table v-else-if="!loading">
-      <thead>
-        <tr><th>Name</th><th>Server</th><th>Description</th></tr>
-      </thead>
-      <tbody>
-        <tr v-for="p in discovered" :key="p.id">
-          <td style="font-weight: 600">{{ p.name }}</td>
-          <td><small class="muted">{{ servers[p.serverId]?.name || p.serverId }}</small></td>
-          <td><small class="muted">{{ p.description }}</small></td>
-        </tr>
-      </tbody>
-    </table>
+    <GroupedList
+      v-else-if="!loading"
+      :items="discoveredItems"
+      :groups="serverMeta"
+      noun="prompt"
+      :search-text="(p) => `${p.name} ${p.description}`"
+    >
+      <template #row="{ item: p }">
+        <div class="rl-main">
+          <div class="rl-name">{{ p.name }}</div>
+          <small v-if="p.description" class="muted">{{ p.description }}</small>
+        </div>
+      </template>
+    </GroupedList>
   </div>
 
   <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">

@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 📣 **Tools, Resources and Prompts are now grouped by their origin server too.** The same server grouping
+  from the endpoint composer now applies to the browse pages — each list is collapsible per server (with its
+  logo) and has a search box, so the origin of every tool/resource/prompt is obvious even with hundreds of
+  them.
+- 🐛 **Mercado Libre shows its real logo** (the Mercado Pago handshake in MercadoLibre yellow) instead of a
+  monogram.
+
 ## [0.1.65] — 2026-07-05
 
 - 📣 **Pick tools by server, not from an endless checkbox wall.** Composing an MCP endpoint now groups
