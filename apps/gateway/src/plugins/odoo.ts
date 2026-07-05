@@ -329,13 +329,23 @@ export function odooPlugin(): McpServerPlugin {
         'API key in Odoo: top-right avatar → Preferences → Account Security → New API Key (Odoo Online ' +
         'requires a key; self-hosted also accepts the password). Then set: Odoo URL (Online: ' +
         'https://your-company.odoo.com · Odoo.sh: your project/branch URL · self-hosted: your URL), the ' +
-        'Database name (Online: usually your-company; find it at /web/database/selector if unsure), the ' +
-        "Username (login email) and the API Key. The user's Odoo access rights govern what the tools can do.",
+        'Database name, the Username (login email) and the API Key. Finding the database name: Online it is ' +
+        'usually your-company; on Odoo.sh it is NOT the subdomain — open your Odoo with ?debug=1 and copy the ' +
+        'name shown top-right in brackets (it may include a build-id suffix, e.g. company-branch-18-0-1234567), ' +
+        "and make sure the URL and database are from the SAME build. The user's Odoo access rights govern what the tools can do.",
       configSchema: {
         type: 'object',
         properties: {
           url: { type: 'string', title: 'Odoo URL', description: 'Online: https://your-company.odoo.com · Odoo.sh or self-hosted: your instance URL.' },
-          db: { type: 'string', title: 'Database', description: 'The Odoo database name (Online: usually your-company).' },
+          db: {
+            type: 'string',
+            title: 'Database',
+            description:
+              'The Odoo database name. Online: usually your-company. Odoo.sh: it is NOT the subdomain — ' +
+              'open your Odoo with ?debug=1 (e.g. https://your-company.odoo.com/web?debug=1) and copy the ' +
+              'name shown top-right in brackets next to your user; it may include a build-id suffix, e.g. ' +
+              'company-branch-18-0-1234567.',
+          },
           username: { type: 'string', title: 'Username', description: 'The login (email) of the API user.' },
           apiKey: { type: 'string', title: 'API Key', description: 'Odoo API key (Preferences → Account Security → New API Key), or the user password.', secret: true },
         },

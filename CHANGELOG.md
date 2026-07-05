@@ -14,6 +14,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Odoo connector: clearer database guidance for Odoo.sh.** The Database field help + setup notes (and the
+  Plugins docs) now explain that on Odoo.sh the database is **not** the subdomain — find it via `?debug=1`
+  (top-right, in brackets), and keep the URL and database from the same build.
 - 🐛 **Editing a built-in integration now shows its real settings.** Clicking **Configure** on an installed
   built-in integration (e.g. Odoo) in MCP Servers opens the same credential form you filled in on install
   (database, user, API token…) — instead of the generic server form that showed none of them.
