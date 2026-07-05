@@ -140,6 +140,7 @@ export default defineConfig({
             { text: 'Plugins & integrations', link: '/guide/plugins' },
             { text: 'Security & compliance', link: '/guide/security' },
             { text: 'Key management (KMS/HSM)', link: '/guide/key-management' },
+            { text: 'Disaster recovery & continuity', link: '/guide/dr-bcp' },
           ],
         },
       ],

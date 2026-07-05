@@ -86,6 +86,27 @@ migrations:
       limits:
         memory: 512Mi
 
+# Optional automated backup CronJob (DR/BCP — see DR_BCP.md). Off by default. Best suited to EXTERNAL
+# databases (the command runs pg_dump/mysqldump/etc. against $DATABASE_URL). For managed databases, prefer
+# the provider's native backups. For embedded SQLite, the app's data PVC is mounted read-only at /data
+# (needs RWX or same-node scheduling, since the app also mounts it).
+backup:
+  enabled: false
+  schedule: "0 2 * * *"          # cron; default nightly 02:00
+  image: ""                       # a DB-client image (e.g. postgres:16-alpine); empty -> the app image (has sqlite3)
+  command: []                     # the backup command, e.g.:
+  #   - /bin/sh
+  #   - -c
+  #   - 'pg_dump --format=custom "$DATABASE_URL" > /backup/kravn-$(date +%F-%H%M).dump && find /backup -type f -mtime +30 -delete'
+  destination:
+    existingClaim: ""             # a PVC for the dumps (recommended, off-cluster export target); empty -> ephemeral emptyDir
+    mountPath: /backup
+  backoffLimit: 2
+  successfulJobsHistoryLimit: 3
+  failedJobsHistoryLimit: 3
+  # activeDeadlineSeconds: 3600
+  resources: {}
+
 # Shared signing/encryption secret. Leave empty for single-replica (auto-generated on the PVC).
 # REQUIRED for replicaCount > 1 so all pods share one key. Provide directly or via existingSecret.
 secret: ""

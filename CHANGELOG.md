@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Disaster recovery & continuity, documented and automatable.** A full DR/BCP runbook
+  ([`DR_BCP.md`](https://github.com/addlayerio/kravn/blob/main/DR_BCP.md) + a [website guide](/guide/dr-bcp))
+  covers exactly what to back up (database **and** encryption key, together), per-engine backup/restore
+  steps, RPO/RTO guidance, key recovery, and HA — plus an optional **backup CronJob** in the Helm chart
+  (`backup.enabled`).
 - 🧩 **Six enterprise connectors added to the catalog:** Salesforce, ServiceNow, Slack, Snowflake, Datadog and
   GitLab — all official first-party MCP servers, one-click add with OAuth. Their setup cards note the
   specifics (per-instance URLs for ServiceNow/Snowflake/self-managed GitLab, Slack's pre-registered app,

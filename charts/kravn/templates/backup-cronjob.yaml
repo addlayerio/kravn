@@ -1,0 +1,85 @@
+{{- if .Values.backup.enabled }}
+# Optional automated backup (DR/BCP — see DR_BCP.md). Off by default. Runs your backup command on a
+# schedule against the configured database. For external databases (Postgres/MySQL/SQL Server) use an
+# image with the matching client (pg_dump/mysqldump/sqlite3) and a command that writes to the mounted
+# destination volume. For managed databases, prefer the provider's native backups and leave this disabled.
+apiVersion: batch/v1
+kind: CronJob
+metadata:
+  name: {{ include "kravn.fullname" . }}-backup
+  labels:
+    {{- include "kravn.labels" . | nindent 4 }}
+    app.kubernetes.io/component: backup
+spec:
+  schedule: {{ .Values.backup.schedule | quote }}
+  concurrencyPolicy: Forbid
+  successfulJobsHistoryLimit: {{ .Values.backup.successfulJobsHistoryLimit | default 3 }}
+  failedJobsHistoryLimit: {{ .Values.backup.failedJobsHistoryLimit | default 3 }}
+  jobTemplate:
+    spec:
+      backoffLimit: {{ .Values.backup.backoffLimit | default 2 }}
+      {{- with .Values.backup.activeDeadlineSeconds }}
+      activeDeadlineSeconds: {{ . }}
+      {{- end }}
+      template:
+        metadata:
+          labels:
+            {{- include "kravn.selectorLabels" . | nindent 12 }}
+            app.kubernetes.io/component: backup
+        spec:
+          restartPolicy: OnFailure
+          {{- with .Values.imagePullSecrets }}
+          imagePullSecrets:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          securityContext:
+            {{- toYaml .Values.podSecurityContext | nindent 12 }}
+          containers:
+            - name: backup
+              image: {{ .Values.backup.image | default (include "kravn.image" .) }}
+              imagePullPolicy: {{ .Values.image.pullPolicy }}
+              command:
+                {{- toYaml .Values.backup.command | nindent 16 }}
+              env:
+                {{- include "kravn.dbEnv" . | nindent 16 }}
+                {{- with .Values.extraEnv }}
+                {{- toYaml . | nindent 16 }}
+                {{- end }}
+              volumeMounts:
+                - name: destination
+                  mountPath: {{ .Values.backup.destination.mountPath | default "/backup" }}
+                {{- if .Values.persistence.enabled }}
+                # The app's data PVC (SQLite DB + secret.key). Read-only; requires RWX or same-node
+                # scheduling since the app also mounts it — not needed for external-DB backups.
+                - name: data
+                  mountPath: /data
+                  readOnly: true
+                {{- end }}
+              resources:
+                {{- toYaml (.Values.backup.resources | default dict) | nindent 16 }}
+          volumes:
+            - name: destination
+              {{- if .Values.backup.destination.existingClaim }}
+              persistentVolumeClaim:
+                claimName: {{ .Values.backup.destination.existingClaim }}
+              {{- else }}
+              emptyDir: {}
+              {{- end }}
+            {{- if .Values.persistence.enabled }}
+            - name: data
+              persistentVolumeClaim:
+                claimName: {{ include "kravn.fullname" . }}-data
+            {{- end }}
+          {{- with .Values.nodeSelector }}
+          nodeSelector:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.tolerations }}
+          tolerations:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+          {{- with .Values.affinity }}
+          affinity:
+            {{- toYaml . | nindent 12 }}
+          {{- end }}
+{{- end }}
