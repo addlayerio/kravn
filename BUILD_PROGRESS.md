@@ -854,6 +854,26 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
 - **Documented limits:** per-replica chain (off-box SIEM export is the cross-replica tamper-proofing);
   unbounded growth by design (retention managed at the DB/SIEM layer).
 
+## ✅ PASS 45 — External key management (KMS/HSM) for at-rest encryption (v0.1.50)
+- **Tier-1 compliance #3** (key custody). At-rest secret encryption can now use an external KMS/HSM via
+  **envelope encryption** instead of only the bootstrap secret. Default behavior is unchanged.
+- **`Encryptor`** refactored to a key-set (active + read fallbacks), dispatched by ciphertext prefix:
+  `enc:v1:` (bootstrap-secret key, byte-compatible with all existing data) and `enc:v2:` (KMS-wrapped DEK).
+  encrypt/decrypt stay **synchronous** — no call-site changes.
+- **`KeyManager`** (boot, async): default mode = key from `KRAVN_SECRET`; KMS mode generates a random DEK,
+  has the KMS **wrap** it, persists ONLY the wrapped DEK (migration 011 `app_keyring`), unwraps once into
+  memory. Providers: **HashiCorp Vault Transit** + **Azure Key Vault** (wrapKey RSA-OAEP-256, Entra
+  client-credentials) — REST, `redirect:'error'` + timeout + capped response.
+- **Backward-compatible + fail-closed:** existing `enc:v1:` secrets keep decrypting (bootstrap key retained
+  as read fallback; lazy upgrade to `enc:v2:` on next save — no bulk re-encryption). A configured-but-broken
+  KMS fails the boot (never silently unprotected). Provider swap rejected; multi-replica first-boot race
+  converges on one DEK. DEK never persisted/logged in plaintext; `unwrapKey` asserts 32 bytes.
+- **Validated** on real sqlite + a mock Vault (16/16): env path byte-unchanged, `enc:v1:` reads under KMS,
+  `enc:v2:` round-trip, DEK survives restart, keyring holds only the wrapped DEK, tamper rejected. Full
+  monorepo build green. Config + limits in `KEY_MANAGEMENT.md`.
+- **Deferred (documented):** KEK/DEK rotation + bulk re-key command; JWT signing still on the bootstrap
+  secret; AWS/GCP KMS providers (same interface).
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

@@ -47,6 +47,25 @@ const envSchema = z.object({
    * The wire protocol is Redis; the Helm chart provisions Dragonfly (RESP-compatible) for this.
    */
   KRAVN_REDIS_URL: z.string().default(''),
+  /**
+   * External key management (KMS/HSM) for at-rest secret encryption via envelope encryption.
+   *   none   -> derive the encryption key from KRAVN_SECRET / secret.key (default, unchanged).
+   *   vault  -> HashiCorp Vault Transit wraps/unwraps the Data Encryption Key.
+   *   azure  -> Azure Key Vault (wrapKey/unwrapKey) using an Entra app (client credentials).
+   * The KEK never leaves the KMS; Kravn only ever holds the DEK, unwrapped in memory at boot.
+   */
+  KRAVN_KMS_PROVIDER: z.enum(['none', 'vault', 'azure']).default('none'),
+  // Vault Transit
+  KRAVN_KMS_VAULT_ADDR: z.string().default(''), // https://vault.internal:8200
+  KRAVN_KMS_VAULT_TOKEN: z.string().default(''),
+  KRAVN_KMS_VAULT_KEY: z.string().default(''), // transit key name
+  KRAVN_KMS_VAULT_NAMESPACE: z.string().default(''), // Vault Enterprise namespace (optional)
+  // Azure Key Vault
+  KRAVN_KMS_AZURE_VAULT_URL: z.string().default(''), // https://<vault>.vault.azure.net
+  KRAVN_KMS_AZURE_KEY: z.string().default(''), // key name, or "name/version"
+  KRAVN_KMS_AZURE_TENANT_ID: z.string().default(''),
+  KRAVN_KMS_AZURE_CLIENT_ID: z.string().default(''),
+  KRAVN_KMS_AZURE_CLIENT_SECRET: z.string().default(''),
 });
 
 export type RawEnv = z.infer<typeof envSchema>;
@@ -66,6 +85,15 @@ export interface DbConfig {
   /** Build/use all tables inside this schema (PostgreSQL via searchPath; SQL Server via the login DEFAULT_SCHEMA); undefined -> default schema. */
   schema?: string;
 }
+
+/** External key-management configuration (see KRAVN_KMS_* env). `none` -> bootstrap-secret key. */
+export type KmsConfig =
+  | { provider: 'none' }
+  | { provider: 'vault'; vault: { addr: string; token: string; key: string; namespace?: string } }
+  | {
+      provider: 'azure';
+      azure: { vaultUrl: string; key: string; tenantId: string; clientId: string; clientSecret: string };
+    };
 
 export interface Env {
   nodeEnv: 'development' | 'production' | 'test';
@@ -92,6 +120,8 @@ export interface Env {
   trustProxy: boolean | number | string;
   /** Redis-protocol URL for the cross-replica shared store; '' -> in-process memory (single-replica). */
   redisUrl: string;
+  /** External key management for at-rest encryption; { provider: 'none' } -> bootstrap-secret key. */
+  kms: KmsConfig;
 }
 
 function sqlite(file: string): DbConfig {
@@ -179,6 +209,54 @@ function absoluteUrlOrEmpty(name: string, value: string): string {
   return t;
 }
 
+/** Resolve KRAVN_KMS_* into a validated KmsConfig, failing fast (at boot) if a provider is missing fields. */
+function resolveKms(raw: RawEnv): KmsConfig {
+  const provider = raw.KRAVN_KMS_PROVIDER;
+  if (provider === 'vault') {
+    const addr = absoluteUrlOrEmpty('KRAVN_KMS_VAULT_ADDR', raw.KRAVN_KMS_VAULT_ADDR);
+    if (!addr || !raw.KRAVN_KMS_VAULT_TOKEN || !raw.KRAVN_KMS_VAULT_KEY) {
+      throw new Error(
+        'KRAVN_KMS_PROVIDER=vault requires KRAVN_KMS_VAULT_ADDR (http(s) URL), KRAVN_KMS_VAULT_TOKEN and KRAVN_KMS_VAULT_KEY',
+      );
+    }
+    return {
+      provider: 'vault',
+      vault: {
+        addr,
+        token: raw.KRAVN_KMS_VAULT_TOKEN,
+        key: raw.KRAVN_KMS_VAULT_KEY,
+        namespace: raw.KRAVN_KMS_VAULT_NAMESPACE.trim() || undefined,
+      },
+    };
+  }
+  if (provider === 'azure') {
+    const vaultUrl = absoluteUrlOrEmpty('KRAVN_KMS_AZURE_VAULT_URL', raw.KRAVN_KMS_AZURE_VAULT_URL);
+    if (
+      !vaultUrl ||
+      !raw.KRAVN_KMS_AZURE_KEY ||
+      !raw.KRAVN_KMS_AZURE_TENANT_ID ||
+      !raw.KRAVN_KMS_AZURE_CLIENT_ID ||
+      !raw.KRAVN_KMS_AZURE_CLIENT_SECRET
+    ) {
+      throw new Error(
+        'KRAVN_KMS_PROVIDER=azure requires KRAVN_KMS_AZURE_VAULT_URL, KRAVN_KMS_AZURE_KEY, ' +
+          'KRAVN_KMS_AZURE_TENANT_ID, KRAVN_KMS_AZURE_CLIENT_ID and KRAVN_KMS_AZURE_CLIENT_SECRET',
+      );
+    }
+    return {
+      provider: 'azure',
+      azure: {
+        vaultUrl,
+        key: raw.KRAVN_KMS_AZURE_KEY,
+        tenantId: raw.KRAVN_KMS_AZURE_TENANT_ID,
+        clientId: raw.KRAVN_KMS_AZURE_CLIENT_ID,
+        clientSecret: raw.KRAVN_KMS_AZURE_CLIENT_SECRET,
+      },
+    };
+  }
+  return { provider: 'none' };
+}
+
 function resolveSchema(value: string): string | undefined {
   const t = value.trim();
   if (!t) return undefined;
@@ -212,6 +290,7 @@ export function loadEnv(source: NodeJS.ProcessEnv = process.env): Env {
     allowStdio: raw.KRAVN_ALLOW_STDIO === 'true',
     trustProxy: parseTrustProxy(raw.KRAVN_TRUST_PROXY),
     redisUrl: raw.KRAVN_REDIS_URL.trim(),
+    kms: resolveKms(raw),
   };
 }
 

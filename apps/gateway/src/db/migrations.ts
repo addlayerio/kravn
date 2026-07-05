@@ -521,8 +521,29 @@ const auditLog: Migration = {
   },
 };
 
+/**
+ * 011 — External key-management (KMS/HSM) keyring. Holds the Data Encryption Key (DEK) in WRAPPED form
+ * ONLY — encrypted by the external KEK that never leaves the KMS/HSM. One row (id='default'); the DEK is
+ * unwrapped into memory at boot and never persisted in the clear. An absent/empty table means Kravn uses
+ * the bootstrap-secret key (the default, unchanged behavior).
+ */
+const appKeyring: Migration = {
+  name: '011_app_keyring',
+  async up(knex) {
+    await createIfMissing(knex, 'app_keyring', (t) => {
+      t.string('id', 32).primary(); // always 'default' (single active DEK)
+      t.string('provider', 32).notNullable(); // 'vault' | 'azure' — which KMS wrapped it
+      t.text('wrapped_dek').notNullable(); // opaque KMS-wrapped DEK (never the plaintext key)
+      t.string('created_at', 40).notNullable();
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('app_keyring');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

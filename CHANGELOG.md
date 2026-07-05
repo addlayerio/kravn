@@ -12,6 +12,19 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.50] — 2026-07-05
+
+- 📣 🔒 **Bring your own key — encrypt secrets with your KMS/HSM.** Kravn can now protect secrets at rest
+  (plugin credentials, SSO/LLM config, upstream auth) with a key held in your **HashiCorp Vault** or **Azure
+  Key Vault**, instead of only the local secret. Your master key never leaves the KMS/HSM (envelope
+  encryption): Kravn only unwraps a data key in memory at boot, and your KMS logs every use — so you keep
+  key custody, rotation and revocation.
+- **Safe to adopt on a running install.** Turning on a KMS doesn't require re-encrypting anything or any
+  downtime: existing secrets keep decrypting, and new/edited secrets are written under the KMS key. If a KMS
+  is configured but unreachable, the gateway fails to start rather than silently running unprotected.
+- Configure with `KRAVN_KMS_PROVIDER=vault|azure` (see [KEY_MANAGEMENT.md](KEY_MANAGEMENT.md)). Default
+  behavior is unchanged when unset.
+
 ## [0.1.49] — 2026-07-05
 
 - 📣 🔒 **Connect Kravn to your SIEM — immutable, tamper-evident audit trail.** Every event and every
@@ -141,6 +154,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.50]: https://github.com/addlayerio/kravn/releases/tag/v0.1.50
 [0.1.49]: https://github.com/addlayerio/kravn/releases/tag/v0.1.49
 [0.1.48]: https://github.com/addlayerio/kravn/releases/tag/v0.1.48
 [0.1.47]: https://github.com/addlayerio/kravn/releases/tag/v0.1.47

@@ -8,6 +8,7 @@ import { createStore, type Store } from './db/store.js';
 import { runMigrations } from './db/migrations.js';
 import { createRepos, type Repos } from './db/repos.js';
 import { Encryptor } from './crypto.js';
+import { KeyManager } from './crypto/kms/key-manager.js';
 import { SettingsService } from './settings/settings.service.js';
 import { JwtService } from './auth/jwt.js';
 import { AuthService } from './auth/auth.service.js';
@@ -112,7 +113,11 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const store = createStore(env.db.kind, knex);
   const repos = createRepos(store);
 
-  const encryptor = new Encryptor(secret);
+  // Resolve the at-rest encryption key set. Default: derived from the bootstrap secret. With KRAVN_KMS_*
+  // set: a DEK unwrapped from an external KMS/HSM (envelope encryption), with the bootstrap key retained
+  // as a read fallback so existing secrets still decrypt. JWT signing stays on the bootstrap secret.
+  const keyManager = await KeyManager.create({ env, secret, store, log });
+  const encryptor = keyManager.encryptor;
   const jwt = new JwtService(secret);
 
   const settings = new SettingsService(repos.settings, log);
