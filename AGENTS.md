@@ -80,8 +80,9 @@ row to the SECURITY.md change log for any release that touches security.
 ## Development, validation & release workflow
 
 This is the loop every change goes through. The **durable record** of what shipped and why lives in **git
-history + tags** (`git log`, `git tag`), the **SECURITY.md change log**, and **BUILD_PROGRESS.md** — not in
-any chat session. Keep those current so the project is fully reconstructable from the repo alone.
+history + tags** (`git log`, `git tag`), the user-facing **CHANGELOG.md**, the **SECURITY.md change log**, and
+**BUILD_PROGRESS.md** — not in any chat session. Keep those current so the project is fully reconstructable
+from the repo alone.
 
 1. **Implement** the change (code + contracts + migration if schema changes — append-only in `db/migrations.ts`).
 2. **Build + typecheck**: `pnpm build` and `pnpm typecheck` (Nx over all 5 projects). The operator SPA builds
@@ -102,8 +103,13 @@ any chat session. Keep those current so the project is fully reconstructable fro
 6. **Release**: commit (imperative subject + a body explaining what/why + the `Co-Authored-By` trailer), then
    `git tag v0.1.x` and push both `main` and the tag. Pushing the tag triggers the GitHub Actions release
    workflow, which builds the gateway image and publishes the image + Helm chart (OCI) to the owner's GHCR.
-   `ci.yml` runs build + typecheck + `helm lint` on every push/PR. Add a **SECURITY.md** change-log row if the
-   release touched security, and a **BUILD_PROGRESS.md** entry for any substantial feature.
+   `ci.yml` runs build + typecheck + `helm lint` on every push/PR.
+7. **Update the records — [`CHANGELOG.md`](./CHANGELOG.md) is mandatory for EVERY versioned release.** Add an
+   entry under a `## [0.1.x] — <date>` heading: a benefit-first, user-facing line saying *what you can now do*
+   (not the internal mechanic), tagged with the marker legend (📣 announce-worthy · 🔒 security · ⚡ perf ·
+   🧩 integration · 🐛 fix). This is the user-facing history and the source for release notes/announcements, so
+   it is never skipped — even a fix gets a 🐛 line. Also add a **SECURITY.md** change-log row if the release
+   touched security, and a **BUILD_PROGRESS.md** entry for any substantial feature.
 
 Only true infra is env (`DATABASE_URL`, secret key, `PORT`, `KRAVN_PUBLIC_URL`/`KRAVN_CLIENT_URL`,
 `KRAVN_ROLE`, `KRAVN_DB_SCHEMA`, `KRAVN_TRUST_PROXY`, `KRAVN_METRICS_TOKEN`, `KRAVN_ALLOW_STDIO`); everything
