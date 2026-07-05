@@ -9,6 +9,24 @@ import { parse, sendError } from './_helpers.js';
 export function authRoutes(app: FastifyInstance, s: Services): void {
   const limiter = new LoginRateLimiter(s.sharedStore, 'login');
 
+  // Issue a console-session token AND record a trackable/revocable session row (for idle timeout + the
+  // sessions list). Used by every path that logs a user in.
+  async function issueSession(
+    user: { id: string; email: string; role: string },
+    ttlMin: number,
+    req: { ip?: string; headers: Record<string, unknown> },
+  ): Promise<string> {
+    const { token, jti } = await s.jwt.signSession({ userId: user.id, email: user.email, role: user.role }, ttlMin);
+    await s.repos.sessions.create({
+      jti,
+      userId: user.id,
+      expiresAt: new Date(Date.now() + ttlMin * 60_000).toISOString(),
+      ip: req.ip ?? '',
+      userAgent: String(req.headers['user-agent'] ?? ''),
+    });
+    return token;
+  }
+
   app.post('/api/auth/login', async (req, reply) => {
     const auth = s.settings.get().auth;
     if (!auth.passwordLoginEnabled) {
@@ -38,7 +56,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
         await limiter.clear(ipKey);
         await limiter.clear(emailKey);
       }
-      const token = await s.jwt.sign({ userId: user.id, email: user.email, role: user.role }, auth.sessionTtlMinutes);
+      const token = await issueSession(user, auth.sessionTtlMinutes, req);
       const teams = await s.repos.teams.teamIdsForUser(user.id);
       const body: AuthResponse = { token, user: toAuthUser(user, teams) };
       return reply.send(body);
@@ -86,10 +104,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
     }
     try {
       const user = await s.auth.register(dto);
-      const token = await s.jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
-        auth.sessionTtlMinutes,
-      );
+      const token = await issueSession(user, auth.sessionTtlMinutes, req);
       const teams = await s.repos.teams.teamIdsForUser(user.id);
       const body: AuthResponse = { token, user: toAuthUser(user, teams) };
       return reply.code(201).send(body);
@@ -116,10 +131,7 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
       const user = await s.repos.users.getById(claims.sub);
       if (!user) return sendError(reply, 401, 'invalid_code', 'Account no longer exists.');
       if (user.disabled) return sendError(reply, 403, 'account_disabled', 'This account is disabled.');
-      const token = await s.jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
-        s.settings.get().auth.sessionTtlMinutes,
-      );
+      const token = await issueSession(user, s.settings.get().auth.sessionTtlMinutes, req);
       const teams = await s.repos.teams.teamIdsForUser(user.id);
       const body: AuthResponse = { token, user: toAuthUser(user, teams) };
       return reply.send(body);
@@ -133,7 +145,61 @@ export function authRoutes(app: FastifyInstance, s: Services): void {
   });
 
   app.post('/api/auth/logout', { preHandler: [app.authenticate] }, async (req, reply) => {
-    if (req.tokenJti) await s.repos.tokens.revoke(req.tokenJti);
+    if (req.tokenJti) {
+      await s.repos.tokens.revoke(req.tokenJti);
+      await s.repos.sessions.revoke(req.tokenJti);
+    }
     return reply.send({ ok: true });
+  });
+
+  // List MY active sessions (device/browser hygiene) — with the current one flagged.
+  app.get('/api/auth/sessions', { preHandler: [app.authenticate] }, async (req) => {
+    const u = currentUser(req);
+    const rows = await s.repos.sessions.listForUser(u.id);
+    return {
+      sessions: rows.map((r) => ({
+        jti: r.jti,
+        createdAt: r.createdAt,
+        lastSeenAt: r.lastSeenAt,
+        expiresAt: r.expiresAt,
+        ip: r.ip,
+        userAgent: r.userAgent,
+        current: r.jti === req.tokenJti,
+      })),
+    };
+  });
+
+  // Revoke one of MY sessions by jti (ownership-checked). Also denylists the jti so it's rejected instantly.
+  app.delete('/api/auth/sessions/:jti', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const u = currentUser(req);
+    const jti = (req.params as { jti: string }).jti;
+    const session = await s.repos.sessions.get(jti);
+    if (!session || session.userId !== u.id) return sendError(reply, 404, 'not_found', 'Session not found.');
+    await s.repos.tokens.revoke(jti);
+    await s.repos.sessions.revoke(jti);
+    return reply.send({ ok: true });
+  });
+
+  // Log out every OTHER session (keep the current one).
+  app.post('/api/auth/sessions/revoke-others', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const u = currentUser(req);
+    const revoked = await s.repos.sessions.revokeAllForUser(u.id, req.tokenJti ?? undefined);
+    for (const jti of revoked) await s.repos.tokens.revoke(jti);
+    return reply.send({ ok: true, revoked: revoked.length });
+  });
+
+  // Sliding refresh: rotate to a fresh session token for a still-valid session, revoking the old jti.
+  app.post('/api/auth/refresh', { preHandler: [app.authenticate] }, async (req, reply) => {
+    const u = currentUser(req);
+    const user = await s.repos.users.getById(u.id);
+    if (!user || user.disabled) return sendError(reply, 401, 'unauthenticated', 'Session no longer valid.');
+    const token = await issueSession(user, s.settings.get().auth.sessionTtlMinutes, req);
+    if (req.tokenJti) {
+      await s.repos.tokens.revoke(req.tokenJti);
+      await s.repos.sessions.revoke(req.tokenJti);
+    }
+    const teams = await s.repos.teams.teamIdsForUser(user.id);
+    const body: AuthResponse = { token, user: toAuthUser(user, teams) };
+    return reply.send(body);
   });
 }

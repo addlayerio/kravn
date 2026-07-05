@@ -622,8 +622,28 @@ const serverTls: Migration = {
   },
 };
 
+const sessions: Migration = {
+  name: '015_sessions',
+  async up(knex) {
+    await createIfMissing(knex, 'sessions', (t) => {
+      t.string('jti', 64).notNullable().unique(); // the session token's jti
+      t.string('user_id', 64).notNullable();
+      t.string('created_at', 40).notNullable();
+      t.string('last_seen_at', 40).notNullable();
+      t.string('expires_at', 40).notNullable(); // absolute expiry (mirrors the token exp)
+      t.integer('revoked').notNullable().defaultTo(0);
+      t.string('ip', 64);
+      t.text('user_agent');
+      t.index(['user_id']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('sessions');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

@@ -16,11 +16,35 @@ const error = ref('');
 
 const canWrite = auth.can('settings.write');
 
+interface SessionInfo {
+  jti: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  ip: string;
+  userAgent: string;
+  current: boolean;
+}
+const sessions = ref<SessionInfo[]>([]);
+async function loadSessions() {
+  sessions.value = (await api.get<{ sessions: SessionInfo[] }>('/api/auth/sessions')).sessions;
+}
+async function revokeSession(jti: string) {
+  await api.del(`/api/auth/sessions/${jti}`);
+  await loadSessions();
+}
+async function revokeOthers() {
+  await api.post('/api/auth/sessions/revoke-others', {});
+  await loadSessions();
+}
+const fmtTime = (s: string) => (s ? new Date(s).toLocaleString() : '—');
+
 onMounted(async () => {
   try {
     const res = await api.get<{ settings: AppSettings; ui: SettingGroupMeta[] }>('/api/settings');
     model.value = res.settings;
     ui.value = res.ui;
+    await loadSessions();
   } finally {
     loading.value = false;
   }
@@ -132,6 +156,33 @@ async function save() {
 
         <small v-if="f.help" class="muted">{{ f.help }}</small>
       </div>
+    </div>
+
+    <div class="card">
+      <div class="row spread">
+        <h3>Your active sessions</h3>
+        <button v-if="sessions.length > 1" class="btn" @click="revokeOthers">Log out other sessions</button>
+      </div>
+      <p class="muted">Each browser/device you're signed in on. Revoke any you don't recognise.</p>
+      <table v-if="sessions.length">
+        <thead>
+          <tr><th>Device</th><th>IP</th><th>Last active</th><th>Signed in</th><th></th></tr>
+        </thead>
+        <tbody>
+          <tr v-for="ss in sessions" :key="ss.jti">
+            <td>
+              <small>{{ ss.userAgent || 'Unknown' }}</small>
+              <span v-if="ss.current" class="badge online" style="margin-left: 0.4rem">this device</span>
+            </td>
+            <td><small class="muted">{{ ss.ip || '—' }}</small></td>
+            <td><small class="muted">{{ fmtTime(ss.lastSeenAt) }}</small></td>
+            <td><small class="muted">{{ fmtTime(ss.createdAt) }}</small></td>
+            <td>
+              <button v-if="!ss.current" class="btn danger" @click="revokeSession(ss.jti)">Revoke</button>
+            </td>
+          </tr>
+        </tbody>
+      </table>
     </div>
   </template>
 </template>

@@ -20,16 +20,26 @@ export class JwtService {
   async sign(
     input: { userId: string; email: string; role: string; scope?: string },
     ttlMinutes: number,
+    jti: string = newJti(),
   ): Promise<string> {
     const nowSec = Math.floor(Date.now() / 1000);
     return new SignJWT({ email: input.email, role: input.role, ...(input.scope ? { scope: input.scope } : {}) })
       .setProtectedHeader({ alg: 'HS256' })
       .setSubject(input.userId)
-      .setJti(newJti())
+      .setJti(jti)
       .setIssuedAt(nowSec)
       .setExpirationTime(nowSec + ttlMinutes * 60)
       .setIssuer('kravn')
       .sign(this.key);
+  }
+
+  /** Issue a console-session token AND return its jti, so a trackable/revocable session row can be created. */
+  async signSession(
+    input: { userId: string; email: string; role: string },
+    ttlMinutes: number,
+  ): Promise<{ token: string; jti: string }> {
+    const jti = newJti();
+    return { token: await this.sign(input, ttlMinutes, jti), jti };
   }
 
   /** Verify a token. Throws on any invalid/expired token (fail-closed). */

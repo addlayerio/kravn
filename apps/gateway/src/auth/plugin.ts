@@ -63,6 +63,23 @@ export function registerAuth(app: FastifyInstance, deps: AuthDeps): void {
       }
       if (revoked) return reply.code(401).send({ error: { code: 'token_revoked', message: 'Session expired.' } });
 
+      // Idle timeout + session tracking. Tokens issued before session-tracking existed have no row, so they
+      // are left alone (upgrade-safe). A tracked session past its idle window is revoked and rejected;
+      // otherwise its last-seen is refreshed (throttled to ≤ once/minute to avoid a write per request).
+      const session = await deps.repos.sessions.get(claims.jti).catch(() => undefined);
+      if (session) {
+        // Defense in depth: reject a revoked session even if its jti isn't in token_revocations.
+        if (session.revoked) return reply.code(401).send({ error: { code: 'token_revoked', message: 'Session expired.' } });
+        const idleMin = deps.settings.get().auth.idleTimeoutMinutes ?? 0;
+        const idleMs = Date.now() - Date.parse(session.lastSeenAt);
+        if (idleMin > 0 && idleMs > idleMin * 60_000) {
+          await deps.repos.tokens.revoke(claims.jti).catch(() => {});
+          await deps.repos.sessions.revoke(claims.jti).catch(() => {});
+          return reply.code(401).send({ error: { code: 'session_idle', message: 'Session timed out due to inactivity.' } });
+        }
+        if (idleMs > 60_000) void deps.repos.sessions.touch(claims.jti, new Date().toISOString());
+      }
+
       const user = await deps.repos.users.getById(claims.sub);
       if (!user) return reply.code(401).send({ error: { code: 'unknown_user', message: 'Account no longer exists.' } });
       if (user.disabled) return reply.code(403).send({ error: { code: 'account_disabled', message: 'This account is disabled.' } });

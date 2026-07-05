@@ -954,6 +954,80 @@ export class TokensRepo {
   }
 }
 
+export interface SessionRow {
+  jti: string;
+  userId: string;
+  createdAt: string;
+  lastSeenAt: string;
+  expiresAt: string;
+  revoked: boolean;
+  ip: string;
+  userAgent: string;
+}
+
+/** Server-side tracking of console sessions (one row per issued session token), for idle-timeout and
+ *  listing/revocation. Revocation also relies on TokensRepo.revoke(jti) so the auth check rejects instantly. */
+export class SessionsRepo {
+  constructor(private store: Store) {}
+
+  async create(s: { jti: string; userId: string; expiresAt: string; ip: string; userAgent: string }): Promise<void> {
+    const ts = now();
+    await this.store
+      .run(
+        `INSERT INTO sessions (jti, user_id, created_at, last_seen_at, expires_at, revoked, ip, user_agent)
+         VALUES (?,?,?,?,?,0,?,?)`,
+        [s.jti, s.userId, ts, ts, s.expiresAt, s.ip.slice(0, 64), s.userAgent.slice(0, 512)],
+      )
+      .catch(() => {});
+  }
+
+  async get(jti: string): Promise<SessionRow | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM sessions WHERE jti = ?', [jti]);
+    return r ? mapSession(r) : undefined;
+  }
+
+  async touch(jti: string, at: string): Promise<void> {
+    await this.store.run('UPDATE sessions SET last_seen_at = ? WHERE jti = ?', [at, jti]).catch(() => {});
+  }
+
+  /** Active (non-revoked, unexpired) sessions for a user, most-recently-seen first. */
+  async listForUser(userId: string): Promise<SessionRow[]> {
+    const rows = await this.store.all<any>(
+      'SELECT * FROM sessions WHERE user_id = ? AND revoked = 0 AND expires_at > ? ORDER BY last_seen_at DESC',
+      [userId, now()],
+    );
+    return rows.map(mapSession);
+  }
+
+  async revoke(jti: string): Promise<void> {
+    await this.store.run('UPDATE sessions SET revoked = 1 WHERE jti = ?', [jti]).catch(() => {});
+  }
+
+  /** Revoke every session for a user (optionally keeping one — e.g. the current one on "log out others"). */
+  async revokeAllForUser(userId: string, exceptJti?: string): Promise<string[]> {
+    const rows = await this.store.all<{ jti: string }>(
+      'SELECT jti FROM sessions WHERE user_id = ? AND revoked = 0',
+      [userId],
+    );
+    const toRevoke = rows.map((r) => r.jti).filter((j) => j !== exceptJti);
+    for (const jti of toRevoke) await this.revoke(jti);
+    return toRevoke;
+  }
+}
+
+function mapSession(r: any): SessionRow {
+  return {
+    jti: r.jti,
+    userId: r.user_id,
+    createdAt: r.created_at,
+    lastSeenAt: r.last_seen_at,
+    expiresAt: r.expires_at,
+    revoked: bool(r.revoked),
+    ip: r.ip ?? '',
+    userAgent: r.user_agent ?? '',
+  };
+}
+
 // ─── Chat (end-user client) ───────────────────────────────────────────────────────────────────────
 
 export class ChatRepo {
@@ -1197,6 +1271,7 @@ export interface Repos {
   teams: TeamsRepo;
   chat: ChatRepo;
   tokens: TokensRepo;
+  sessions: SessionsRepo;
   oauth: OAuthRepo;
   auditLog: AuditLogRepo;
   serverOAuth: ServerOAuthRepo;
@@ -1575,6 +1650,7 @@ export function createRepos(store: Store): Repos {
     teams: new TeamsRepo(store),
     chat: new ChatRepo(store),
     tokens: new TokensRepo(store),
+    sessions: new SessionsRepo(store),
     oauth: new OAuthRepo(store),
     auditLog: new AuditLogRepo(store),
     serverOAuth: new ServerOAuthRepo(store),

@@ -11,10 +11,15 @@ export function setupRoutes(app: FastifyInstance, s: Services): void {
     if (!dto) return;
     try {
       const user = await s.auth.setup(dto);
-      const token = await s.jwt.sign(
-        { userId: user.id, email: user.email, role: user.role },
-        s.settings.get().auth.sessionTtlMinutes,
-      );
+      const ttlMin = s.settings.get().auth.sessionTtlMinutes;
+      const { token, jti } = await s.jwt.signSession({ userId: user.id, email: user.email, role: user.role }, ttlMin);
+      await s.repos.sessions.create({
+        jti,
+        userId: user.id,
+        expiresAt: new Date(Date.now() + ttlMin * 60_000).toISOString(),
+        ip: req.ip ?? '',
+        userAgent: String(req.headers['user-agent'] ?? ''),
+      });
       // Include team membership (setup() joined the admin to the Platform Administrator Team) so the
       // operator recognises the new admin as a console user immediately — otherwise its gate would bounce it.
       const teams = await s.repos.teams.teamIdsForUser(user.id);
