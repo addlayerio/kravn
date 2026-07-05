@@ -194,6 +194,20 @@ function openCreate() {
   error.value = '';
   showModal.value = true;
 }
+// A plugin-backed server (transport 'plugin', id `plg_<pluginId>`) has no url/auth to edit — its real
+// config lives in the native plugin (db/user/token, entered on install). Route its Edit to that config
+// modal instead of the generic upstream-server form, so install and edit ask for the same thing.
+function editServer(s: UpstreamServer) {
+  if (s.transport === 'plugin') {
+    const plugin = nativeIntegrations.value.find((p) => `plg_${p.id}` === s.id);
+    if (plugin) {
+      configPlugin.value = plugin;
+      return;
+    }
+  }
+  openEdit(s);
+}
+
 function openEdit(s: UpstreamServer) {
   Object.assign(form, blank(), {
     name: s.name,
@@ -392,7 +406,7 @@ async function remove(srv: UpstreamServer) {
             <div class="btn-row">
               <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">Connect</button>
               <button class="btn" @click="sync(s)">Sync</button>
-              <button v-if="auth.can('servers.write')" class="btn" @click="openEdit(s)">Edit</button>
+              <button v-if="auth.can('servers.write')" class="btn" @click="editServer(s)">{{ s.transport === 'plugin' ? 'Configure' : 'Edit' }}</button>
               <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">Delete</button>
             </div>
           </td>

@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **Editing a built-in integration now shows its real settings.** Clicking **Configure** on an installed
+  built-in integration (e.g. Odoo) in MCP Servers opens the same credential form you filled in on install
+  (database, user, API token…) — instead of the generic server form that showed none of them.
+- 🐛 **Built-in integrations read "Provided by Kravn"** (was "Provided by plugin"); existing ones self-heal
+  on the next sync.
 - 📣 **Public integrations gallery on the website.** kravn.ai now shows every integration Kravn can connect
   — built-in connectors + the full catalog of public MCP servers — with logos, search and category filter,
   on the landing page and a dedicated `/integrations` page. It's generated from the same catalog the product

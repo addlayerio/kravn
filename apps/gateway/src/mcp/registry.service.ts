@@ -382,7 +382,7 @@ export class RegistryService {
           id,
           name: d.name,
           slug: `plugin-${d.id}`,
-          description: 'Provided by plugin',
+          description: 'Provided by Kravn',
           transport: 'plugin',
           url: '',
           command: d.id,
@@ -394,7 +394,8 @@ export class RegistryService {
           enabled: true,
         });
       } else {
-        await this.d.repos.servers.update(id, { name: d.name, enabled: true });
+        // Keep name/description in sync so previously-seeded rows self-heal (e.g. old "Provided by plugin").
+        await this.d.repos.servers.update(id, { name: d.name, description: 'Provided by Kravn', enabled: true });
       }
       await this.connectAndSync(id);
     }
