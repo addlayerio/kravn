@@ -8,6 +8,7 @@ import { useToastStore } from '../stores/toast';
 import { useEventStream } from '../lib/events';
 import PluginConfigModal from '../components/PluginConfigModal.vue';
 import IntegrationIcon from '../components/IntegrationIcon.vue';
+import MarkdownText from '../components/MarkdownText.vue';
 import { serverIconId } from '../lib/server-icon';
 
 const auth = useAuthStore();
@@ -479,7 +480,7 @@ async function remove(srv: UpstreamServer) {
       <div class="cc-cat muted" style="margin-top: 0.4rem">
         {{ detailItem.category }}<template v-if="detailItem.provider"> · {{ detailItem.provider }}</template>
       </div>
-      <p style="margin-top: 1rem">{{ detailItem.description }}</p>
+      <MarkdownText :text="detailItem.description" style="margin-top: 1rem" />
 
       <template v-if="detailItem.kind === 'remote'">
         <div class="cc-kv"><span class="muted">Endpoint</span><code>{{ detailItem.url }}</code></div>
@@ -489,7 +490,7 @@ async function remove(srv: UpstreamServer) {
         </div>
         <div class="setup-note">
           <div class="setup-title">Getting set up</div>
-          {{ detailItem.setup || authGuidance(detailItem.auth) }}
+          <MarkdownText :text="detailItem.setup || authGuidance(detailItem.auth)" />
           <a v-if="detailItem.docsUrl" :href="detailItem.docsUrl" target="_blank" rel="noopener noreferrer" class="docs-link">Provider docs ↗</a>
         </div>
         <div v-if="detailItem.tags && detailItem.tags.length" class="cc-tags">
@@ -500,7 +501,7 @@ async function remove(srv: UpstreamServer) {
         <div class="cc-kv"><span class="muted">Runs</span><span>In-process, built into Kravn (app-only credential)</span></div>
         <div v-if="detailItem.plugin?.setup" class="setup-note">
           <div class="setup-title">Setup &amp; required permissions</div>
-          {{ detailItem.plugin.setup }}
+          <MarkdownText :text="detailItem.plugin.setup" />
         </div>
       </template>
 
@@ -820,7 +821,6 @@ async function remove(srv: UpstreamServer) {
   background: var(--bg-page, rgba(0, 0, 0, 0.15));
   font-size: 0.85em;
   line-height: 1.5;
-  white-space: pre-line;
 }
 .setup-note .setup-title {
   font-weight: 600;

@@ -2,6 +2,7 @@
 import { computed, reactive, ref, watch } from 'vue';
 import type { PluginView } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
+import MarkdownText from './MarkdownText.vue';
 
 /**
  * Schema-driven plugin configuration modal, extracted from PluginsView so BOTH the Plugins page (hooks) and
@@ -152,7 +153,7 @@ async function saveConfig() {
 
       <div v-if="plugin.setup" class="setup-note">
         <div class="setup-title">Setup &amp; required permissions</div>
-        {{ plugin.setup }}
+        <MarkdownText :text="plugin.setup" />
       </div>
 
       <div v-if="configError" class="alert error" style="margin-top: 0.75rem">{{ configError }}</div>
@@ -193,7 +194,7 @@ async function saveConfig() {
             :placeholder="plugin.configSecretsSet?.[f.key] ? '•••••• (set — leave blank to keep)' : ''"
           />
           <input v-else v-model="model[f.key]" />
-          <small v-if="f.help" class="muted">{{ f.help }}</small>
+          <MarkdownText v-if="f.help" :text="f.help" inline class="field-help" />
         </div>
       </template>
 
@@ -224,7 +225,8 @@ async function saveConfig() {
   color: var(--text-muted);
   font-size: 0.85rem;
   line-height: 1.5;
-  white-space: pre-line;
 }
-.setup-note .setup-title { font-weight: 600; color: var(--text); margin-bottom: 0.3rem; white-space: normal; }
+.setup-note .setup-title { font-weight: 600; color: var(--text); margin-bottom: 0.3rem; }
+.field-help { display: block; margin-top: 0.3rem; font-size: 0.8rem; color: var(--text-muted); }
+.field-help :deep(code) { font-size: 0.85em; }
 </style>

@@ -26,24 +26,20 @@ const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_CHARS = 60_000;
 
 const TEAMS_SETUP = [
-  'This plugin talks to Microsoft Graph with an app-only (client-credentials) Entra ID app registration.',
+  'This plugin talks to **Microsoft Graph** with an app-only (client-credentials) **Entra ID** app registration. Set it up in the Azure / Entra admin center:',
   '',
-  'Set it up in the Azure / Entra admin center:',
+  '1. `Entra ID → App registrations → New registration`. Name it (e.g. "Kravn Teams"), leave the redirect URI empty, and **Register**.',
+  '2. On **Overview**, copy the **Application (client) ID** and the **Directory (tenant) ID**.',
+  '3. `Certificates & secrets → New client secret`. Copy the secret **value** immediately (shown only once).',
+  '4. `API permissions → Add a permission → Microsoft Graph → Application permissions`, and add:',
+  '   - `Team.ReadBasic.All` — list teams',
+  '   - `Channel.ReadBasic.All` — list channels',
+  '   - `ChannelMessage.Read.All` — read channel posts',
+  '   - `Chat.Read.All` — list and read chats',
+  "   - `User.Read.All` — find people, list a user's teams/chats",
+  '5. Click **Grant admin consent** for the tenant (a Global Administrator must approve).',
   '',
-  '1. Entra ID → App registrations → New registration. Name it (e.g. "Kravn Teams"); leave the redirect URI',
-  '   empty. Register.',
-  '2. On Overview, copy the Application (client) ID and the Directory (tenant) ID.',
-  '3. Certificates & secrets → New client secret. Copy the secret VALUE immediately (shown only once).',
-  '4. API permissions → Add a permission → Microsoft Graph → Application permissions, and add:',
-  '     • Team.ReadBasic.All        — list teams',
-  '     • Channel.ReadBasic.All     — list channels',
-  '     • ChannelMessage.Read.All   — read channel posts',
-  '     • Chat.Read.All             — list and read chats',
-  '     • User.Read.All             — find people, list a user\'s teams/chats',
-  '5. Click "Grant admin consent" for the tenant (a Global Administrator must approve).',
-  '',
-  'All permissions are READ-only — no write access is requested. Then enter the Tenant ID, Client ID and',
-  'Client Secret below (the secret is stored encrypted).',
+  'All permissions are **read-only** — no write access is requested. Then enter the **Tenant ID**, **Client ID** and **Client Secret** below (the secret is stored encrypted).',
 ].join('\n');
 
 interface TeamsConfig {

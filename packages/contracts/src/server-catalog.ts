@@ -673,80 +673,96 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
   bluedot: {
     docsUrl: 'https://help.bluedothq.com/en/articles/14708332-bluedot-mcp',
     setup:
-      'Click Connect and sign in with the Bluedot account you want the AI to access (the emails need not match). No token to manage — the AI can only read data that account already has permission to see, including meeting transcripts and metadata. For an org-wide setup, an admin connects it from Bluedot → Personal Settings → Connectors.',
+      'Click **Connect** and sign in with the Bluedot account you want the AI to access — the emails need not match.\n\n' +
+      'No token to manage: the AI can only read what that account already has permission to see (meeting transcripts and metadata).\n\n' +
+      'For an org-wide setup, an admin connects it from `Bluedot → Personal Settings → Connectors`.',
   },
   github: {
     docsUrl: 'https://docs.github.com/apps/creating-github-apps/registering-a-github-app/registering-a-github-app',
     setup:
-      "GitHub's MCP server uses OAuth but doesn't auto-register apps, so create one: GitHub → Settings → Developer settings → OAuth Apps → New OAuth App. Set the Authorization callback URL to the redirect URL Kravn shows when you click Connect, then paste the app's Client ID and Client Secret. You'll then authorize which org/repositories to grant.",
+      "GitHub's MCP server uses OAuth but doesn't auto-register an app, so create one first:\n\n" +
+      '1. Go to `GitHub → Settings → Developer settings → OAuth Apps → New OAuth App`.\n' +
+      '2. Set the **Authorization callback URL** to the redirect URL Kravn shows when you click **Connect**.\n' +
+      "3. Paste the app's **Client ID** and **Client Secret**.\n\n" +
+      'Then click **Connect** and authorize which org / repositories to grant.',
   },
   stripe: {
     docsUrl: 'https://docs.stripe.com/mcp',
     setup:
-      'Two ways to connect: click Connect for OAuth, or add a Stripe API key as the token. For a key, go to the Stripe Dashboard → Developers → API keys → “Create restricted key”, grant only the resources you need (read-only where possible), and paste it.',
+      'Two ways to connect:\n\n' +
+      '- **OAuth** — just click **Connect**.\n' +
+      '- **API key** — add a Stripe key as the token. Create one at `Stripe Dashboard → Developers → API keys → Create restricted key`, grant only the resources you need (read-only where possible), then paste it.',
   },
   notion: {
     docsUrl: 'https://developers.notion.com/docs/mcp',
     setup:
-      'Click Connect and sign in with Notion, then pick exactly which pages/databases to share with the integration — it can only see what you share.',
+      'Click **Connect** and sign in with Notion, then pick exactly which **pages / databases** to share with the integration — it can only see what you share.',
   },
-  linear: { setup: 'Click Connect and authorize your Linear workspace. No token to manage.' },
+  linear: { setup: 'Click **Connect** and authorize your Linear workspace. No token to manage.' },
   sentry: {
     docsUrl: 'https://docs.sentry.io/product/sentry-mcp/',
-    setup: 'Click Connect and authorize your Sentry organization. Access follows your Sentry role.',
+    setup: 'Click **Connect** and authorize your Sentry organization. Access follows your Sentry role.',
   },
   supabase: {
     docsUrl: 'https://supabase.com/docs/guides/getting-started/mcp',
-    setup: 'Click Connect and authorize; scope the grant to the specific project you want the AI to reach.',
+    setup: 'Click **Connect** and authorize, scoping the grant to the specific **project** you want the AI to reach.',
   },
-  vercel: { setup: 'Click Connect and authorize the Vercel account or team you want to expose.' },
-  neon: { setup: 'Click Connect and authorize your Neon account.' },
+  vercel: { setup: 'Click **Connect** and authorize the Vercel account or team you want to expose.' },
+  neon: { setup: 'Click **Connect** and authorize your Neon account.' },
   atlassian: {
     setup:
-      'Click Connect and authorize Jira/Confluence for your Atlassian site. Prefer a single service identity with no per-user sign-in? Use the built-in Jira / Confluence integrations instead (app-only, tighter scoping).',
+      'Click **Connect** and authorize Jira / Confluence for your Atlassian site.\n\n' +
+      'Prefer a single service identity with no per-user sign-in? Use the **built-in Jira / Confluence** integrations instead (app-only, tighter scoping).',
   },
-  paypal: { setup: 'Click Connect and sign in with PayPal. Access follows your PayPal account permissions.' },
-  plaid: { setup: 'Click Connect and authorize from your Plaid dashboard.' },
+  paypal: { setup: 'Click **Connect** and sign in with PayPal. Access follows your PayPal account permissions.' },
+  plaid: { setup: 'Click **Connect** and authorize from your Plaid dashboard.' },
   hubspot: {
     docsUrl: 'https://developers.hubspot.com/docs/guides/apps/private-apps/overview',
     setup:
-      'Create a HubSpot Private App token: HubSpot → Settings → Integrations → Private Apps → “Create a private app” → grant the scopes you need (e.g. crm.objects.contacts.read/write) → copy the token, and paste it as the token here.',
+      'Create a HubSpot **Private App** token, then paste it as the token here:\n\n' +
+      '1. Go to `HubSpot → Settings → Integrations → Private Apps → Create a private app`.\n' +
+      '2. Grant the scopes you need (e.g. `crm.objects.contacts.read` / `.write`).\n' +
+      '3. Copy the token.',
   },
   apify: {
     docsUrl: 'https://docs.apify.com/platform/integrations/mcp',
-    setup: 'Copy your API token from Apify Console → Settings → Integrations (API), and paste it as the token.',
+    setup: 'Copy your API token from `Apify Console → Settings → Integrations (API)` and paste it as the token.',
   },
   zapier: {
-    setup: 'Open Zapier MCP settings, generate an MCP endpoint + API key, and paste the key as the token.',
+    setup: 'Open Zapier MCP settings, generate an **MCP endpoint + API key**, and paste the key as the token.',
   },
   'mercado-libre': {
     setup:
-      'Create an access token from your Mercado Libre developer app (developers.mercadolibre.com) and paste it as the token.',
+      'Create an access token from your Mercado Libre developer app ([developers.mercadolibre.com](https://developers.mercadolibre.com)) and paste it as the token.',
   },
   'mercado-pago': {
     docsUrl: 'https://www.mercadopago.com/developers',
     setup:
-      'Copy your Mercado Pago Access Token from your developer credentials (Your integrations → credentials) and paste it as the token. Use a test token first.',
+      'Copy your Mercado Pago **Access Token** from your developer credentials (`Your integrations → credentials`) and paste it as the token. Use a **test token** first.',
   },
-  shortio: { setup: 'Copy your API key from Short.io → Settings → Integrations & API, and paste it as the token.' },
-  telnyx: { setup: 'Create a V2 API key in the Telnyx Portal → Auth → API Keys, and paste it as the token.' },
+  shortio: { setup: 'Copy your API key from `Short.io → Settings → Integrations & API` and paste it as the token.' },
+  telnyx: { setup: 'Create a **V2 API key** in `Telnyx Portal → Auth → API Keys` and paste it as the token.' },
   'google-maps': {
     docsUrl: 'https://developers.google.com/maps',
     setup:
-      'Create an API key in Google Cloud Console → APIs & Services → Credentials → Create credentials → API key, enable the Maps/Places APIs you need, restrict the key, and paste it as the token.',
+      'Create an API key and paste it as the token:\n\n' +
+      '1. Go to `Google Cloud Console → APIs & Services → Credentials → Create credentials → API key`.\n' +
+      '2. Enable the **Maps / Places** APIs you need.\n' +
+      '3. Restrict the key, then copy it.',
   },
   'google-bigquery': {
     setup:
-      'Create an API key (or use a service-account token) in Google Cloud Console → APIs & Services → Credentials, enable the BigQuery API, and paste it as the token.',
+      'Create an API key (or use a service-account token) in `Google Cloud Console → APIs & Services → Credentials`, enable the **BigQuery API**, and paste it as the token.',
   },
   'hugging-face': {
     docsUrl: 'https://huggingface.co/settings/tokens',
     setup:
-      'Works with no credential for public models/datasets. For private or gated content, create a Hugging Face access token (huggingface.co → Settings → Access Tokens) and add it as a Bearer header.',
+      'Works with **no credential** for public models / datasets.\n\n' +
+      'For private or gated content, create a Hugging Face access token (`huggingface.co → Settings → Access Tokens`) and add it as a Bearer header.',
   },
-  semgrep: { setup: 'Click Connect and authorize with your Semgrep account.' },
-  'cloudflare-workers': { setup: 'Click Connect and authorize your Cloudflare account (scoped to Workers bindings).' },
-  'cloudflare-observability': { setup: 'Click Connect and authorize your Cloudflare account (observability/logs).' },
+  semgrep: { setup: 'Click **Connect** and authorize with your Semgrep account.' },
+  'cloudflare-workers': { setup: 'Click **Connect** and authorize your Cloudflare account (scoped to Workers bindings).' },
+  'cloudflare-observability': { setup: 'Click **Connect** and authorize your Cloudflare account (observability / logs).' },
 };
 
 /** Setup detail for a catalog id (empty object if none). */

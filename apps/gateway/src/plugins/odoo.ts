@@ -325,14 +325,18 @@ export function odooPlugin(): McpServerPlugin {
       author: 'Kravn',
       priority: 100,
       setup:
-        'Works with Odoo Online, Odoo.sh and self-hosted — they all expose the same JSON-RPC API. Create an ' +
-        'API key in Odoo: top-right avatar → Preferences → Account Security → New API Key (Odoo Online ' +
-        'requires a key; self-hosted also accepts the password). Then set: Odoo URL (Online: ' +
-        'https://your-company.odoo.com · Odoo.sh: your project/branch URL · self-hosted: your URL), the ' +
-        'Database name, the Username (login email) and the API Key. Finding the database name: Online it is ' +
-        'usually your-company; on Odoo.sh it is NOT the subdomain — open your Odoo with ?debug=1 and copy the ' +
-        'name shown top-right in brackets (it may include a build-id suffix, e.g. company-branch-18-0-1234567), ' +
-        "and make sure the URL and database are from the SAME build. The user's Odoo access rights govern what the tools can do.",
+        'Works with **Odoo Online, Odoo.sh and self-hosted** — they all expose the same JSON-RPC API.\n\n' +
+        '**1. Create an API key** in Odoo: `top-right avatar → Preferences → Account Security → New API Key`. ' +
+        '(Odoo Online requires a key; self-hosted also accepts the password.)\n\n' +
+        '**2. Fill in the fields:**\n' +
+        '- **Odoo URL** — Online: `https://your-company.odoo.com` · Odoo.sh: your project/branch URL · self-hosted: your URL.\n' +
+        '- **Username** — your login email.\n' +
+        '- **API Key** — the key from step 1.\n' +
+        '- **Database** — see below.\n\n' +
+        '**Finding the database name:** on **Odoo Online** it is usually `your-company`. On **Odoo.sh** it is ' +
+        '**NOT** the subdomain — open your Odoo with `?debug=1` and copy the name shown **top-right, in brackets** ' +
+        '(it may include a build-id suffix, e.g. `company-branch-18-0-1234567`). The **URL and database must be from ' +
+        "the same build**.\n\n_The user's Odoo access rights govern what the tools can do._",
       configSchema: {
         type: 'object',
         properties: {

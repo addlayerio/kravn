@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Integration setup guides now render as formatted docs, not a wall of text.** In the catalog detail
+  view and the built-in integration config, the "Getting set up" / setup notes and field help are rendered
+  as **Markdown** — numbered steps, bullet lists, `code` for menu paths and field names, bold and links —
+  so multi-step setups (GitHub OAuth app, SharePoint/Teams Entra registration, Odoo, HubSpot…) are actually
+  readable. Rewrote the built-in + catalog setup texts to use that structure.
 - 🧩 **Odoo connector: clearer database guidance for Odoo.sh.** The Database field help + setup notes (and the
   Plugins docs) now explain that on Odoo.sh the database is **not** the subdomain — find it via `?debug=1`
   (top-right, in brackets), and keep the URL and database from the same build.
