@@ -12,6 +12,13 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🔒 **Signed, verifiable releases.** Every release image now ships a CycloneDX **SBOM** (bill of materials)
+  and **SLSA build provenance**, and both the image and the Helm chart are **cosign-signed** (keyless). You
+  can verify an artifact is the genuine, untampered build and see exactly what's in it before deploying — the
+  [Security guide](/guide/security) shows how. (All free/automated; no third-party audit involved.)
+
 ## [0.1.69] — 2026-07-05
 
 - 🧩 **Read AI added to the catalog.** Connect Read AI (meeting copilot) with one-click OAuth to reach your

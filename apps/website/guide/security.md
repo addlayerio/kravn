@@ -49,6 +49,34 @@ overlay may only add steps, never remove them.
 - **Reviewed releases** — changes ship through an adversarial security review, and the findings and fixes
   are recorded in the public changelog.
 
+## Verifiable, signed releases (supply chain)
+
+Every release is built by a public GitHub Actions pipeline and ships with the supply-chain evidence a
+security team needs — no third-party audit required to establish provenance:
+
+- **SBOM** — each image carries a CycloneDX **Software Bill of Materials**: every dependency and version
+  that went into it, so you can answer "are we affected by CVE-X?" instantly.
+- **Signed** — the image *and* the Helm chart are **cosign-signed** (keyless, via Sigstore), so you can
+  prove an artifact is the genuine build and was not tampered with.
+- **SLSA provenance** — a tamper-proof, signed record of *which commit and which workflow* built the
+  artifact, attached to the image.
+
+Verify before you deploy:
+
+```sh
+# Signature — proves it was built by the official release workflow
+cosign verify ghcr.io/addlayerio/kravn:0.1.69 \
+  --certificate-identity-regexp '^https://github.com/addlayerio/kravn/.github/workflows/release.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# SBOM + SLSA provenance attached to the image
+docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.69 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.69 --format '{{ json .Provenance }}'
+```
+
+Combined with the source being open to inspection, this lets your team establish trust in the build
+without relying on a vendor's word.
+
 ## Portability & data ownership
 
 The store is portable across SQLite, PostgreSQL, MySQL/MariaDB and SQL Server, with versioned migrations

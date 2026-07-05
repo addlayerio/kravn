@@ -24,6 +24,7 @@ on:
 permissions:
   contents: read
   packages: write
+  id-token: write # keyless cosign signing via GitHub OIDC (Sigstore Fulcio/Rekor)
 
 jobs:
   release:
@@ -52,6 +53,7 @@ jobs:
           password: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Build + push gateway image
+        id: build
         uses: docker/build-push-action@v6
         with:
           context: .
@@ -64,12 +66,28 @@ jobs:
             ghcr.io/${{ steps.vars.outputs.owner }}/kravn:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
+          # Supply-chain assurance (all free, no third parties): attach a CycloneDX SBOM (the "bill of
+          # materials" of every dependency in the image) and max-mode SLSA build provenance (a tamper-proof
+          # record of which commit/workflow built it) to the image in the registry.
+          sbom: true
+          provenance: mode=max
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Sign the image (keyless)
+        env:
+          IMAGE: ghcr.io/${{ steps.vars.outputs.owner }}/kravn
+          DIGEST: ${{ steps.build.outputs.digest }}
+        # Keyless: cosign gets a short-lived cert from Fulcio bound to this workflow's OIDC identity and
+        # records the signature in the public Rekor transparency log. No keys to manage.
+        run: cosign sign --yes "${IMAGE}@${DIGEST}"
 
       - uses: azure/setup-helm@v4
         with:
           version: v3.16.3
 
-      - name: Package + push Helm chart (OCI)
+      - name: Package + push + sign Helm chart (OCI)
         run: |
           set -euo pipefail
           OWNER="${{ steps.vars.outputs.owner }}"
@@ -78,7 +96,11 @@ jobs:
           sed -i "s|ghcr.io/OWNER/kravn|ghcr.io/${OWNER}/kravn|" charts/kravn/values.yaml
           helm registry login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
           helm package charts/kravn --version "${VERSION}" --app-version "${VERSION}"
-          helm push "kravn-${VERSION}.tgz" "oci://ghcr.io/${OWNER}/charts"
+          PUSH_OUT=$(helm push "kravn-${VERSION}.tgz" "oci://ghcr.io/${OWNER}/charts" 2>&1)
+          echo "${PUSH_OUT}"
+          CHART_DIGEST=$(echo "${PUSH_OUT}" | awk '/[Dd]igest:/{print $2}')
+          # Sign the chart artifact too (keyless), so the whole release — image AND chart — is verifiable.
+          cosign sign --yes "ghcr.io/${OWNER}/charts/kravn@${CHART_DIGEST}"
 
       - name: Summary
         run: |
@@ -93,5 +115,14 @@ jobs:
             echo "Install:"
             echo '```sh'
             echo "helm install kravn oci://ghcr.io/${OWNER}/charts/kravn --version ${VERSION}"
+            echo '```'
+            echo ""
+            echo "**Supply chain:** the image ships a CycloneDX **SBOM** + **SLSA build provenance**, and both"
+            echo "image and chart are **cosign-signed** (keyless). Verify:"
+            echo '```sh'
+            echo "cosign verify ghcr.io/${OWNER}/kravn:${VERSION} \\"
+            echo "  --certificate-identity-regexp '^https://github.com/${OWNER}/kravn/.github/workflows/release.yml@' \\"
+            echo "  --certificate-oidc-issuer https://token.actions.githubusercontent.com"
+            echo "docker buildx imagetools inspect ghcr.io/${OWNER}/kravn:${VERSION} --format '{{ json .SBOM }}'"
             echo '```'
           } >> "$GITHUB_STEP_SUMMARY"
