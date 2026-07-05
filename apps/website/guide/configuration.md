@@ -25,6 +25,7 @@ That means you configure Kravn the way you operate it: infra as code, policy in 
 | `KRAVN_METRICS_TOKEN` | — | Bearer token required to scrape `/metrics`. |
 | `KRAVN_ALLOW_STDIO` | `false` | Allow `stdio`-transport upstream MCP servers (they run local processes — off by default). |
 | `KRAVN_REDIS_URL` | — | Shared-store endpoint (`redis://` / `rediss://`) for multi-replica state. On the chart, `redis.enabled: true` provisions Dragonfly and sets this for you. |
+| `KRAVN_KMS_PROVIDER` | `none` | Encrypt secrets at rest with an external **KMS/HSM** (`vault` / `azure`) instead of the local key. Provider-specific vars and setup: [Key management](/guide/key-management). |
 
 > **Production checklist:** pin `KRAVN_SECRET`, set `DATABASE_URL` to a networked database, persist
 > `KRAVN_DATA_DIR`, enable `KRAVN_TRUST_PROXY` behind your ingress, and — if you run more than one replica

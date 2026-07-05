@@ -103,6 +103,7 @@ export default defineConfig({
           { text: 'Configuration', link: '/guide/configuration' },
           { text: 'Plugins & integrations', link: '/guide/plugins' },
           { text: 'Security & compliance', link: '/guide/security' },
+          { text: 'Key management (KMS/HSM)', link: '/guide/key-management' },
         ],
       },
       {
@@ -137,6 +138,7 @@ export default defineConfig({
           items: [
             { text: 'Plugins & integrations', link: '/guide/plugins' },
             { text: 'Security & compliance', link: '/guide/security' },
+            { text: 'Key management (KMS/HSM)', link: '/guide/key-management' },
           ],
         },
       ],

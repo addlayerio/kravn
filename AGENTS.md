@@ -110,6 +110,14 @@ from the repo alone.
    🧩 integration · 🐛 fix). This is the user-facing history and the source for release notes/announcements, so
    it is never skipped — even a fix gets a 🐛 line. Also add a **SECURITY.md** change-log row if the release
    touched security, and a **BUILD_PROGRESS.md** entry for any substantial feature.
+8. **Update the public website when a change is USER-FACING.** If a release adds or changes a capability a
+   user would configure or rely on (a new integration/plugin, an auth/SSO/KMS/audit capability, a config
+   surface, an install/deploy step), update the marketing/docs site in [`apps/website`](./apps/website) —
+   the relevant guide page, the **Installation Manual**, and/or **Get Started** — so the public docs never
+   lag the product. Explain *what it is* and *how to implement it* (config/env, prerequisites, steps).
+   Follow [`apps/website/SEO.md`](./apps/website/SEO.md) for any title/description/OG changes, and register
+   new pages in the VitePress nav/sidebar. Purely internal changes (refactors, internal fixes) need no site
+   update. When in doubt, if it earned a 📣 in the CHANGELOG, it needs a website update.
 
 Only true infra is env (`DATABASE_URL`, secret key, `PORT`, `KRAVN_PUBLIC_URL`/`KRAVN_CLIENT_URL`,
 `KRAVN_ROLE`, `KRAVN_DB_SCHEMA`, `KRAVN_TRUST_PROXY`, `KRAVN_METRICS_TOKEN`, `KRAVN_ALLOW_STDIO`); everything

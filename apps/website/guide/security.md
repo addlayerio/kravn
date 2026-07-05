@@ -39,7 +39,8 @@ overlay may only add steps, never remove them.
 ## Hardened by default
 
 - **Secrets encrypted at rest** — plugin credentials (client secrets, API tokens) are encrypted in the
-  database and write-only-masked in the UI.
+  database and write-only-masked in the UI. Keep custody of the key in your own **KMS/HSM** (HashiCorp
+  Vault or Azure Key Vault) — see [Key management](/guide/key-management).
 - **SSRF-safe outbound HTTP** — a configurable policy governs which hosts upstreams may reach; cloud
   metadata IPs stay blocked regardless. Outbound integrations use fixed hosts, per-request timeouts and
   response caps, and refuse redirects that would leak credentials to another host.
