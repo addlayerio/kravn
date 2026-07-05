@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.59] — 2026-07-05
+
+- 📣 **Full manual OAuth config for any provider.** When a provider can't be auto-configured (no metadata,
+  like GitHub), the Connect dialog now lets you set everything by hand — **Authorization URL, Token URL,
+  Scopes**, Client ID and Secret — with the redirect URL to register shown. Leave the URLs blank and Kravn
+  still auto-discovers for providers that support it. This brings connecting an OAuth MCP server to full
+  parity with a dedicated OAuth form.
+
 ## [0.1.58] — 2026-07-05
 
 - 📣 🔒 **Connect OAuth providers that need a registered app (e.g. GitHub).** Some providers don't support
@@ -222,6 +230,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.59]: https://github.com/addlayerio/kravn/releases/tag/v0.1.59
 [0.1.58]: https://github.com/addlayerio/kravn/releases/tag/v0.1.58
 [0.1.57]: https://github.com/addlayerio/kravn/releases/tag/v0.1.57
 [0.1.56]: https://github.com/addlayerio/kravn/releases/tag/v0.1.56

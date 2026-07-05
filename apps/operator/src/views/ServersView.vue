@@ -191,17 +191,18 @@ function addFromDetail() {
   }
 }
 
-// OAuth client credentials the operator must supply for providers without Dynamic Client Registration.
+// Manual OAuth config the operator supplies when a provider can't be auto-discovered/registered (e.g. GitHub).
+type OAuthCfg = { clientId?: string; clientSecret?: string; authorizationUrl?: string; tokenUrl?: string; scope?: string };
 const oauthClient = ref<{ id: string; name: string } | null>(null);
-const oauthClientForm = reactive({ clientId: '', clientSecret: '' });
+const oauthClientForm = reactive({ clientId: '', clientSecret: '', authorizationUrl: '', tokenUrl: '', scope: '' });
 const oauthCallbackUrl = `${window.location.origin}/oauth/upstream/callback`;
 
 // OAuth 2.1 servers: open the provider sign-in, then poll until the callback connects the server. If the
-// provider can't auto-register an app (e.g. GitHub), the backend asks for client credentials and we collect
-// them, then retry with them.
-async function connectOAuth(srv: UpstreamServer, manualClient?: { clientId: string; clientSecret?: string }) {
+// provider can't auto-configure (no metadata/DCR — e.g. GitHub), the backend replies oauth_needs_client and
+// we open a form to collect the endpoints + client, then retry.
+async function connectOAuth(srv: UpstreamServer, cfg?: OAuthCfg) {
   try {
-    const res = await api.post<{ authorizationUrl: string }>(`/api/servers/${srv.id}/oauth/authorize`, manualClient ?? {});
+    const res = await api.post<{ authorizationUrl: string }>(`/api/servers/${srv.id}/oauth/authorize`, cfg ?? {});
     oauthClient.value = null;
     const win = window.open(res.authorizationUrl, '_blank', 'width=560,height=720');
     if (!win) {
@@ -218,8 +219,7 @@ async function connectOAuth(srv: UpstreamServer, manualClient?: { clientId: stri
     }, 3000);
   } catch (e) {
     if (e instanceof ApiError && e.code === 'oauth_needs_client') {
-      oauthClientForm.clientId = '';
-      oauthClientForm.clientSecret = '';
+      Object.assign(oauthClientForm, { clientId: '', clientSecret: '', authorizationUrl: '', tokenUrl: '', scope: '' });
       oauthClient.value = { id: srv.id, name: srv.name };
       return;
     }
@@ -232,7 +232,15 @@ function submitOAuthClient() {
   const clientId = oauthClientForm.clientId.trim();
   if (!c || !clientId) return;
   const srv = servers.value.find((x) => x.id === c.id);
-  if (srv) connectOAuth(srv, { clientId, clientSecret: oauthClientForm.clientSecret.trim() || undefined });
+  const t = (v: string) => v.trim() || undefined;
+  if (srv)
+    connectOAuth(srv, {
+      clientId,
+      clientSecret: t(oauthClientForm.clientSecret),
+      authorizationUrl: t(oauthClientForm.authorizationUrl),
+      tokenUrl: t(oauthClientForm.tokenUrl),
+      scope: t(oauthClientForm.scope),
+    });
 }
 
 function parseHeaders(): Record<string, string> {
@@ -462,6 +470,22 @@ async function remove(srv: UpstreamServer) {
         <label>Client Secret <span class="muted">(if the app has one)</span></label>
         <input v-model="oauthClientForm.clientSecret" type="password" autocomplete="new-password" placeholder="leave blank for a public/PKCE app" />
       </div>
+      <div class="field">
+        <label>Authorization URL <span class="muted">(only if the provider doesn't auto-discover)</span></label>
+        <input v-model="oauthClientForm.authorizationUrl" placeholder="e.g. https://github.com/login/oauth/authorize" />
+      </div>
+      <div class="field">
+        <label>Token URL <span class="muted">(pair it with the Authorization URL)</span></label>
+        <input v-model="oauthClientForm.tokenUrl" placeholder="e.g. https://github.com/login/oauth/access_token" />
+      </div>
+      <div class="field">
+        <label>Scopes <span class="muted">(space-separated, optional)</span></label>
+        <input v-model="oauthClientForm.scope" placeholder="e.g. repo read:org read:user" />
+      </div>
+      <p class="muted" style="font-size: 0.82em">
+        Leave the URLs blank if the server advertises OAuth metadata — Kravn discovers them. Fill them in for
+        providers that don't (e.g. GitHub).
+      </p>
       <div class="btn-row" style="justify-content: flex-end">
         <button class="btn" @click="oauthClient = null">Cancel</button>
         <button class="btn primary" :disabled="!oauthClientForm.clientId.trim()" @click="submitOAuthClient">Continue</button>

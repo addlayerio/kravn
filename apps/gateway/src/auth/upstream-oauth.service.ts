@@ -42,11 +42,26 @@ const REFRESH_SKEW_SEC = 60; // refresh this long before the token actually expi
 export class OAuthClientRequiredError extends Error {
   constructor(readonly redirectUri: string) {
     super(
-      `This provider doesn't support automatic app registration. Register an OAuth app at the provider with ` +
-        `redirect URL ${redirectUri}, then provide its Client ID (and secret) to connect.`,
+      `This provider needs manual OAuth configuration (it doesn't advertise metadata or support automatic ` +
+        `app registration). Register an OAuth app with redirect URL ${redirectUri}, then provide the ` +
+        `Authorization URL, Token URL, scopes and Client ID (and secret) to connect.`,
     );
     this.name = 'OAuthClientRequiredError';
   }
+}
+
+/**
+ * Operator-provided OAuth configuration that overrides auto-discovery (mirrors a full manual OAuth form):
+ * an authorization-server issuer, explicit endpoints, scopes, and client credentials. Any field may be set;
+ * the rest is discovered.
+ */
+export interface UpstreamOAuthInput {
+  clientId?: string;
+  clientSecret?: string;
+  authorizationUrl?: string; // authorization_endpoint
+  tokenUrl?: string; // token_endpoint
+  issuer?: string; // authorization server URL (for discovery, or as the AS identity)
+  scope?: string; // space-separated scopes
 }
 
 interface Deps {
@@ -60,42 +75,69 @@ export class UpstreamOAuthService {
   constructor(private d: Deps) {}
 
   /**
-   * Discover, obtain a client, build the authorization URL, and persist the pending round-trip. A client is
-   * resolved in priority order: an operator-supplied `manualClient` (for providers without Dynamic Client
-   * Registration, e.g. GitHub), then a client already stored for this server, then DCR. If none apply and
-   * the AS can't auto-register, throws OAuthClientRequiredError so the UI can ask for client credentials.
+   * Discover (or use operator-provided endpoints), obtain a client, build the authorization URL, and persist
+   * the pending round-trip. Parity with a full manual OAuth config: `cfg` may carry an authorization-server
+   * issuer, explicit authorization/token endpoints, scopes, and client credentials — any of which override
+   * auto-discovery, for providers that don't advertise protected-resource metadata or DCR (e.g. GitHub).
+   * When nothing is supplied and the server can't be auto-configured, throws OAuthClientRequiredError so the
+   * UI collects the config.
    */
-  async startAuthorization(
-    server: UpstreamServer,
-    redirectUri: string,
-    manualClient?: { clientId: string; clientSecret?: string },
-  ): Promise<string> {
+  async startAuthorization(server: UpstreamServer, redirectUri: string, cfg: UpstreamOAuthInput = {}): Promise<string> {
     if (server.transport === 'stdio' || server.transport === 'plugin' || !server.url) {
       throw new Error('OAuth is only available for remote (HTTP/SSE) MCP servers.');
     }
-    await this.d.ssrf.assertUrlAllowed(server.url);
 
-    const resourceMeta = await discoverOAuthProtectedResourceMetadata(server.url);
-    const authServerUrl = resourceMeta.authorization_servers?.[0];
-    if (!authServerUrl) throw new Error('This server did not advertise an OAuth authorization server.');
-    await this.d.ssrf.assertUrlAllowed(authServerUrl);
+    let asMeta: AuthorizationServerMetadata;
+    let authServerUrl: string;
+    let discoveredScopes: string[] | undefined;
 
-    const asMeta = await discoverAuthorizationServerMetadata(authServerUrl);
-    if (!asMeta) throw new Error('Could not discover the authorization-server metadata.');
+    if (cfg.authorizationUrl && cfg.tokenUrl) {
+      // Fully manual endpoints — no discovery (the provider doesn't advertise metadata).
+      await this.d.ssrf.assertUrlAllowed(cfg.authorizationUrl);
+      await this.d.ssrf.assertUrlAllowed(cfg.tokenUrl);
+      authServerUrl = (cfg.issuer?.trim() || originOf(cfg.authorizationUrl)).replace(/\/$/, '');
+      asMeta = {
+        issuer: authServerUrl,
+        authorization_endpoint: cfg.authorizationUrl,
+        token_endpoint: cfg.tokenUrl,
+        response_types_supported: ['code'],
+        grant_types_supported: ['authorization_code', 'refresh_token'],
+        code_challenge_methods_supported: ['S256'],
+      } as AuthorizationServerMetadata;
+    } else if (cfg.issuer) {
+      // Discover from an explicit issuer URL.
+      await this.d.ssrf.assertUrlAllowed(cfg.issuer);
+      authServerUrl = cfg.issuer.trim().replace(/\/$/, '');
+      const m = await discoverAuthorizationServerMetadata(authServerUrl);
+      if (!m) throw new Error('Could not discover authorization-server metadata at the issuer URL.');
+      asMeta = m;
+    } else {
+      // Auto-discovery from the MCP server's protected-resource metadata.
+      await this.d.ssrf.assertUrlAllowed(server.url);
+      const resourceMeta = await discoverOAuthProtectedResourceMetadata(server.url).catch(() => undefined);
+      const found = resourceMeta?.authorization_servers?.[0];
+      if (!found) throw new OAuthClientRequiredError(redirectUri); // can't discover → UI collects manual config
+      await this.d.ssrf.assertUrlAllowed(found);
+      const m = await discoverAuthorizationServerMetadata(found);
+      if (!m) throw new OAuthClientRequiredError(redirectUri);
+      authServerUrl = found;
+      asMeta = m;
+      discoveredScopes = resourceMeta?.scopes_supported;
+    }
 
-    const scope = (resourceMeta.scopes_supported ?? asMeta.scopes_supported ?? []).join(' ') || undefined;
+    const scope = cfg.scope?.trim() || (discoveredScopes ?? asMeta.scopes_supported ?? []).join(' ') || undefined;
 
     let clientInfo: OAuthClientInformationFull;
     const existing = await this.d.repos.serverOAuth.getConfig(server.id);
-    if (manualClient?.clientId) {
+    if (cfg.clientId) {
       // Operator-registered OAuth app (provider without DCR, or a preferred fixed app).
       clientInfo = {
-        client_id: manualClient.clientId,
-        ...(manualClient.clientSecret ? { client_secret: manualClient.clientSecret } : {}),
+        client_id: cfg.clientId,
+        ...(cfg.clientSecret ? { client_secret: cfg.clientSecret } : {}),
         redirect_uris: [redirectUri],
         grant_types: ['authorization_code', 'refresh_token'],
         response_types: ['code'],
-        token_endpoint_auth_method: manualClient.clientSecret ? 'client_secret_post' : 'none',
+        token_endpoint_auth_method: cfg.clientSecret ? 'client_secret_post' : 'none',
       } as OAuthClientInformationFull;
     } else if (existing && existing.authServerUrl === authServerUrl && existing.clientInfoEnc) {
       clientInfo = JSON.parse(this.d.encryptor.decrypt(existing.clientInfoEnc)) as OAuthClientInformationFull;
@@ -218,6 +260,9 @@ export class UpstreamOAuthService {
 
 function randomToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('base64url');
+}
+function originOf(url: string): string {
+  return new URL(url).origin;
 }
 function isoIn(sec: number): string {
   return new Date(Date.now() + sec * 1000).toISOString();

@@ -82,13 +82,26 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
   // admin's browser must visit to sign in; the AS then redirects to the public /oauth/upstream/callback.
   app.post('/api/servers/:id/oauth/authorize', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
     const { id } = req.params as { id: string };
-    const body = (req.body ?? {}) as { clientId?: string; clientSecret?: string };
+    const b = (req.body ?? {}) as {
+      clientId?: string;
+      clientSecret?: string;
+      authorizationUrl?: string;
+      tokenUrl?: string;
+      issuer?: string;
+      scope?: string;
+    };
     const server = await s.registry.getServer(id);
     if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');
     const redirectUri = `${deriveBaseUrl(req, s.settings, s.env)}/oauth/upstream/callback`;
-    const manualClient = body.clientId ? { clientId: body.clientId, clientSecret: body.clientSecret } : undefined;
     try {
-      const authorizationUrl = await s.upstreamOAuth.startAuthorization(server, redirectUri, manualClient);
+      const authorizationUrl = await s.upstreamOAuth.startAuthorization(server, redirectUri, {
+        clientId: b.clientId,
+        clientSecret: b.clientSecret,
+        authorizationUrl: b.authorizationUrl,
+        tokenUrl: b.tokenUrl,
+        issuer: b.issuer,
+        scope: b.scope,
+      });
       return { authorizationUrl };
     } catch (err) {
       // No auto-registration + no client provided → ask the UI to collect client credentials.

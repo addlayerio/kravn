@@ -962,8 +962,19 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   "Open the Catalog didn't open the Catalog". Added `data-tour` anchors to the Catalog tab/search/grid.
 - Full monorepo build green.
 
+## ✅ PASS 53 — Full manual OAuth config parity (v0.1.59)
+- **Manual endpoints + scopes.** `startAuthorization(server, redirectUri, cfg)` now accepts `UpstreamOAuthInput`
+  (issuer, authorizationUrl, tokenUrl, scope, clientId, clientSecret). Priority: explicit endpoints → issuer
+  discovery → protected-resource auto-discovery. When the MCP server advertises no metadata (e.g. GitHub),
+  discovery fails cleanly into `OAuthClientRequiredError` and the UI collects the full config. All operator
+  endpoints are SSRF-guarded; client secret stored encrypted.
+- **UI:** the Connect dialog gained Authorization URL, Token URL and Scopes fields (blank = auto-discover),
+  alongside Client ID/Secret and the redirect URL to register — parity with a dedicated OAuth form.
+- **Validated** on real sqlite + mocks: no-DCR fallback (8/8, v0.1.58) and undiscoverable + manual-endpoints
+  (5/5) — correct error without config, manual auth URL/scope/PKCE, exchange via the manual token endpoint.
+
 ### Deferred to later phases (intentional, not missing)
-ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
+Native **Odoo** + **Zoho** plugins (requested) — Odoo via XML-RPC/JSON-RPC (CRM/ERP tools), Zoho CRM via OAuth · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
 per-pod **log ring buffer** (durable shared event store) + the last-admin lock (in-process mutex) ·
 Anthropic conversation-history caching (system+tools done) ·
