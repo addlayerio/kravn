@@ -32,10 +32,13 @@ them.
 
 ## Integrations catalog
 
-Beyond the native plugins, Kravn ships a curated **catalog of public MCP servers** — Notion, Linear,
-Sentry, Stripe, Supabase, Vercel, Hugging Face, Google (Maps / BigQuery), Attio, Semgrep and dozens more
-across project management, payments, CRM, databases, observability, documentation and search. Open the
-**Catalog** tab on the *MCP Servers* page, filter by category, and one click prefills the connection — you
+Every integration lives in one place: the **Catalog** tab on the *MCP Servers* page. It lists the built-in
+integrations above (Jira, Teams, SharePoint, Confluence) **and** a curated set of public MCP servers —
+Notion, Linear, Sentry, Stripe, Supabase, Vercel, Hugging Face, Google (Maps / BigQuery), Attio, Semgrep and
+dozens more across project management, payments, CRM, databases, observability, documentation and search.
+You browse them together — no need to care whether an integration runs in-process or is a remote server.
+Click any card for a detail view (what it does, how it connects, setup), filter by category, and one click
+prefills the connection — you
 only supply a credential if the server needs one. Servers with no auth or an API key connect immediately;
 for **OAuth 2.1** servers (Notion, Linear, Stripe, …) click **Connect** to sign in with the provider — Kravn
 runs the whole OAuth flow (discovery, dynamic client registration, PKCE) and stores the tokens encrypted,

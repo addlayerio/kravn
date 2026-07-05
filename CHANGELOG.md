@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.54] — 2026-07-05
+
+- 📣 **One place for every integration.** The **Catalog** (MCP Servers → Catalog) now shows *all* integrations
+  together — the built-in ones (Jira, Teams, SharePoint, Confluence) alongside the 104 remote MCP servers — so
+  you just find what you want and install it, without caring whether it's built-in or remote. Click any card
+  for a **detail view** (what it does, how it connects, setup) and install/connect right there.
+- **Plugins is now focused on governance hooks** (secret/PII redaction, prompt-injection guard, audit…). The
+  built-in integrations moved to the Catalog; any future non-hook plugin will live there too.
+
 ## [0.1.53] — 2026-07-05
 
 - 📣 🔒 **Connect OAuth 2.1 MCP servers in one click.** Kravn can now sign in to remote MCP servers that
@@ -180,6 +189,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.54]: https://github.com/addlayerio/kravn/releases/tag/v0.1.54
 [0.1.53]: https://github.com/addlayerio/kravn/releases/tag/v0.1.53
 [0.1.52]: https://github.com/addlayerio/kravn/releases/tag/v0.1.52
 [0.1.51]: https://github.com/addlayerio/kravn/releases/tag/v0.1.51

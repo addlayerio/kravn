@@ -1,10 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import type { UpstreamServer, Transport, AuthType, CatalogServer } from '@kravn/contracts';
+import type { UpstreamServer, Transport, AuthType, CatalogServer, PluginView } from '@kravn/contracts';
 import { MCP_SERVER_CATALOG, CATALOG_CATEGORIES } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import PluginConfigModal from '../components/PluginConfigModal.vue';
 
 const auth = useAuthStore();
 const toast = useToastStore();
@@ -37,30 +38,93 @@ const form = reactive(blank());
 // URLs already registered, so a catalog card shows "Added" instead of "Add".
 const installedUrls = computed(() => new Set(servers.value.map((s) => s.url).filter(Boolean)));
 
-const filteredCatalog = computed(() => {
-  const q = catalogSearch.value.trim().toLowerCase();
-  const cat = catalogCategory.value;
-  return MCP_SERVER_CATALOG.filter((s) => {
-    if (cat && s.category !== cat) return false;
-    if (!q) return true;
-    return (
-      s.name.toLowerCase().includes(q) ||
-      s.description.toLowerCase().includes(q) ||
-      (s.tags ?? []).some((t) => t.includes(q))
-    );
-  });
-});
-
 const authLabel: Record<CatalogServer['auth'], string> = {
   open: 'No auth',
   apikey: 'API key',
   oauth: 'OAuth 2.1',
 };
 
+// ── Unified catalog: remote MCP servers + native (built-in) mcp-server plugins in one browse ──────
+const nativeIntegrations = ref<PluginView[]>([]);
+const canConfigure = auth.can('settings.read'); // listing/toggling native plugins needs settings perms
+const NATIVE_CATEGORY = 'Integrations (built-in)';
+
+const allCategories = computed(() => {
+  const base = [...CATALOG_CATEGORIES];
+  if (nativeIntegrations.value.length) base.unshift(NATIVE_CATEGORY);
+  return base;
+});
+
+// Flat shape (not a discriminated union) so the Vue template can read optional fields without narrowing.
+interface CatalogItem {
+  kind: 'remote' | 'native';
+  key: string;
+  name: string;
+  category: string;
+  description: string;
+  auth?: CatalogServer['auth'];
+  provider?: string;
+  tags?: string[];
+  url?: string;
+  remote?: CatalogServer;
+  installed?: boolean;
+  plugin?: PluginView;
+}
+
+const catalogItems = computed<CatalogItem[]>(() => {
+  const q = catalogSearch.value.trim().toLowerCase();
+  const cat = catalogCategory.value;
+  const items: CatalogItem[] = [];
+  for (const p of nativeIntegrations.value) {
+    if (cat && cat !== NATIVE_CATEGORY) continue;
+    if (q && !`${p.name} ${p.description} ${p.id}`.toLowerCase().includes(q)) continue;
+    items.push({ kind: 'native', key: `n:${p.id}`, name: p.name, category: NATIVE_CATEGORY, description: p.description, plugin: p });
+  }
+  for (const s of MCP_SERVER_CATALOG) {
+    if (cat && s.category !== cat) continue;
+    if (q && !(s.name.toLowerCase().includes(q) || s.description.toLowerCase().includes(q) || (s.tags ?? []).some((t) => t.includes(q)))) continue;
+    items.push({ kind: 'remote', key: `r:${s.id}`, name: s.name, category: s.category, description: s.description, auth: s.auth, provider: s.provider, tags: s.tags, url: s.url, remote: s, installed: installedUrls.value.has(s.url) });
+  }
+  return items;
+});
+
+const detailItem = ref<CatalogItem | null>(null);
+const configPlugin = ref<PluginView | null>(null);
+
+async function refreshNative() {
+  if (!canConfigure) return;
+  try {
+    const r = await api.get<{ plugins: PluginView[] }>('/api/plugins');
+    nativeIntegrations.value = r.plugins.filter((p) => p.type === 'mcp-server');
+  } catch {
+    /* a viewer without settings.read simply sees the remote catalog only */
+  }
+}
+
+async function toggleNative(p: PluginView) {
+  try {
+    const res = await api.patch<{ plugins: PluginView[] }>(`/api/plugins/${p.id}`, { enabled: !p.enabled });
+    nativeIntegrations.value = res.plugins.filter((x) => x.type === 'mcp-server');
+    if (detailItem.value?.kind === 'native' && detailItem.value.plugin.id === p.id) {
+      const fresh = nativeIntegrations.value.find((x) => x.id === p.id);
+      if (fresh) detailItem.value = { ...detailItem.value, plugin: fresh };
+    }
+    toast.success(`${p.name} ${p.enabled ? 'disabled' : 'enabled'}.`);
+    await load(); // reflect the plugin-backed server in the Installed list
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Could not update integration.');
+  }
+}
+
+function onPluginSaved(res: { plugins: PluginView[] }) {
+  nativeIntegrations.value = res.plugins.filter((p) => p.type === 'mcp-server');
+  toast.success('Configuration saved.');
+}
+
 async function load() {
   loading.value = true;
   try {
-    const res = await api.get<{ servers: UpstreamServer[] }>('/api/servers');
+    const [res] = await Promise.all([api.get<{ servers: UpstreamServer[] }>('/api/servers'), refreshNative()]);
     servers.value = res.servers;
   } finally {
     loading.value = false;
@@ -105,6 +169,14 @@ function addFromCatalog(e: CatalogServer) {
   editingId.value = null;
   error.value = '';
   showModal.value = true;
+}
+
+/** Add the remote server from the detail modal (then close it). */
+function addFromDetail() {
+  if (detailItem.value?.remote) {
+    addFromCatalog(detailItem.value.remote);
+    detailItem.value = null;
+  }
 }
 
 // OAuth 2.1 servers: open the provider sign-in, then poll until the callback connects the server.
@@ -242,32 +314,93 @@ async function remove(srv: UpstreamServer) {
         <input v-model="catalogSearch" class="catalog-search" placeholder="Search integrations…" />
         <select v-model="catalogCategory">
           <option value="">All categories</option>
-          <option v-for="c in catalogCategories" :key="c" :value="c">{{ c }}</option>
+          <option v-for="c in allCategories" :key="c" :value="c">{{ c }}</option>
         </select>
-        <span class="muted count">{{ filteredCatalog.length }} servers</span>
+        <span class="muted count">{{ catalogItems.length }} integrations</span>
       </div>
       <p class="muted legend">
-        Curated public MCP servers — one click prefills the connection.
-        <span class="cc-auth open">No auth</span> and <span class="cc-auth apikey">API key</span> connect now;
-        <span class="cc-auth oauth">OAuth 2.1</span> upstream sign-in is rolling out.
+        Every integration in one place. <span class="cc-auth native">Built-in</span> run inside Kravn;
+        the rest are public MCP servers — <span class="cc-auth open">No auth</span> /
+        <span class="cc-auth apikey">API key</span> connect on add, <span class="cc-auth oauth">OAuth 2.1</span>
+        with one-click sign-in. Click a card for details.
       </p>
     </div>
 
     <div class="catalog-grid">
-      <div v-for="e in filteredCatalog" :key="e.id" class="catalog-card">
-        <div class="cc-head">
-          <span class="cc-name">{{ e.name }}</span>
-          <span class="cc-auth" :class="e.auth">{{ authLabel[e.auth] }}</span>
+      <div v-for="e in catalogItems" :key="e.key" class="catalog-card">
+        <div class="cc-body" role="button" tabindex="0" title="View details" @click="detailItem = e" @keydown.enter="detailItem = e">
+          <div class="cc-head">
+            <span class="cc-name">{{ e.name }}</span>
+            <span v-if="e.kind === 'native'" class="cc-auth native">Built-in</span>
+            <span v-else class="cc-auth" :class="e.auth">{{ e.auth ? authLabel[e.auth] : '' }}</span>
+          </div>
+          <div class="cc-cat muted">{{ e.category }}</div>
+          <p class="cc-desc">{{ e.description }}</p>
+          <div class="cc-hint muted"><small>Details →</small></div>
         </div>
-        <div class="cc-cat muted">{{ e.category }}</div>
-        <p class="cc-desc">{{ e.description }}</p>
         <div class="cc-foot">
-          <span v-if="installedUrls.has(e.url)" class="muted">Added ✓</span>
-          <button v-else-if="auth.can('servers.write')" class="btn" @click="addFromCatalog(e)">Add</button>
+          <template v-if="e.kind === 'native'">
+            <span class="badge" :class="e.plugin?.enabled ? 'online' : 'disabled'">{{ e.plugin?.enabled ? 'on' : 'off' }}</span>
+            <template v-if="auth.can('settings.write')">
+              <button class="btn" @click="configPlugin = e.plugin ?? null">Config</button>
+              <button class="btn" :class="{ primary: !e.plugin?.enabled }" @click="e.plugin && toggleNative(e.plugin)">{{ e.plugin?.enabled ? 'Disable' : 'Enable' }}</button>
+            </template>
+          </template>
+          <template v-else>
+            <span v-if="e.installed" class="muted">Added ✓</span>
+            <button v-else-if="auth.can('servers.write')" class="btn" @click="e.remote && addFromCatalog(e.remote)">Add</button>
+          </template>
         </div>
       </div>
     </div>
   </template>
+
+  <!-- Unified catalog detail modal -->
+  <div v-if="detailItem" class="modal-backdrop" @click.self="detailItem = null">
+    <div class="modal" style="max-width: 600px">
+      <div class="row spread">
+        <h2 style="margin: 0">{{ detailItem.name }}</h2>
+        <span v-if="detailItem.kind === 'native'" class="cc-auth native">Built-in</span>
+        <span v-else class="cc-auth" :class="detailItem.auth">{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}</span>
+      </div>
+      <div class="cc-cat muted" style="margin-top: 0.4rem">
+        {{ detailItem.category }}<template v-if="detailItem.provider"> · {{ detailItem.provider }}</template>
+      </div>
+      <p style="margin-top: 1rem">{{ detailItem.description }}</p>
+
+      <template v-if="detailItem.kind === 'remote'">
+        <div class="cc-kv"><span class="muted">Endpoint</span><code>{{ detailItem.url }}</code></div>
+        <div class="cc-kv">
+          <span class="muted">Connects with</span>
+          <span>{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}<template v-if="detailItem.auth === 'oauth'"> — sign in after adding</template></span>
+        </div>
+        <div v-if="detailItem.tags && detailItem.tags.length" class="cc-tags">
+          <span v-for="t in detailItem.tags" :key="t" class="badge">{{ t }}</span>
+        </div>
+      </template>
+      <template v-else>
+        <div class="cc-kv"><span class="muted">Runs</span><span>In-process, built into Kravn (app-only credential)</span></div>
+        <div v-if="detailItem.plugin?.setup" class="setup-note">
+          <div class="setup-title">Setup &amp; required permissions</div>
+          {{ detailItem.plugin.setup }}
+        </div>
+      </template>
+
+      <div class="btn-row" style="justify-content: flex-end; margin-top: 1.5rem">
+        <button class="btn" @click="detailItem = null">Close</button>
+        <template v-if="detailItem.kind === 'native' && auth.can('settings.write')">
+          <button class="btn" @click="configPlugin = detailItem.plugin ?? null">Configure</button>
+          <button class="btn primary" @click="detailItem.plugin && toggleNative(detailItem.plugin)">{{ detailItem.plugin?.enabled ? 'Disable' : 'Enable' }}</button>
+        </template>
+        <template v-else-if="detailItem.kind === 'remote'">
+          <span v-if="detailItem.installed" class="muted" style="align-self: center">Added ✓</span>
+          <button v-else-if="auth.can('servers.write')" class="btn primary" @click="addFromDetail()">Add</button>
+        </template>
+      </div>
+    </div>
+  </div>
+
+  <PluginConfigModal v-if="configPlugin" :plugin="configPlugin" @close="configPlugin = null" @saved="onPluginSaved" />
 
   <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">
     <div class="modal">
@@ -416,9 +549,75 @@ async function remove(srv: UpstreamServer) {
   line-height: 1.4;
   opacity: 0.85;
 }
+.cc-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  flex: 1;
+  cursor: pointer;
+  border-radius: 8px;
+}
+.cc-body:focus-visible {
+  outline: 2px solid var(--accent, #6c8cff);
+  outline-offset: 3px;
+}
+.cc-body:hover .cc-name {
+  color: var(--accent, #6c8cff);
+}
+.cc-hint {
+  opacity: 0;
+  transition: opacity 0.15s ease;
+  color: var(--accent, #6c8cff);
+}
+.cc-body:hover .cc-hint,
+.cc-body:focus-visible .cc-hint {
+  opacity: 1;
+}
 .cc-foot {
   display: flex;
   justify-content: flex-end;
+  align-items: center;
+  gap: 6px;
+  margin-top: 6px;
+}
+.cc-auth.native {
+  color: #8b5cf6;
+  border-color: rgba(139, 92, 246, 0.4);
+  background: rgba(139, 92, 246, 0.12);
+}
+.cc-kv {
+  display: flex;
+  gap: 10px;
+  margin-top: 10px;
+  font-size: 0.85em;
+}
+.cc-kv > .muted {
+  min-width: 110px;
+}
+.cc-kv code {
+  word-break: break-all;
+}
+.cc-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin-top: 12px;
+}
+.setup-note {
+  margin-top: 1rem;
+  padding: 0.7rem 0.85rem;
+  border: 1px solid var(--border, #33384a);
+  border-left: 3px solid var(--accent, #6c8cff);
+  border-radius: 8px;
+  background: var(--bg-page, rgba(0, 0, 0, 0.15));
+  font-size: 0.85em;
+  line-height: 1.5;
+  white-space: pre-line;
+}
+.setup-note .setup-title {
+  font-weight: 600;
+  margin-bottom: 0.3rem;
+  white-space: normal;
 }
 .cc-auth {
   font-size: 0.72em;

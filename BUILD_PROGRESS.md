@@ -905,6 +905,20 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   encrypted storage, single-use state (replay rejected), automatic refresh. Full monorepo build green.
   Adversarially reviewed.
 
+## ✅ PASS 48 — Unified integrations Catalog (native + remote in one place) (v0.1.54)
+- **UX unification.** Users don't care native vs remote — they want to find, install, use. The **Catalog**
+  tab in `ServersView` now lists **both** the native `mcp-server` plugins (Jira/Teams/SharePoint/Confluence,
+  tagged "Built-in") and the 104 remote catalog servers, with search + category filter (native under an
+  "Integrations (built-in)" category).
+- **Detail modal + routed CTA.** Clicking a card opens a detail view (description, how it connects, endpoint/
+  tags for remote, setup notes for native). Remote → Add/Connect; native → Enable/Disable + Configure.
+- **Shared config modal.** Extracted the schema-driven plugin config form from `PluginsView` into
+  `components/PluginConfigModal.vue`, reused by both the Catalog (native config) and the Plugins page.
+- **Plugins page → hooks only.** `PluginsView` filters to `type==='hook'` (governance); the built-in
+  integrations moved to the Catalog. Native-plugin listing in the Catalog is guarded by `settings.read`.
+- No backend/security change — reuses the existing gated `/api/plugins` + `/api/servers`. Full monorepo
+  build green; SFC template balance verified. (Blind UI change — recommend a visual pass after deploy.)
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the
