@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.53] — 2026-07-05
+
+- 📣 🔒 **Connect OAuth 2.1 MCP servers in one click.** Kravn can now sign in to remote MCP servers that
+  require OAuth 2.1 — Notion, Linear, Stripe, Sentry, Supabase, Vercel and the rest of the catalog's OAuth
+  entries. Pick the server, click **Connect**, sign in with the provider, and Kravn is authorized. It handles
+  the whole flow for you (endpoint discovery, dynamic client registration, PKCE) and **stores the tokens
+  encrypted, refreshing them automatically**. This unlocks the majority of the integrations catalog.
+
 ## [0.1.52] — 2026-07-05
 
 - 🧩 **More catalog integrations.** Added 9 general-purpose servers to the integrations catalog — GitHub,
@@ -172,6 +180,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 - Accepts SQLAlchemy-style `DATABASE_URL` schemes, with input-validated registry and server forms. (0.1.3,
   0.1.5)
 
+[0.1.53]: https://github.com/addlayerio/kravn/releases/tag/v0.1.53
 [0.1.52]: https://github.com/addlayerio/kravn/releases/tag/v0.1.52
 [0.1.51]: https://github.com/addlayerio/kravn/releases/tag/v0.1.51
 [0.1.50]: https://github.com/addlayerio/kravn/releases/tag/v0.1.50

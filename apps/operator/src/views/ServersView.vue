@@ -101,10 +101,32 @@ function addFromCatalog(e: CatalogServer) {
   form.description = e.description;
   form.transport = e.transport;
   form.url = e.url;
-  form.authType = e.auth === 'apikey' ? 'bearer' : 'none';
+  form.authType = e.auth === 'apikey' ? 'bearer' : e.auth === 'oauth' ? 'oauth' : 'none';
   editingId.value = null;
   error.value = '';
   showModal.value = true;
+}
+
+// OAuth 2.1 servers: open the provider sign-in, then poll until the callback connects the server.
+async function connectOAuth(srv: UpstreamServer) {
+  try {
+    const res = await api.post<{ authorizationUrl: string }>(`/api/servers/${srv.id}/oauth/authorize`);
+    const win = window.open(res.authorizationUrl, '_blank', 'width=560,height=720');
+    if (!win) {
+      toast.error('Popup blocked — allow popups for this site and try Connect again.');
+      return;
+    }
+    toast.success('Finish signing in in the new window…');
+    let tries = 0;
+    const timer = setInterval(async () => {
+      tries += 1;
+      await load();
+      const cur = servers.value.find((x) => x.id === srv.id);
+      if ((cur && cur.status === 'online') || tries >= 12) clearInterval(timer);
+    }, 3000);
+  } catch (e) {
+    toast.error(e instanceof ApiError ? e.message : 'Could not start OAuth authorization.');
+  }
 }
 
 function parseHeaders(): Record<string, string> {
@@ -203,6 +225,7 @@ async function remove(srv: UpstreamServer) {
           </td>
           <td>
             <div class="btn-row">
+              <button v-if="s.authType === 'oauth' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">Connect</button>
               <button class="btn" @click="sync(s)">Sync</button>
               <button v-if="auth.can('servers.write')" class="btn" @click="openEdit(s)">Edit</button>
               <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">Delete</button>
@@ -291,12 +314,17 @@ async function remove(srv: UpstreamServer) {
           <option value="none">None</option>
           <option value="bearer">Bearer token</option>
           <option value="basic">Basic (user:pass)</option>
+          <option value="oauth">OAuth 2.1 (sign in after saving)</option>
         </select>
       </div>
-      <div class="field" v-if="form.authType !== 'none'">
+      <div class="field" v-if="form.authType === 'bearer' || form.authType === 'basic'">
         <label>Credential {{ editingId ? '(leave blank to keep current)' : '' }}</label>
         <input v-model="form.authValue" type="password" maxlength="8192" :placeholder="form.authType === 'basic' ? 'user:password' : 'token'" />
       </div>
+      <p v-else-if="form.authType === 'oauth'" class="muted oauth-note">
+        Save this server, then click <strong>Connect</strong> to sign in with the provider. Kravn stores the
+        tokens encrypted and refreshes them automatically.
+      </p>
 
       <div class="field">
         <label>Extra headers (JSON, optional)</label>
@@ -413,5 +441,9 @@ async function remove(srv: UpstreamServer) {
   color: #d29922;
   border-color: rgba(210, 153, 34, 0.4);
   background: rgba(210, 153, 34, 0.12);
+}
+.oauth-note {
+  font-size: 0.85em;
+  line-height: 1.5;
 }
 </style>

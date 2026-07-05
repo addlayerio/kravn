@@ -37,8 +37,10 @@ Sentry, Stripe, Supabase, Vercel, Hugging Face, Google (Maps / BigQuery), Attio,
 across project management, payments, CRM, databases, observability, documentation and search. Open the
 **Catalog** tab on the *MCP Servers* page, filter by category, and one click prefills the connection — you
 only supply a credential if the server needs one. Servers with no auth or an API key connect immediately;
-OAuth 2.1 servers are catalogued, with upstream sign-in rolling out. Once connected, their tools flow into
-the same registry and team-governed endpoints as everything else.
+for **OAuth 2.1** servers (Notion, Linear, Stripe, …) click **Connect** to sign in with the provider — Kravn
+runs the whole OAuth flow (discovery, dynamic client registration, PKCE) and stores the tokens encrypted,
+refreshing them automatically. Once connected, their tools flow into the same registry and team-governed
+endpoints as everything else.
 
 ## Governance & content pipelines
 

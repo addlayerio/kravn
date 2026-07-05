@@ -888,6 +888,23 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   auth/transport, no incomplete rows). Full monorepo build green. Website (what-is-kravn + plugins) updated.
 - **Not in the reference catalog (flagged for manual add):** Odoo, Zoho, ReadAi, BlueDot.
 
+## ✅ PASS 47 — Upstream OAuth 2.1 client (connect OAuth-protected MCP servers) (v0.1.53)
+- **Unlocks the catalog's OAuth servers.** Kravn now connects to remote MCP servers that require OAuth 2.1
+  (Notion/Linear/Stripe/…) as an OAuth **client**. Protocol correctness (metadata discovery, DCR, PKCE,
+  exchange, refresh) is delegated to the MCP SDK's auth toolkit; Kravn owns storage + CSRF anchor + crypto.
+- **New:** `AUTH_TYPES += 'oauth'`; migration 012 (`server_oauth` config+tokens, `server_oauth_pending`
+  state+verifier); `ServerOAuthRepo` (atomic single-use `takePending`); `UpstreamOAuthService`
+  (startAuthorization / completeAuthorization / accessTokenFor+refresh / forget); `connectAndSync` resolves
+  an OAuth token for `authType==='oauth'`; `POST /api/servers/:id/oauth/authorize` (gated) +
+  public state-validated `GET /oauth/upstream/callback`; operator **Connect** button + catalog wiring.
+- **Security:** callback trust anchor is a single-use, expiring, server-bound `state` (no session); reflected
+  values HTML-escaped, no inline script (CSP-safe); access/refresh tokens + PKCE verifier + client secret
+  encrypted at rest; SSRF-guarded discovery; `servers.write`-gated; tokens never in an API response; RFC 8707
+  `resource` binds the token audience.
+- **Validated** end-to-end against a mock AS + mock MCP server (14/14): discovery, DCR, PKCE-S256 verified,
+  encrypted storage, single-use state (replay rejected), automatic refresh. Full monorepo build green.
+  Adversarially reviewed.
+
 ### Deferred to later phases (intentional, not missing)
 ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
 **multi-replica**: rate-limit + OIDC login state are now cross-replica (Dragonfly); remaining follow-ups are the

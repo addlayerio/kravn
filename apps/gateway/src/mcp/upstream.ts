@@ -65,7 +65,8 @@ function withTimeout<T>(p: Promise<T>, ms: number, label: string): Promise<T> {
 
 function authHeaders(authType: UpstreamServer['authType'], plain: string): Record<string, string> {
   if (!plain) return {};
-  if (authType === 'bearer') return { Authorization: `Bearer ${plain}` };
+  // 'oauth' resolves to an access token upstream of here (in connectAndSync), sent as a Bearer like any token.
+  if (authType === 'bearer' || authType === 'oauth') return { Authorization: `Bearer ${plain}` };
   if (authType === 'basic') return { Authorization: `Basic ${Buffer.from(plain).toString('base64')}` };
   return {};
 }

@@ -29,6 +29,7 @@ import { auditRoutes } from './routes/audit.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
+import { serverOAuthRoutes } from './routes/server-oauth.routes.js';
 import { scimRoutes } from './routes/scim.routes.js';
 import type { Services } from './services.js';
 
@@ -190,6 +191,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   authRoutes(app, services);
   ssoRoutes(app, services);
   oauthRoutes(app, services);
+  serverOAuthRoutes(app, services); // public /oauth/upstream/callback (state-validated, no session)
 
   // Control-plane + MCP gateway surface.
   if (wantGateway) {

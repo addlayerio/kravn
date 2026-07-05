@@ -2,6 +2,7 @@ import type { FastifyInstance, FastifyReply, FastifyRequest } from 'fastify';
 import { createServerSchema, updateServerSchema } from '@kravn/contracts';
 import type { Services } from '../services.js';
 import { currentUser } from '../auth/plugin.js';
+import { deriveBaseUrl } from '../http/baseurl.js';
 import { parse, sendError } from './_helpers.js';
 
 export function serverRoutes(app: FastifyInstance, s: Services): void {
@@ -74,5 +75,20 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
     const server = await s.registry.connectAndSync(id);
     if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');
     return { server };
+  });
+
+  // Begin an upstream OAuth 2.1 authorization for an OAuth-protected remote MCP server. Returns the URL the
+  // admin's browser must visit to sign in; the AS then redirects to the public /oauth/upstream/callback.
+  app.post('/api/servers/:id/oauth/authorize', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const server = await s.registry.getServer(id);
+    if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');
+    const redirectUri = `${deriveBaseUrl(req, s.settings, s.env)}/oauth/upstream/callback`;
+    try {
+      const authorizationUrl = await s.upstreamOAuth.startAuthorization(server, redirectUri);
+      return { authorizationUrl };
+    } catch (err) {
+      return sendError(reply, 400, 'oauth_start_failed', err instanceof Error ? err.message : 'Could not start OAuth authorization.');
+    }
   });
 }

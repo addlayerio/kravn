@@ -7,7 +7,7 @@ export const TRANSPORTS = ['streamable-http', 'sse', 'stdio', 'plugin'] as const
 export type Transport = (typeof TRANSPORTS)[number];
 export const transportSchema = z.enum(TRANSPORTS);
 
-export const AUTH_TYPES = ['none', 'bearer', 'basic'] as const;
+export const AUTH_TYPES = ['none', 'bearer', 'basic', 'oauth'] as const;
 export type AuthType = (typeof AUTH_TYPES)[number];
 export const authTypeSchema = z.enum(AUTH_TYPES);
 

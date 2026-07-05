@@ -1182,6 +1182,7 @@ export interface Repos {
   tokens: TokensRepo;
   oauth: OAuthRepo;
   auditLog: AuditLogRepo;
+  serverOAuth: ServerOAuthRepo;
 }
 
 export interface OAuthClient {
@@ -1342,6 +1343,114 @@ export class OAuthRepo {
   }
 }
 
+/** One `server_oauth` row: the upstream-OAuth config + tokens for a server. All *_enc fields are stored as
+ * the Encryptor's ciphertext — this repo never encrypts/decrypts; the UpstreamOAuthService does. */
+export interface ServerOAuthRow {
+  serverId: string;
+  authServerUrl: string;
+  metadataJson: string;
+  clientInfoEnc: string;
+  resource: string;
+  scope: string;
+  accessTokenEnc: string;
+  refreshTokenEnc: string;
+  expiresAt: string;
+}
+
+export interface ServerOAuthPendingRow {
+  state: string;
+  serverId: string;
+  codeVerifierEnc: string;
+  redirectUri: string;
+  expiresAt: string;
+}
+
+/** Storage for the upstream OAuth 2.1 client (Kravn connecting to an OAuth-protected remote MCP server). */
+export class ServerOAuthRepo {
+  constructor(private store: Store) {}
+
+  /** Insert or update the per-server OAuth config (endpoints + registered client), preserving any tokens. */
+  async upsertConfig(c: {
+    serverId: string;
+    authServerUrl: string;
+    metadataJson: string;
+    clientInfoEnc: string;
+    resource: string;
+    scope: string;
+  }): Promise<void> {
+    const existing = await this.store.get<{ server_id: string }>('SELECT server_id FROM server_oauth WHERE server_id = ?', [
+      c.serverId,
+    ]);
+    if (existing) {
+      await this.store.run(
+        `UPDATE server_oauth SET auth_server_url = ?, metadata = ?, client_info_enc = ?, resource = ?, scope = ?, updated_at = ?
+         WHERE server_id = ?`,
+        [c.authServerUrl, c.metadataJson, c.clientInfoEnc, c.resource, c.scope, now(), c.serverId],
+      );
+    } else {
+      await this.store.run(
+        `INSERT INTO server_oauth (server_id, auth_server_url, metadata, client_info_enc, resource, scope, access_token_enc, refresh_token_enc, expires_at, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, '', '', '', ?, ?)`,
+        [c.serverId, c.authServerUrl, c.metadataJson, c.clientInfoEnc, c.resource, c.scope, now(), now()],
+      );
+    }
+  }
+
+  async getConfig(serverId: string): Promise<ServerOAuthRow | undefined> {
+    const r = await this.store.get<Record<string, string>>('SELECT * FROM server_oauth WHERE server_id = ?', [serverId]);
+    if (!r) return undefined;
+    return {
+      serverId: r.server_id,
+      authServerUrl: r.auth_server_url,
+      metadataJson: r.metadata,
+      clientInfoEnc: r.client_info_enc,
+      resource: r.resource,
+      scope: r.scope ?? '',
+      accessTokenEnc: r.access_token_enc ?? '',
+      refreshTokenEnc: r.refresh_token_enc ?? '',
+      expiresAt: r.expires_at ?? '',
+    };
+  }
+
+  async saveTokens(serverId: string, t: { accessTokenEnc: string; refreshTokenEnc: string; expiresAt: string }): Promise<void> {
+    await this.store.run(
+      'UPDATE server_oauth SET access_token_enc = ?, refresh_token_enc = ?, expires_at = ?, updated_at = ? WHERE server_id = ?',
+      [t.accessTokenEnc, t.refreshTokenEnc, t.expiresAt, now(), serverId],
+    );
+  }
+
+  async deleteConfig(serverId: string): Promise<void> {
+    await this.store.run('DELETE FROM server_oauth WHERE server_id = ?', [serverId]);
+    await this.store.run('DELETE FROM server_oauth_pending WHERE server_id = ?', [serverId]);
+  }
+
+  async createPending(p: ServerOAuthPendingRow): Promise<void> {
+    await this.store.run(
+      `INSERT INTO server_oauth_pending (state, server_id, code_verifier, redirect_uri, expires_at, created_at)
+       VALUES (?, ?, ?, ?, ?, ?)`,
+      [p.state, p.serverId, p.codeVerifierEnc, p.redirectUri, p.expiresAt, now()],
+    );
+  }
+
+  /** Atomically claim + delete a pending row by state (single-use — mirrors takeCode). */
+  async takePending(state: string): Promise<ServerOAuthPendingRow | undefined> {
+    const r = await this.store.get<Record<string, string>>('SELECT * FROM server_oauth_pending WHERE state = ?', [state]);
+    if (!r) return undefined;
+    if ((await this.store.delCount('server_oauth_pending', { state })) !== 1) return undefined;
+    return {
+      state: r.state,
+      serverId: r.server_id,
+      codeVerifierEnc: r.code_verifier,
+      redirectUri: r.redirect_uri,
+      expiresAt: r.expires_at,
+    };
+  }
+
+  async gc(nowIso: string): Promise<void> {
+    await this.store.run('DELETE FROM server_oauth_pending WHERE expires_at < ?', [nowIso]);
+  }
+}
+
 export interface AuditRecord {
   seq?: number;
   id: string;
@@ -1435,5 +1544,6 @@ export function createRepos(store: Store): Repos {
     tokens: new TokensRepo(store),
     oauth: new OAuthRepo(store),
     auditLog: new AuditLogRepo(store),
+    serverOAuth: new ServerOAuthRepo(store),
   };
 }

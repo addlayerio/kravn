@@ -542,8 +542,46 @@ const appKeyring: Migration = {
   },
 };
 
+/**
+ * 012 — Upstream OAuth 2.1 client. Lets Kravn connect (as an OAuth CLIENT) to a remote MCP server that
+ * requires OAuth 2.1 (Notion, Linear, Stripe, …). `server_oauth` holds one row per server: the discovered
+ * authorization-server URL + metadata, the (dynamically-registered) client info and the access/refresh
+ * tokens — all credential fields ENCRYPTED at rest. `server_oauth_pending` holds the short-lived
+ * (state -> code_verifier) round-trip during an authorization, single-use and expiring.
+ */
+const serverOAuth: Migration = {
+  name: '012_server_oauth',
+  async up(knex) {
+    await createIfMissing(knex, 'server_oauth', (t) => {
+      t.string('server_id', 64).primary();
+      t.text('auth_server_url').notNullable();
+      t.text('metadata').notNullable(); // AS metadata JSON (public — endpoints, no secret)
+      t.text('client_info_enc').notNullable(); // encrypted JSON of the registered client (holds client_secret)
+      t.text('resource').notNullable(); // RFC 8707 audience (the MCP server URL)
+      t.text('scope').notNullable();
+      t.text('access_token_enc').notNullable(); // encrypted; '' until first authorization
+      t.text('refresh_token_enc').notNullable(); // encrypted; '' if none
+      t.string('expires_at', 40).notNullable().defaultTo('');
+      t.string('created_at', 40).notNullable();
+      t.string('updated_at', 40).notNullable();
+    });
+    await createIfMissing(knex, 'server_oauth_pending', (t) => {
+      t.string('state', 191).primary(); // opaque, unguessable; the callback's only trust anchor (no session)
+      t.string('server_id', 64).notNullable();
+      t.text('code_verifier').notNullable(); // PKCE verifier, consumed once at token exchange
+      t.text('redirect_uri').notNullable();
+      t.string('expires_at', 40).notNullable();
+      t.string('created_at', 40).notNullable();
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('server_oauth_pending');
+    await knex.schema.dropTableIfExists('server_oauth');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

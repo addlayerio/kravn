@@ -9,6 +9,7 @@ import type { Repos } from '../db/repos.js';
 import type { SettingsService } from '../settings/settings.service.js';
 import type { UpstreamManager } from './upstream.js';
 import type { SsrfGuard } from '../http/ssrf.js';
+import type { UpstreamOAuthService } from '../auth/upstream-oauth.service.js';
 import type { LogStore } from '../logstore.js';
 import type { Metrics } from '../metrics.js';
 import type { PluginManager } from '../plugins/manager.js';
@@ -26,6 +27,7 @@ export interface RegistryDeps {
   logstore: LogStore;
   metrics: Metrics;
   plugins: PluginManager;
+  upstreamOAuth: UpstreamOAuthService;
 }
 
 /**
@@ -194,7 +196,12 @@ export class RegistryService {
 
     await this.d.repos.servers.setStatus(id, 'connecting');
     try {
-      const authPlain = this.d.encryptor.decrypt(await this.d.repos.servers.getAuthValueEncrypted(id));
+      // OAuth servers resolve (and refresh) an access token from the upstream-OAuth store; everything else
+      // uses the stored static credential. The resolved token is sent as a Bearer by upstream.connect.
+      const authPlain =
+        server.authType === 'oauth'
+          ? await this.d.upstreamOAuth.accessTokenFor(id)
+          : this.d.encryptor.decrypt(await this.d.repos.servers.getAuthValueEncrypted(id));
       await this.d.upstream.connect(server, authPlain);
       await this.syncCatalog(server);
       await this.d.repos.servers.setStatus(id, 'online');
