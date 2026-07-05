@@ -8,12 +8,7 @@ import { useToastStore } from '../stores/toast';
 import { useEventStream } from '../lib/events';
 import PluginConfigModal from '../components/PluginConfigModal.vue';
 import IntegrationIcon from '../components/IntegrationIcon.vue';
-
-/** Best-effort brand id for an installed server: match its endpoint URL to a catalog entry. */
-const catalogIdByUrl = new Map(MCP_SERVER_CATALOG.map((s) => [s.url, s.id]));
-function serverIconId(s: UpstreamServer): string | undefined {
-  return (s.url && catalogIdByUrl.get(s.url)) || undefined;
-}
+import { serverIconId } from '../lib/server-icon';
 
 const auth = useAuthStore();
 const toast = useToastStore();

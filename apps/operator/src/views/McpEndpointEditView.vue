@@ -1,11 +1,15 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import type { McpEndpoint, Tool, Resource, Prompt, LocalPrompt, Team } from '@kravn/contracts';
+import type { McpEndpoint, Tool, Resource, Prompt, LocalPrompt, Team, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import PipelineEditor from '../components/PipelineEditor.vue';
+import GroupedSelect, { type GroupedItem, type GroupMeta } from '../components/GroupedSelect.vue';
+import { serverIconId } from '../lib/server-icon';
+
+const LOCAL_GROUP = '__local__';
 
 const route = useRoute();
 const router = useRouter();
@@ -24,6 +28,7 @@ const resources = ref<Resource[]>([]);
 const prompts = ref<Prompt[]>([]);
 const localPrompts = ref<LocalPrompt[]>([]);
 const teams = ref<Team[]>([]);
+const serverMeta = ref<Record<string, GroupMeta>>({});
 const loading = ref(true);
 const error = ref('');
 const saving = ref(false);
@@ -40,21 +45,44 @@ const blank = () => ({
 });
 const form = reactive(blank());
 
+// Flatten each catalog into GroupedSelect rows, bucketed by origin server (serverId). Local prompts
+// have no server, so they go under the synthetic LOCAL_GROUP.
+const toolItems = computed<GroupedItem[]>(() =>
+  tools.value.map((t) => ({ id: t.id, groupId: t.serverId, label: t.name, sublabel: t.description })),
+);
+const resourceItems = computed<GroupedItem[]>(() =>
+  resources.value.map((r) => ({ id: r.id, groupId: r.serverId, label: r.name || r.uri, sublabel: r.uri })),
+);
+const promptItems = computed<GroupedItem[]>(() => [
+  ...localPrompts.value.map((p) => ({ id: p.id, groupId: LOCAL_GROUP, label: p.name, sublabel: p.description, tag: 'local' })),
+  ...prompts.value.map((p) => ({ id: p.id, groupId: p.serverId, label: p.name, sublabel: p.description })),
+]);
+
 async function load(): Promise<void> {
   loading.value = true;
   try {
-    const [v, t, r, p, lp] = await Promise.all([
+    // Fetch everything up front (teams included) so there is NO await between populating the item lists
+    // and populating form.*Ids below — otherwise GroupedSelect's length watcher flushes on a microtask
+    // during an intervening await and seeds its expanded groups before the selection exists.
+    const [v, t, r, p, lp, sv, tm] = await Promise.all([
       api.get<{ mcpEndpoints: McpEndpoint[] }>('/api/mcp-endpoints'),
       api.get<{ tools: Tool[] }>('/api/tools'),
       api.get<{ resources: Resource[] }>('/api/resources'),
       api.get<{ prompts: Prompt[] }>('/api/prompts'),
       api.get<{ localPrompts: LocalPrompt[] }>('/api/local-prompts'),
+      api.get<{ servers: UpstreamServer[] }>('/api/servers').catch(() => ({ servers: [] as UpstreamServer[] })),
+      api.get<{ teams: Team[] }>('/api/teams').catch(() => ({ teams: [] as Team[] })),
     ]);
     tools.value = t.tools;
     resources.value = r.resources;
     prompts.value = p.prompts;
     localPrompts.value = lp.localPrompts;
-    teams.value = (await api.get<{ teams: Team[] }>('/api/teams').catch(() => ({ teams: [] }))).teams;
+    teams.value = tm.teams;
+    // Group metadata: each origin server's human name + brand-icon id, plus the synthetic local-prompts group.
+    serverMeta.value = {
+      [LOCAL_GROUP]: { name: 'Kravn prompts (local)' },
+      ...Object.fromEntries(sv.servers.map((s) => [s.id, { name: s.name, iconId: serverIconId(s) }])),
+    };
 
     if (!isNew.value) {
       const found = v.mcpEndpoints.find((x) => x.id === routeId.value);
@@ -123,40 +151,19 @@ async function save(): Promise<void> {
       <div class="field"><label>Description</label><input v-model="form.description" :disabled="!canWrite" /></div>
 
       <div class="field">
-        <label>Tools ({{ form.toolIds.length }} selected)</label>
-        <div class="card picker">
-          <div v-if="tools.length === 0" class="muted">No tools available.</div>
-          <div v-for="t in tools" :key="t.id" class="checkbox">
-            <input :id="`t-${t.id}`" type="checkbox" :value="t.id" v-model="form.toolIds" :disabled="!canWrite" />
-            <label :for="`t-${t.id}`" style="margin: 0">{{ t.name }}</label>
-          </div>
-        </div>
+        <label>Tools</label>
+        <small class="muted picker-hint">Grouped by their origin server. Search, or tick a server to select all its tools.</small>
+        <GroupedSelect v-model="form.toolIds" :items="toolItems" :groups="serverMeta" noun="tool" :disabled="!canWrite" />
       </div>
 
       <div class="field">
-        <label>Resources ({{ form.resourceIds.length }})</label>
-        <div class="card picker">
-          <div v-if="resources.length === 0" class="muted">No resources available.</div>
-          <div v-for="r in resources" :key="r.id" class="checkbox">
-            <input :id="`r-${r.id}`" type="checkbox" :value="r.id" v-model="form.resourceIds" :disabled="!canWrite" />
-            <label :for="`r-${r.id}`" style="margin: 0">{{ r.uri }}</label>
-          </div>
-        </div>
+        <label>Resources</label>
+        <GroupedSelect v-model="form.resourceIds" :items="resourceItems" :groups="serverMeta" noun="resource" :disabled="!canWrite" />
       </div>
 
       <div class="field">
-        <label>Prompts ({{ form.promptIds.length }})</label>
-        <div class="card picker">
-          <div v-if="prompts.length === 0 && localPrompts.length === 0" class="muted">No prompts available.</div>
-          <div v-for="p in localPrompts" :key="p.id" class="checkbox">
-            <input :id="`lp-${p.id}`" type="checkbox" :value="p.id" v-model="form.promptIds" :disabled="!canWrite" />
-            <label :for="`lp-${p.id}`" style="margin: 0">{{ p.name }} <small class="muted">(local)</small></label>
-          </div>
-          <div v-for="p in prompts" :key="p.id" class="checkbox">
-            <input :id="`p-${p.id}`" type="checkbox" :value="p.id" v-model="form.promptIds" :disabled="!canWrite" />
-            <label :for="`p-${p.id}`" style="margin: 0">{{ p.name }}</label>
-          </div>
-        </div>
+        <label>Prompts</label>
+        <GroupedSelect v-model="form.promptIds" :items="promptItems" :groups="serverMeta" noun="prompt" :disabled="!canWrite" />
       </div>
 
       <div class="field">
@@ -208,6 +215,7 @@ async function save(): Promise<void> {
 
 <style scoped>
 .muted { color: var(--text-muted); }
+.picker-hint { display: block; margin: -0.1rem 0 0.4rem; }
 .picker { max-height: 160px; overflow: auto; margin: 0; background: var(--bg-page); }
 .vs-pipeline { margin-top: 1.5rem; }
 .vs-pipeline h2 { margin-bottom: 0.25rem; }

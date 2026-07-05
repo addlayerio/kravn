@@ -14,6 +14,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Pick tools by server, not from an endless checkbox wall.** Composing an MCP endpoint now groups
+  every tool, resource and prompt under its **origin server** (with that server's logo), collapsed by
+  default. Search across all of them, tick a whole server at once, filter to “only selected”, and see a
+  running “N selected · M servers” summary — so you always know what you're exposing even with hundreds of
+  tools. (Same grouping will extend to the Tools/Resources/Prompts pages next.)
 - 📣 **Every integration now has its logo.** The catalog, detail view and your installed servers show each
   product's brand icon, so you can tell what's what at a glance instead of reading names — integrations
   without a known logo get a clean coloured monogram. Logos ship inside the app (no external image calls).
