@@ -12,6 +12,13 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.71] — 2026-07-06
+
+- 🐛 **Datadog connects with an API key + Application key, not OAuth.** The catalog entry was wrongly marked
+  OAuth (so it asked for OAuth 2.1 config with nowhere for the keys/region). It now uses header auth: create
+  a Datadog API key + a read-scoped Application key, set your region host in the URL, and add both as
+  `DD-API-KEY` / `DD-APPLICATION-KEY` under **Extra headers**.
+
 ## [0.1.70] — 2026-07-06
 
 - 🔒 **Model governance — allowlist which LLM models may be used.** Settings → *Allowed LLM models* restricts
