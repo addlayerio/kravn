@@ -761,11 +761,21 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
       'sent as HTTP headers — the gateway OAuth flow is not available yet (Datadog says it is coming later), so ' +
       '**do not use OAuth here**.\n\n' +
       '1. In Datadog, create an **API key** (`Organization Settings → API Keys`) and an **Application key** ' +
-      '(`Organization Settings → Application Keys`). Scope the Application key to **read-only** permissions ' +
-      '(`metrics_read`, `logs_read`, `monitors_read`, …) — least privilege.\n' +
-      '2. Set the **region host** in the URL: US1 = `mcp.datadoghq.com`; for other sites swap the host ' +
+      '(`Organization Settings → Application Keys`).\n' +
+      '2. **Grant the MCP permissions — this is the #1 gotcha.** The MCP server is gated by its own RBAC ' +
+      'permissions, *separate* from the data scopes: **MCP Read (`mcp_read`)** is required, and **MCP Write ' +
+      '(`mcp_write`)** for the action tools. Without them `tools/list` still works, but every query fails with ' +
+      '`Forbidden / Failed permission authorization checks`. Grant `mcp_read`/`mcp_write` to the Application ' +
+      "key owner's **role**, and if the key is scoped, include them in its scopes too.\n" +
+      '3. Add the **data-read** scopes for the tools you will use (least privilege), matched per query family: ' +
+      'metric queries need `metrics_read` **and** `timeseries_query` (the latter is easy to miss — without it ' +
+      'metric reads fail); log analytics needs `logs_read_data` **and** `logs_read_index_data`; change tracking ' +
+      '/ event search need `events_read`; plus `monitors_read`, `dashboards_read`, `apm_read` as needed. ' +
+      "_Tip: while debugging, leave the Application key **unscoped** — it inherits the owner's full permissions " +
+      '— to rule out scoping, then lock it down._\n' +
+      '4. Set the **region host** in the URL: US1 = `mcp.datadoghq.com`; for other sites swap the host ' +
       '(e.g. `mcp.datadoghq.eu`, `mcp.us3.datadoghq.com`, `mcp.us5.datadoghq.com`, `mcp.ap1.datadoghq.com`).\n' +
-      '3. On the server, add both keys under **Extra headers (JSON)**: ' +
+      '5. On the server, add both keys under **Extra headers (JSON)**: ' +
       '`{"DD-API-KEY": "your-api-key", "DD-APPLICATION-KEY": "your-app-key"}`, then save. The keys are stored ' +
       'with the server config; access follows the Application key’s scopes.',
   },

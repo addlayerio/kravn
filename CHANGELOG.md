@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.72] — 2026-07-06
+
+- 🧩 **Datadog catalog setup now documents the exact permissions each query family needs.** Two non-obvious
+  gotchas are called out: (1) the MCP-specific RBAC permissions **`mcp_read` / `mcp_write`** gate the server
+  *separately* from the data scopes — without them `tools/list` works but every query fails with
+  `Forbidden / Failed permission authorization checks`; (2) metric queries need **`timeseries_query`** on top
+  of `metrics_read` (easy to miss). The detail now maps scopes per family (metrics, logs, events/change
+  tracking), notes granting the MCP permissions to the Application key owner's role, and adds the "leave the
+  key unscoped while debugging" tip.
+
 ## [0.1.71] — 2026-07-06
 
 - 🐛 **Datadog connects with an API key + Application key, not OAuth.** The catalog entry was wrongly marked
