@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.73] — 2026-07-06
+
+- 🐛 **Favicon is now the golden raven on a transparent background, tightly framed** — the black rounded tile
+  behind it was unintended and showed as a black box in the browser tab, and the raven only filled ~60% of the
+  canvas so it rendered small. Removed the background `<rect>` and cropped the `viewBox` to the raven (now
+  ~90% fill), then regenerated `favicon.ico` / `favicon-96x96.png` transparent, across the operator, website
+  and client apps. (The gateway serves the operator build, so its favicon updates automatically.)
+
 ## [0.1.72] — 2026-07-06
 
 - 🧩 **Datadog catalog setup now documents the exact permissions each query family needs.** Two non-obvious
