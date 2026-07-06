@@ -86,11 +86,13 @@ async function submit() {
   busy.value = true;
   try {
     await auth.login(form);
-    if (!auth.isPlatformAdmin) {
+    const target = postLoginTarget();
+    // Non-admins may still complete a standalone OAuth consent (an MCP consumer authorizing an endpoint);
+    // they just can't reach the admin console. Mirrors the router guard's oauth-consent exemption.
+    if (!auth.isPlatformAdmin && !target.startsWith('/oauth/consent')) {
       error.value = 'This account cannot access the administration console. Only members of the Platform Administrator Team can sign in here.';
       return;
     }
-    const target = postLoginTarget();
     try {
       sessionStorage.removeItem(POST_LOGIN_KEY);
     } catch {

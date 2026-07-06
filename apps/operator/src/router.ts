@@ -55,8 +55,12 @@ router.beforeEach(async (to) => {
 
   // An authenticated user who is NOT in the Platform Administrator Team may hold a valid session (e.g. an
   // MCP consumer) but must not reach the admin console. Keep them on /login with a clear message instead of
-  // a dashboard that 403s on every request.
+  // a dashboard that 403s on every request. EXCEPTION: the standalone OAuth consent page exists FOR these
+  // consumers — it authorizes only their own session (the backend consent API requires auth, not admin, and
+  // approve() mints an MCP-scoped token for their own identity), so let them through or they can never
+  // connect an MCP endpoint without being a platform admin.
   if (auth.isAuthenticated && !auth.isPlatformAdmin) {
+    if (to.name === 'oauth-consent') return true;
     return to.path === '/login' ? true : { name: 'login', query: { denied: '1' } };
   }
 

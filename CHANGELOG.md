@@ -12,6 +12,17 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.74] — 2026-07-06
+
+- 📣🐛 **Non-admin users can now sign in to authorize an MCP endpoint (OAuth consent).** Connecting a Kravn
+  MCP endpoint from an MCP client sends the user through Kravn's login (incl. SSO / EntraID) to approve the
+  scope — but the operator SPA's admin-console guard was bouncing every non-Platform-Admin to the login page
+  with *"Only members of the Platform Administrator Team can sign in here"*, so a normal MCP consumer could
+  never complete consent. The guard now exempts the standalone `/oauth/consent` page (and the password-login
+  path mirrors it). The backend already allowed this — consent required only authentication, not admin, and
+  mints an MCP-scoped token for the user's own identity; per-endpoint access stays governed by team
+  membership. Admin-console access is unchanged.
+
 ## [0.1.73] — 2026-07-06
 
 - 🐛 **Favicon is now the golden raven on a transparent background, tightly framed** — the black rounded tile
