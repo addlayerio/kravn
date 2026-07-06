@@ -686,8 +686,8 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   },
   {
     id: 'datadog', name: 'Datadog', category: 'Observability',
-    description: 'Datadog — query metrics, logs, monitors and incidents (official MCP, preview)',
-    url: 'https://mcp.datadoghq.com/api/unstable/mcp-server/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Datadog',
+    description: 'Datadog — query metrics, logs, monitors and incidents (official MCP, preview; API + App key)',
+    url: 'https://mcp.datadoghq.com/api/unstable/mcp-server/mcp', transport: 'streamable-http', auth: 'open', provider: 'Datadog',
     tags: ['observability', 'monitoring', 'datadog'],
   },
   {
@@ -755,10 +755,19 @@ export const CATALOG_SETUP: Record<string, CatalogDetail> = {
       'Auth is **OAuth** — click **Connect** and sign in. _(Not available on government / VPS / VPC regions.)_',
   },
   datadog: {
-    docsUrl: 'https://docs.datadoghq.com/mcp_server/',
+    docsUrl: 'https://docs.datadoghq.com/mcp_server/setup/',
     setup:
-      "Datadog's **official** MCP server (currently **preview** — the `unstable` path may change). The URL is per **site**: use `mcp.datadoghq.com` for US1, " +
-      'or your region host instead (e.g. `mcp.datadoghq.eu`, `us3`/`us5`, `ap1`). Click **Connect** and authorize your Datadog org — access follows your Datadog permissions.',
+      "Datadog's official MCP server (**preview**). Today it authenticates with an **API key + Application key** " +
+      'sent as HTTP headers — the gateway OAuth flow is not available yet (Datadog says it is coming later), so ' +
+      '**do not use OAuth here**.\n\n' +
+      '1. In Datadog, create an **API key** (`Organization Settings → API Keys`) and an **Application key** ' +
+      '(`Organization Settings → Application Keys`). Scope the Application key to **read-only** permissions ' +
+      '(`metrics_read`, `logs_read`, `monitors_read`, …) — least privilege.\n' +
+      '2. Set the **region host** in the URL: US1 = `mcp.datadoghq.com`; for other sites swap the host ' +
+      '(e.g. `mcp.datadoghq.eu`, `mcp.us3.datadoghq.com`, `mcp.us5.datadoghq.com`, `mcp.ap1.datadoghq.com`).\n' +
+      '3. On the server, add both keys under **Extra headers (JSON)**: ' +
+      '`{"DD-API-KEY": "your-api-key", "DD-APPLICATION-KEY": "your-app-key"}`, then save. The keys are stored ' +
+      'with the server config; access follows the Application key’s scopes.',
   },
   gitlab: {
     docsUrl: 'https://docs.gitlab.com/user/gitlab_duo/model_context_protocol/mcp_server/',
