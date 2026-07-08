@@ -2,6 +2,14 @@
 
 A quick mental model of how Kravn is organized. Five ideas cover most of it.
 
+## Architecture at a glance
+
+Kravn sits between your MCP **consumers** and your MCP **servers**. Clients connect to a curated
+**endpoint**; every call flows through a policy pipeline (auth, DLP, audit, egress and model controls) over
+a single **registry** of capabilities — all inside your own perimeter, with no data leaving your network.
+
+<ArchitectureDiagram />
+
 ## MCP Servers vs MCP Endpoints
 
 These are the two sides of the gateway, and keeping them distinct is the key to the whole model.

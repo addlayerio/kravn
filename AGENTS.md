@@ -159,6 +159,12 @@ from the repo alone.
    Follow [`apps/website/SEO.md`](./apps/website/SEO.md) for any title/description/OG changes, and register
    new pages in the VitePress nav/sidebar. Purely internal changes (refactors, internal fixes) need no site
    update. When in doubt, if it earned a 📣 in the CHANGELOG, it needs a website update.
+   **Architecture diagram:** if a change alters the *shape* of the platform — a new plane/layer, a
+   policy-pipeline stage, how consumers or upstreams connect, the registry/endpoint model, an identity/egress
+   boundary — update the diagram component [`apps/website/.vitepress/theme/ArchitectureDiagram.vue`](./apps/website/.vitepress/theme/ArchitectureDiagram.vue)
+   (rendered in `guide/concepts.md`) so it stays accurate. It's theme-aware and pulls **live integration
+   counts** from the shared catalog, so those self-update; the nodes/layers/labels are hand-authored and must
+   be kept in sync by hand.
 
 Only true infra is env (`DATABASE_URL`, secret key, `PORT`, `KRAVN_PUBLIC_URL`/`KRAVN_CLIENT_URL`,
 `KRAVN_ROLE`, `KRAVN_DB_SCHEMA`, `KRAVN_TRUST_PROXY`, `KRAVN_METRICS_TOKEN`, `KRAVN_ALLOW_STDIO`); everything
