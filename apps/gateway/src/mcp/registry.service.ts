@@ -527,6 +527,9 @@ export class RegistryService {
           return result;
         } catch (err) {
           this.d.metrics.toolErrors.inc({ server: tool.serverId, tool: tool.name });
+          // Surface the real failure on the Logs page — otherwise the upstream error is only in the metric
+          // and the MCP client masks it (e.g. Claude shows a generic "Error occurred during tool execution").
+          this.d.logstore.add('error', `Tool "${tool.name}" failed: ${err instanceof Error ? err.message : String(err)}`, { server: tool.serverId });
           throw err;
         }
       },

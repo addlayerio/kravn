@@ -12,6 +12,18 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.77] — 2026-07-09
+
+- 📣 **Settings page redesigned.** The one-long-scroll list of every option is now a sectioned two-pane
+  layout — pick a section on the left, edit its fields on the right — with a **search box that finds any
+  setting across every section**. "Your sessions" is its own section now.
+- 🐛 **Tool-call failures now appear on the Logs page**, not just in the error metric. When a proxied tool
+  errors — and the MCP client masks it as a generic "error occurred" — you can now read the real upstream
+  error (HTTP status, message) in Kravn's Logs.
+- 🐛 **Approval Gate polish.** "Tools requiring approval" is now a **grouped-by-server tool picker** (like the
+  MCP-endpoint composer) instead of a flat checklist, and glob patterns match a server's **name or slug**, not
+  only its internal id.
+
 ## [0.1.76] — 2026-07-09
 
 - 🐛 **Governance settings are their own section now, and the Approval Gate picks tools from a list.** The

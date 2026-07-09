@@ -1,27 +1,6 @@
 import type { HookPlugin } from '@kravn/plugin-sdk';
 import type { ApprovalService } from '../approvals/approval.service.js';
 
-const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-
-/** A simple `*`-glob → anchored, case-insensitive RegExp. */
-function globToRe(glob: string): RegExp {
-  return new RegExp(`^${glob.trim().split('*').map(escapeRe).join('.*')}$`, 'i');
-}
-
-/** True if any pattern matches the tool name, the `server/tool` pair, or the server id. */
-function matchesAny(patterns: string[], server: string, tool: string): boolean {
-  const hay = [tool, `${server}/${tool}`, server];
-  return patterns.some((p) => {
-    let re: RegExp;
-    try {
-      re = globToRe(p);
-    } catch {
-      return false;
-    }
-    return hay.some((h) => re.test(h));
-  });
-}
-
 const SECRETISH = /pass|secret|token|key|auth|credential/i;
 /** Shallow secret-redacted, bounded JSON of the call arguments for the approver to review. */
 function redactPreview(args: unknown): string {
@@ -51,7 +30,7 @@ export function approvalGate(deps: { approvals: ApprovalService }): HookPlugin {
     if (!patterns.length) return; // opt-in: nothing configured → gate nothing
     const server = String(ctx.server ?? '');
     const tool = String(ctx.tool ?? '');
-    if (!matchesAny(patterns, server, tool)) return; // not a high-risk tool → allow through
+    if (!(await deps.approvals.shouldGate(server, tool, patterns))) return; // not a high-risk tool → allow through
 
     const timeoutMs = Math.min(Math.max(Number(config.timeoutSeconds) || 60, 5), 900) * 1000;
     try {

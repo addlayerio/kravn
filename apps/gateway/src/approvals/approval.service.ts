@@ -14,6 +14,12 @@ export interface ApprovalDeps {
 
 const POLL_MS = 1500;
 
+const escapeRe = (s: string): string => s.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+/** A simple `*`-glob → anchored, case-insensitive RegExp. */
+function globToRe(glob: string): RegExp {
+  return new RegExp(`^${glob.trim().split('*').map(escapeRe).join('.*')}$`, 'i');
+}
+
 /**
  * Human-in-the-loop maker-checker for tool calls. A held call (from the approval-gate hook) is persisted as a
  * pending row and the caller blocks in {@link waitFor} until an admin decides or it times out. The DB is the
@@ -23,6 +29,27 @@ export class ApprovalService {
   private readonly waiters = new Map<string, () => void>();
 
   constructor(private readonly d: ApprovalDeps) {}
+
+  /**
+   * Does a tool call match any of the configured approval patterns? Globs match the tool name, the server id,
+   * slug or display name, and the `<server>/<tool>` pair for each of those — resolved here (the hook has no
+   * repos), so operators can write `jira/*` against the readable server name/slug, not the raw id.
+   */
+  async shouldGate(serverId: string, toolName: string, patterns: string[]): Promise<boolean> {
+    if (!patterns.length) return false;
+    const server = await this.d.repos.servers.getById(serverId).catch(() => undefined);
+    const ids = [serverId, server?.slug, server?.name].filter((x): x is string => !!x);
+    const hay = [toolName, ...ids, ...ids.map((s) => `${s}/${toolName}`)];
+    return patterns.some((p) => {
+      let re: RegExp;
+      try {
+        re = globToRe(p);
+      } catch {
+        return false;
+      }
+      return hay.some((h) => re.test(h));
+    });
+  }
 
   /** Create a pending approval for a held call and return its id. Throws if it can't be persisted. */
   async request(input: {

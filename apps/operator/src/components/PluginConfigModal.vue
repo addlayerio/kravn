@@ -1,8 +1,10 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
-import type { PluginView } from '@kravn/contracts';
+import type { PluginView, Tool, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import MarkdownText from './MarkdownText.vue';
+import GroupedSelect, { type GroupedItem, type GroupMeta } from './GroupedSelect.vue';
+import { serverIconId } from '../lib/server-icon';
 
 /**
  * Schema-driven plugin configuration modal, extracted from PluginsView so BOTH the Plugins page (hooks) and
@@ -50,9 +52,23 @@ function fieldsFromSchema(schema: any): Field[] | null {
 }
 
 const sources = reactive<Record<SourceKind, string[]>>({ tools: [], resources: [], prompts: [], servers: [] });
+// A `tools` picker renders grouped-by-origin-server (like the MCP-endpoint composer) instead of a flat list.
+const toolGrouped = ref<GroupedItem[]>([]);
+const serverMeta = ref<Record<string, GroupMeta>>({});
 async function loadSources(needed: Set<SourceKind>): Promise<void> {
   const tasks: Promise<void>[] = [];
-  if (needed.has('tools')) tasks.push(api.get<{ tools: { name: string }[] }>('/api/tools').then((r) => { sources.tools = r.tools.map((t) => t.name); }));
+  if (needed.has('tools'))
+    tasks.push(
+      Promise.all([
+        api.get<{ tools: Tool[] }>('/api/tools'),
+        api.get<{ servers: UpstreamServer[] }>('/api/servers').catch(() => ({ servers: [] as UpstreamServer[] })),
+      ]).then(([t, sv]) => {
+        sources.tools = t.tools.map((x) => x.name);
+        // id = tool NAME (what these hooks match on), grouped by origin server.
+        toolGrouped.value = t.tools.map((x) => ({ id: x.name, groupId: x.serverId, label: x.name, sublabel: x.description || undefined }));
+        serverMeta.value = Object.fromEntries(sv.servers.map((s) => [s.id, { name: s.name, iconId: serverIconId(s) }]));
+      }),
+    );
   if (needed.has('resources')) tasks.push(api.get<{ resources: { uri: string }[] }>('/api/resources').then((r) => { sources.resources = r.resources.map((x) => x.uri); }));
   if (needed.has('prompts')) tasks.push(api.get<{ prompts: { name: string }[] }>('/api/prompts').then((r) => { sources.prompts = r.prompts.map((x) => x.name); }));
   if (needed.has('servers')) tasks.push(api.get<{ servers: { name: string }[] }>('/api/servers').then((r) => { sources.servers = r.servers.map((x) => x.name); }));
@@ -174,6 +190,14 @@ async function saveConfig() {
           <select v-else-if="f.control === 'enum'" v-model="model[f.key]">
             <option v-for="o in f.options" :key="o" :value="o">{{ o }}</option>
           </select>
+          <GroupedSelect
+            v-else-if="f.control === 'pick-multi' && f.source === 'tools'"
+            v-model="model[f.key]"
+            :items="toolGrouped"
+            :groups="serverMeta"
+            noun="tool"
+            empty-text="No tools available — add/sync a server first."
+          />
           <div v-else-if="f.control === 'pick-multi'" class="card" style="max-height: 170px; overflow: auto; margin: 0; background: var(--bg-page)">
             <div v-if="optionsFor(f).length === 0" class="muted">No {{ f.source }} available — add/sync some first.</div>
             <label v-for="o in optionsFor(f)" :key="o" class="checkbox" style="font-weight: 400">
