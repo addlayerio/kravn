@@ -75,17 +75,34 @@ jobs:
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
+      # cosign's OWN ambient GitHub-OIDC fetch has been failing ("fetching ambient OIDC credentials:
+      # invalid character 'u'…") — an unpinned-cosign / provider drift, not a workflow change. Mint the OIDC
+      # token ourselves via GitHub's documented endpoint (once) and pass it to cosign with --identity-token,
+      # which skips cosign's ambient path entirely. Fails loudly with the raw response if GitHub misbehaves.
+      - name: Mint GitHub OIDC token for cosign
+        id: oidc
+        run: |
+          set -euo pipefail
+          RESP=$(curl -sS -H "Authorization: bearer ${ACTIONS_ID_TOKEN_REQUEST_TOKEN}" "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=sigstore")
+          TOKEN=$(printf '%s' "$RESP" | jq -r '.value // empty')
+          if [ -z "$TOKEN" ]; then
+            echo "::error::Could not mint an OIDC token — GitHub returned: $(printf '%s' "$RESP" | head -c 300)"
+            exit 1
+          fi
+          echo "::add-mask::$TOKEN"
+          echo "token=$TOKEN" >> "$GITHUB_OUTPUT"
+
       - name: Sign the image (keyless)
         env:
           IMAGE: ghcr.io/${{ steps.vars.outputs.owner }}/kravn
           DIGEST: ${{ steps.build.outputs.digest }}
-        # Keyless: cosign gets a short-lived cert from Fulcio bound to this workflow's OIDC identity and
-        # records the signature in the public Rekor transparency log. No keys to manage.
-        # Retry: the ambient GitHub-OIDC token fetch can transiently return a non-JSON error
-        # ("fetching ambient OIDC credentials: invalid character 'u'…") under load — retry before failing.
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        # Keyless: cosign gets a short-lived cert from Fulcio bound to this workflow's OIDC identity (the token
+        # we minted above) and records the signature in the public Rekor transparency log. No keys to manage.
+        # The retry covers a transient Fulcio/Rekor hiccup; the OIDC fetch itself is no longer cosign's problem.
         run: |
           for i in 1 2 3 4 5; do
-            cosign sign --yes "${IMAGE}@${DIGEST}" && exit 0
+            cosign sign --yes --identity-token "${OIDC_TOKEN}" "${IMAGE}@${DIGEST}" && exit 0
             echo "::warning::cosign sign (image) attempt $i failed — retrying in $((i*5))s"
             sleep $((i*5))
           done
@@ -96,6 +113,8 @@ jobs:
           version: v3.16.3
 
       - name: Package + push + sign Helm chart (OCI)
+        env:
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
         run: |
           set -euo pipefail
           OWNER="${{ steps.vars.outputs.owner }}"
@@ -110,7 +129,7 @@ jobs:
           # Sign the chart artifact too (keyless), so the whole release — image AND chart — is verifiable.
           # Retry: the ambient OIDC token fetch can transiently fail ("invalid character 'u'…") under load.
           for i in 1 2 3 4 5; do
-            cosign sign --yes "ghcr.io/${OWNER}/charts/kravn@${CHART_DIGEST}" && break
+            cosign sign --yes --identity-token "${OIDC_TOKEN}" "ghcr.io/${OWNER}/charts/kravn@${CHART_DIGEST}" && break
             echo "::warning::cosign sign (chart) attempt $i failed — retrying in $((i*5))s"
             sleep $((i*5))
             [ "$i" = 5 ] && { echo "::error::cosign sign (chart) failed after 5 attempts"; exit 1; }
