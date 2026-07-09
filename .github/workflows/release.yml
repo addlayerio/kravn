@@ -81,7 +81,15 @@ jobs:
           DIGEST: ${{ steps.build.outputs.digest }}
         # Keyless: cosign gets a short-lived cert from Fulcio bound to this workflow's OIDC identity and
         # records the signature in the public Rekor transparency log. No keys to manage.
-        run: cosign sign --yes "${IMAGE}@${DIGEST}"
+        # Retry: the ambient GitHub-OIDC token fetch can transiently return a non-JSON error
+        # ("fetching ambient OIDC credentials: invalid character 'u'…") under load — retry before failing.
+        run: |
+          for i in 1 2 3 4 5; do
+            cosign sign --yes "${IMAGE}@${DIGEST}" && exit 0
+            echo "::warning::cosign sign (image) attempt $i failed — retrying in $((i*5))s"
+            sleep $((i*5))
+          done
+          echo "::error::cosign sign (image) failed after 5 attempts"; exit 1
 
       - uses: azure/setup-helm@v4
         with:
@@ -100,7 +108,13 @@ jobs:
           echo "${PUSH_OUT}"
           CHART_DIGEST=$(echo "${PUSH_OUT}" | awk '/[Dd]igest:/{print $2}')
           # Sign the chart artifact too (keyless), so the whole release — image AND chart — is verifiable.
-          cosign sign --yes "ghcr.io/${OWNER}/charts/kravn@${CHART_DIGEST}"
+          # Retry: the ambient OIDC token fetch can transiently fail ("invalid character 'u'…") under load.
+          for i in 1 2 3 4 5; do
+            cosign sign --yes "ghcr.io/${OWNER}/charts/kravn@${CHART_DIGEST}" && break
+            echo "::warning::cosign sign (chart) attempt $i failed — retrying in $((i*5))s"
+            sleep $((i*5))
+            [ "$i" = 5 ] && { echo "::error::cosign sign (chart) failed after 5 attempts"; exit 1; }
+          done
 
       - name: Summary
         run: |
