@@ -20,6 +20,11 @@ jobs:
   scan:
     runs-on: ubuntu-latest
     steps:
+      # Required so upload-sarif can anchor the analysis to the real main commit/ref. Without a git checkout it
+      # logs "git call failed … not a git repository", falls back to a bare SHA, and GitHub then fails to
+      # reconcile the default-branch alerts — so fixed vulnerabilities never move to "Fixed".
+      - uses: actions/checkout@v4
+
       - name: Resolve lowercase owner
         id: vars
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
