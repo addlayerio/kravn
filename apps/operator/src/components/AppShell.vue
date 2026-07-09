@@ -16,6 +16,7 @@ import {
   Workflow,
   Settings as SettingsIcon,
   ScrollText,
+  Scale,
   Sun,
   Moon,
   LogOut,
@@ -64,6 +65,7 @@ const items: NavItem[] = [
   { to: '/pipelines', label: 'Pipelines', icon: Workflow, perm: 'settings.read', section: 'admin' },
   { to: '/llm-models', label: 'LLM Models', icon: Cpu, perm: 'settings.read', section: 'admin' },
   { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.read', section: 'admin', tour: 'settings' },
+  { to: '/governance', label: 'Governance', icon: Scale, perm: 'servers.read', section: 'admin' },
   { to: '/logs', label: 'Logs', icon: ScrollText, perm: 'logs.read', section: 'admin' },
 ];
 

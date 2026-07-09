@@ -6,6 +6,8 @@ export class Metrics {
   readonly toolErrors: Counter;
   readonly upstreamConnected: Gauge;
   readonly httpRequests: Counter;
+  readonly llmTokens: Counter;
+  readonly budgetBlocks: Counter;
 
   constructor() {
     this.registry.setDefaultLabels({ app: 'kravn' });
@@ -32,6 +34,18 @@ export class Metrics {
       name: 'kravn_http_requests_total',
       help: 'HTTP requests handled',
       labelNames: ['method', 'route', 'status'],
+      registers: [this.registry],
+    });
+    this.llmTokens = new Counter({
+      name: 'kravn_llm_tokens_total',
+      help: 'LLM tokens consumed via the gateway chat',
+      labelNames: ['kind', 'model'], // kind = input | output
+      registers: [this.registry],
+    });
+    this.budgetBlocks = new Counter({
+      name: 'kravn_budget_blocks_total',
+      help: 'Requests blocked (or warned) by a cost/quota budget',
+      labelNames: ['kind', 'action'], // kind = calls | tokens ; action = warn | block
       registers: [this.registry],
     });
   }

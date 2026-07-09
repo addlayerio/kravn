@@ -7,6 +7,8 @@ import { confluencePlugin } from './confluence.js';
 import { odooPlugin } from './odoo.js';
 import { zohoPlugin } from './zoho.js';
 import { nativeHookPlugins } from './native-hooks.js';
+import { approvalGate } from './approval-hook.js';
+import type { ApprovalService } from '../approvals/approval.service.js';
 
 /**
  * Native (built-in) plugins shipped with Kravn.
@@ -23,6 +25,7 @@ import { nativeHookPlugins } from './native-hooks.js';
  */
 export interface NativeDeps {
   interpreter: CodeExecutor;
+  approvals: ApprovalService;
 }
 
 export const CODE_INTERPRETER_ID = 'kravn-code-interpreter';
@@ -88,5 +91,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): KravnPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), ...nativeHookPlugins()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), approvalGate({ approvals: deps.approvals }), ...nativeHookPlugins()];
 }

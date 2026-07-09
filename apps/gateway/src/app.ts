@@ -28,6 +28,8 @@ import { chatRoutes } from './routes/chat.routes.js';
 import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
 import { auditRoutes } from './routes/audit.routes.js';
+import { approvalRoutes } from './routes/approvals.routes.js';
+import { usageRoutes } from './routes/usage.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
 import { eventRoutes } from './routes/events.routes.js';
@@ -235,6 +237,8 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     scimRoutes(app, services);
     logRoutes(app, services);
     auditRoutes(app, services);
+    approvalRoutes(app, services);
+    usageRoutes(app, services);
     mcpRoutes(app, services);
     overviewRoutes(app, services);
     eventRoutes(app, services);

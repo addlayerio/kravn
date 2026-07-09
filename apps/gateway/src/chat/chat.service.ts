@@ -7,6 +7,7 @@ import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
 import type { PluginManager } from '../plugins/manager.js';
 import type { SettingsService } from '../settings/settings.service.js';
+import type { UsageService } from '../usage/usage.service.js';
 import { CODE_INTERPRETER_ID, INTERPRETER_TOOL_NAME } from '../plugins/native.js';
 import type { AuthUser } from '../auth/auth.service.js';
 import type { Logger } from 'pino';
@@ -50,6 +51,7 @@ export class ChatService {
     private log: Logger,
     private plugins: PluginManager,
     private settings: SettingsService,
+    private usage: UsageService,
   ) {}
 
   /** Model governance: reject a model that isn't on the operator's allowlist (empty = allow any). Supports
@@ -74,6 +76,7 @@ export class ChatService {
     const provider = await this.repos.llmProviders.getById(conv.providerId);
     if (!provider) throw new Error('The conversation has no valid LLM provider.');
     this.assertModelAllowed(conv.model); // model-governance allowlist
+    await this.usage.assertTokenBudget(); // cost/quota governance — org-wide daily token budget
     const key = this.encryptor.decrypt(await this.repos.llmProviders.getApiKeyEncrypted(conv.providerId));
 
     const userMsg = await this.repos.chat.addMessage(newId(), conversationId, 'user', content);
@@ -90,7 +93,7 @@ export class ChatService {
     // Tool-calling is wired for OpenAI-family and Anthropic. Gemini still runs plain for now.
     const supportsTools = provider.type !== 'gemini';
 
-    const { tools, toolIndex } = await this.resolveTools(actor, conv);
+    const { tools, toolIndex, mcpEndpointId } = await this.resolveTools(actor, conv);
     // The code interpreter is a native PLUGIN; when enabled, auto-offer its registry tools (it's also
     // composable into virtual servers like any mcp-server plugin). No special-casing of execution.
     const interpreterOn = supportsTools && this.plugins.isEnabled(CODE_INTERPRETER_ID);
@@ -113,12 +116,12 @@ export class ChatService {
 
     if (!supportsTools || tools.length === 0) {
       // Plain completion (no tool loop).
-      const msg = await this.complete(provider, key, conv.model, messages, []);
+      const msg = await this.complete(actor, provider, key, conv.model, messages, []);
       finalText = textOf(msg);
     } else {
       // Provider-agnostic tool loop (complete() normalizes OpenAI / Anthropic tool formats).
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const msg = await this.complete(provider, key, conv.model, messages, tools);
+        const msg = await this.complete(actor, provider, key, conv.model, messages, tools);
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           finalText = textOf(msg);
           break;
@@ -141,7 +144,7 @@ export class ChatService {
           try {
             const toolId = toolIndex.get(name);
             if (!toolId) throw new Error(`unknown tool ${name}`);
-            const result = await this.registry.invokeTool(toolId, args, actor, { files: workspaceFiles });
+            const result = await this.registry.invokeTool(toolId, args, actor, { mcpEndpointId, files: workspaceFiles });
             // Only honor result `files` (→ downloadable attachments) from in-process plugin tools, never
             // from remote MCP upstreams (toolId `tl_plg_…` ⇒ plugin server). See review F1.
             const trusted = toolId.startsWith('tl_plg_');
@@ -254,10 +257,10 @@ export class ChatService {
   private async resolveTools(actor: AuthUser, conv: ChatConversation) {
     const tools: any[] = [];
     const toolIndex = new Map<string, string>();
-    if (!conv.vserverSlug) return { tools, toolIndex };
+    if (!conv.vserverSlug) return { tools, toolIndex, mcpEndpointId: undefined as string | undefined };
 
     const vs = await this.repos.mcpEndpoints.getBySlug(conv.vserverSlug);
-    if (!vs || !vs.enabled) return { tools, toolIndex };
+    if (!vs || !vs.enabled) return { tools, toolIndex, mcpEndpointId: undefined as string | undefined };
 
     // Enforce the MCP endpoint's DATA-PLANE access policy (same rule as the MCP endpoint + chat options):
     // consumption is by team membership — platform role/admin is NOT an axis here.
@@ -276,7 +279,9 @@ export class ChatService {
         function: { name: t.name, description: t.description || undefined, parameters: t.inputSchema ?? { type: 'object', properties: {} } },
       });
     }
-    return { tools, toolIndex };
+    // Carry the endpoint id so the tool-call path applies this endpoint's per-VS pipeline overlays (e.g. the
+    // Human Approval Gate) and per-endpoint usage metering — identical to the MCP data plane. See review F1.
+    return { tools, toolIndex, mcpEndpointId: vs.id };
   }
 
   // ─── LLM call (OpenAI-compatible + Anthropic) ──────────────────────────────────────────────────
@@ -285,15 +290,15 @@ export class ChatService {
     return (p.baseUrl || DEFAULT_BASE[p.type] || '').replace(/\/$/, '');
   }
 
-  private complete(p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+  private complete(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
     return withSpan(
       `llm.chat ${p.type}`,
-      () => this.completeInner(p, key, model, messages, tools),
+      () => this.completeInner(actor, p, key, model, messages, tools),
       { 'llm.provider': p.type, 'llm.model': model },
     );
   }
 
-  private async completeInner(p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+  private async completeInner(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
     const base = this.baseUrl(p);
     if (!base) throw new Error('Provider has no base URL.');
     if (!model) throw new Error('Conversation has no model.');
@@ -323,6 +328,7 @@ export class ChatService {
       if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data: any = await res.json();
       const u = data.usage ?? {};
+      void this.usage.meterTokens({ id: actor.id }, model, Number(u.input_tokens) || 0, Number(u.output_tokens) || 0);
       if (u.cache_read_input_tokens || u.cache_creation_input_tokens) {
         this.log.debug(
           { cacheRead: u.cache_read_input_tokens ?? 0, cacheWrite: u.cache_creation_input_tokens ?? 0, input: u.input_tokens ?? 0 },
@@ -355,6 +361,8 @@ export class ChatService {
       }, 60_000);
       if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data: any = await res.json();
+      const um = data.usageMetadata ?? {};
+      void this.usage.meterTokens({ id: actor.id }, model, Number(um.promptTokenCount) || 0, Number(um.candidatesTokenCount) || 0);
       const cand = data.candidates?.[0];
       const parts = cand?.content?.parts;
       let text = Array.isArray(parts) ? parts.map((p: any) => p.text ?? '').join('') : '';
@@ -381,6 +389,8 @@ export class ChatService {
     const res = await safeFetch(url, { method: 'POST', headers, body: JSON.stringify(body) }, 60_000);
     if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
     const data: any = await res.json();
+    const uo = data.usage ?? {};
+    void this.usage.meterTokens({ id: actor.id }, model, Number(uo.prompt_tokens) || 0, Number(uo.completion_tokens) || 0);
     const msg = data.choices?.[0]?.message;
     if (!msg) throw new Error('LLM returned no message.');
     return { role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls };

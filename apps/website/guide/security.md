@@ -29,12 +29,30 @@ surface a clear reason, and every denial is recorded for the operator.
 Composable pipelines let you enforce controls on every request and result:
 
 - **Secret & PII redaction** — strip credentials, keys and personal data before they ever reach a model.
-- **Prompt-injection defense** — detect and neutralize indirect injection in tool output.
+- **Prompt-injection & tool-poisoning defense** — detect and neutralize indirect injection in tool *output*
+  **and** in tool *definitions* (descriptions/schemas): strip invisible/bidi unicode, redact injected phrases,
+  and flag tools that shadow another server's name.
 - **Content policy** — deny-lists, safety filters and HTML sanitization.
 - **Tamper-evident audit** — a hash-chained record of every tool call: who, what, when.
 
 A global pipeline can enforce an organization-wide control that **no single endpoint can switch off** — an
 overlay may only add steps, never remove them.
+
+## Governance for autonomous agents
+
+As agents chain many tool calls on their own, the gateway is the one place to keep them safe and accountable:
+
+- **Rug-pull / tool-definition pinning** — Kravn fingerprints each tool's definition when it's first approved.
+  If a compromised or updated upstream **silently changes** that definition later, Kravn flags and audits it,
+  and (in `enforce` mode) **quarantines** the tool — it stops being advertised or invocable — until an admin
+  re-approves it. Defends against the classic MCP "rug-pull" where a server changes a tool after you trusted it.
+- **Human approval gate (maker-checker)** — require a person to approve a matching tool call (e.g. anything
+  that writes, deletes or transfers) before it runs. The call is **held** until someone approves it, is
+  **denied**, or the wait times out; it **fails closed** and enforces **separation of duties** — no one can
+  approve their own request. Every decision is on the audit trail.
+- **Cost & quota governance** — meter tool calls and LLM tokens per day (globally and per user, endpoint and
+  model) for chargeback, and set **daily budgets** that either warn or hard-block once exceeded. Usage is
+  visible in the console and exported to Prometheus.
 
 ## Hardened by default
 

@@ -15,6 +15,9 @@ const ICONS: Record<string, string> = {
   journal: '<path d="M6 3h9l3 3v15H6z"/><path d="M9 8h6M9 12h6M9 16h4"/>',
   globe: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/>',
   chip: '<rect x="8" y="8" width="8" height="8" rx="1"/><path d="M9 3v3M15 3v3M9 18v3M15 18v3M3 9h3M3 15h3M18 9h3M18 15h3"/>',
+  approve: '<path d="M12 3l7 3v5c0 4.2-3 7.4-7 8.5-4-1.1-7-4.3-7-8.5V6z"/><path d="M9 12l2 2 4-4"/>',
+  pin: '<path d="M12 3v6M8 9h8l-1.5 5h-5z M12 14v7"/>',
+  gauge: '<path d="M4 18a8 8 0 1116 0"/><path d="M12 18l4-5"/><circle cx="12" cy="18" r="1"/>',
   id: '<rect x="3" y="5" width="18" height="14" rx="2"/><circle cx="9" cy="11" r="2.1"/><path d="M5.6 16.4c.6-1.7 1.9-2.4 3.4-2.4s2.8.7 3.4 2.4"/><path d="M14 10h4M14 13h4"/>',
   grid: '<rect x="4" y="4" width="7" height="7" rx="1"/><rect x="13" y="4" width="7" height="7" rx="1"/><rect x="4" y="13" width="7" height="7" rx="1"/><rect x="13" y="13" width="7" height="7" rx="1"/>',
   plug: '<path d="M8 2v5M16 2v5"/><path d="M6 7h12v3a6 6 0 01-12 0z"/><path d="M12 16v5"/>',
@@ -45,9 +48,12 @@ const consumers = [
 const pipeline = [
   { icon: 'shield', label: 'Authn & RBAC' },
   { icon: 'eyeoff', label: 'PII / DLP redaction' },
+  { icon: 'approve', label: 'Human approval' },
+  { icon: 'pin', label: 'Tool-poisoning / rug-pull defence' },
   { icon: 'journal', label: 'Audit trail' },
   { icon: 'globe', label: 'SSRF egress guard' },
   { icon: 'chip', label: 'Model governance' },
+  { icon: 'gauge', label: 'Cost budgets' },
 ];
 
 const upstreams = [

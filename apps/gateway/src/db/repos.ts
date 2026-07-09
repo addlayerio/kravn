@@ -1257,6 +1257,214 @@ function mapConversation(r: any): ChatConversation {
 
 // ─── Aggregate ──────────────────────────────────────────────────────────────────────────────────────
 
+export interface ToolFingerprint {
+  id: string;
+  serverId: string;
+  toolName: string;
+  approvedHash: string;
+  approvedDesc: string;
+  approvedAt: string;
+  approvedBy: string;
+  pendingHash: string | null;
+  pendingDesc: string | null;
+  status: 'approved' | 'changed';
+  firstSeenAt: string;
+  updatedAt: string;
+}
+
+function mapFingerprint(r: any): ToolFingerprint {
+  return {
+    id: r.id,
+    serverId: r.server_id,
+    toolName: r.tool_name,
+    approvedHash: r.approved_hash,
+    approvedDesc: r.approved_desc ?? '',
+    approvedAt: r.approved_at,
+    approvedBy: r.approved_by,
+    pendingHash: r.pending_hash ?? null,
+    pendingDesc: r.pending_desc ?? null,
+    status: (r.status as 'approved' | 'changed') ?? 'approved',
+    firstSeenAt: r.first_seen_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/** Pinned tool-definition fingerprints for rug-pull / tool-poisoning detection (migration 016). */
+export class ToolFingerprintsRepo {
+  constructor(private store: Store) {}
+
+  async getByServer(serverId: string): Promise<ToolFingerprint[]> {
+    return (await this.store.all<any>('SELECT * FROM tool_fingerprints WHERE server_id = ?', [serverId])).map(mapFingerprint);
+  }
+  async get(id: string): Promise<ToolFingerprint | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM tool_fingerprints WHERE id = ?', [id]);
+    return r ? mapFingerprint(r) : undefined;
+  }
+  async listChanged(): Promise<ToolFingerprint[]> {
+    return (await this.store.all<any>("SELECT * FROM tool_fingerprints WHERE status = 'changed' ORDER BY updated_at DESC")).map(mapFingerprint);
+  }
+  async create(f: { id: string; serverId: string; toolName: string; approvedHash: string; approvedDesc: string; approvedBy: string; ts: string }): Promise<void> {
+    await this.store
+      .run(
+        `INSERT INTO tool_fingerprints (id, server_id, tool_name, approved_hash, approved_desc, approved_at, approved_by, pending_hash, pending_desc, status, first_seen_at, updated_at)
+         VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+        [f.id, f.serverId, f.toolName, f.approvedHash, f.approvedDesc, f.ts, f.approvedBy, null, null, 'approved', f.ts, f.ts],
+      )
+      .catch(() => {});
+  }
+  /** Flag a detected definition change — the approved baseline stays until an admin re-approves. */
+  async markChanged(id: string, pendingHash: string, pendingDesc: string, ts: string): Promise<void> {
+    await this.store
+      .run("UPDATE tool_fingerprints SET pending_hash = ?, pending_desc = ?, status = 'changed', updated_at = ? WHERE id = ?", [pendingHash, pendingDesc, ts, id])
+      .catch(() => {});
+  }
+  /** The definition reverted to the approved one before review — drop the pending flag. */
+  async clearPending(id: string, ts: string): Promise<void> {
+    await this.store
+      .run("UPDATE tool_fingerprints SET pending_hash = NULL, pending_desc = NULL, status = 'approved', updated_at = ? WHERE id = ?", [ts, id])
+      .catch(() => {});
+  }
+  /** Admin re-approves the changed definition: it becomes the new trusted baseline. */
+  async approve(id: string, hash: string, desc: string, by: string, ts: string): Promise<void> {
+    await this.store
+      .run(
+        "UPDATE tool_fingerprints SET approved_hash = ?, approved_desc = ?, approved_at = ?, approved_by = ?, pending_hash = NULL, pending_desc = NULL, status = 'approved', updated_at = ? WHERE id = ?",
+        [hash, desc, ts, by, ts, id],
+      )
+      .catch(() => {});
+  }
+  async deleteByServer(serverId: string): Promise<void> {
+    await this.store.run('DELETE FROM tool_fingerprints WHERE server_id = ?', [serverId]).catch(() => {});
+  }
+}
+
+export interface ToolApproval {
+  id: string;
+  serverId: string;
+  serverName: string;
+  toolName: string;
+  mcpEndpointId: string | null;
+  actorId: string | null;
+  actorEmail: string | null;
+  argsPreview: string;
+  status: 'pending' | 'approved' | 'denied' | 'expired';
+  reason: string | null;
+  resolvedBy: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+}
+
+function mapApproval(r: any): ToolApproval {
+  return {
+    id: r.id,
+    serverId: r.server_id,
+    serverName: r.server_name ?? '',
+    toolName: r.tool_name,
+    mcpEndpointId: r.mcp_endpoint_id ?? null,
+    actorId: r.actor_id ?? null,
+    actorEmail: r.actor_email ?? null,
+    argsPreview: r.args_preview ?? '',
+    status: (r.status as ToolApproval['status']) ?? 'pending',
+    reason: r.reason ?? null,
+    resolvedBy: r.resolved_by ?? null,
+    createdAt: r.created_at,
+    resolvedAt: r.resolved_at ?? null,
+  };
+}
+
+/** Held tool-call approvals — human-in-the-loop maker-checker (migration 017). */
+export class ToolApprovalsRepo {
+  constructor(private store: Store) {}
+
+  async create(a: {
+    id: string;
+    serverId: string;
+    serverName: string;
+    toolName: string;
+    mcpEndpointId: string | null;
+    actorId: string | null;
+    actorEmail: string | null;
+    argsPreview: string;
+    ts: string;
+  }): Promise<void> {
+    await this.store.run(
+      `INSERT INTO tool_approvals (id, server_id, server_name, tool_name, mcp_endpoint_id, actor_id, actor_email, args_preview, status, reason, resolved_by, created_at, resolved_at)
+       VALUES (?,?,?,?,?,?,?,?, 'pending', NULL, NULL, ?, NULL)`,
+      [a.id, a.serverId, a.serverName, a.toolName, a.mcpEndpointId, a.actorId, a.actorEmail, a.argsPreview, a.ts],
+    );
+  }
+  async get(id: string): Promise<ToolApproval | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM tool_approvals WHERE id = ?', [id]);
+    return r ? mapApproval(r) : undefined;
+  }
+  async listPending(): Promise<ToolApproval[]> {
+    return (await this.store.all<any>("SELECT * FROM tool_approvals WHERE status = 'pending' ORDER BY created_at ASC")).map(mapApproval);
+  }
+  /** Resolve a still-pending row (no-op if already resolved by someone/something else). */
+  async resolve(id: string, status: 'approved' | 'denied' | 'expired', by: string, reason: string, ts: string): Promise<void> {
+    await this.store.run("UPDATE tool_approvals SET status = ?, resolved_by = ?, reason = ?, resolved_at = ? WHERE id = ? AND status = 'pending'", [
+      status,
+      by,
+      reason,
+      ts,
+      id,
+    ]);
+  }
+}
+
+export type UsageScope = 'global' | 'user' | 'endpoint' | 'model';
+export interface UsageRow {
+  periodKey: string;
+  scopeType: UsageScope;
+  scopeId: string;
+  calls: number;
+  inputTokens: number;
+  outputTokens: number;
+  updatedAt: string;
+}
+function mapUsage(r: any): UsageRow {
+  return {
+    periodKey: r.period_key,
+    scopeType: (r.scope_type as UsageScope) ?? 'global',
+    scopeId: r.scope_id ?? '',
+    calls: Number(r.calls) || 0,
+    inputTokens: Number(r.input_tokens) || 0,
+    outputTokens: Number(r.output_tokens) || 0,
+    updatedAt: r.updated_at,
+  };
+}
+
+/** Per-period usage counters for cost/quota governance + chargeback (migration 018). Best-effort metering. */
+export class UsageRepo {
+  constructor(private store: Store) {}
+
+  private updateSql = `UPDATE usage_counters SET calls = calls + ?, input_tokens = input_tokens + ?, output_tokens = output_tokens + ?, updated_at = ?
+                       WHERE period_key = ? AND scope_type = ? AND scope_id = ?`;
+
+  /** Increment a scope's counters for a period; creates the row if missing (race-safe via insert-then-retry). */
+  async add(periodKey: string, scopeType: UsageScope, scopeId: string, calls: number, inTok: number, outTok: number): Promise<void> {
+    const ts = now();
+    const args = [calls, inTok, outTok, ts, periodKey, scopeType, scopeId];
+    const exists = await this.store.get<any>('SELECT scope_id FROM usage_counters WHERE period_key = ? AND scope_type = ? AND scope_id = ?', [periodKey, scopeType, scopeId]).catch(() => undefined);
+    if (exists) {
+      await this.store.run(this.updateSql, args).catch(() => {});
+      return;
+    }
+    await this.store
+      .run('INSERT INTO usage_counters (period_key, scope_type, scope_id, calls, input_tokens, output_tokens, updated_at) VALUES (?,?,?,?,?,?,?)', [periodKey, scopeType, scopeId, calls, inTok, outTok, ts])
+      .catch(async () => {
+        await this.store.run(this.updateSql, args).catch(() => {}); // lost the insert race → the row exists now
+      });
+  }
+  async get(periodKey: string, scopeType: UsageScope, scopeId: string): Promise<UsageRow | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM usage_counters WHERE period_key = ? AND scope_type = ? AND scope_id = ?', [periodKey, scopeType, scopeId]);
+    return r ? mapUsage(r) : undefined;
+  }
+  async list(periodKey: string): Promise<UsageRow[]> {
+    return (await this.store.all<any>('SELECT * FROM usage_counters WHERE period_key = ? ORDER BY scope_type ASC, output_tokens DESC', [periodKey])).map(mapUsage);
+  }
+}
+
 export interface Repos {
   users: UsersRepo;
   settings: SettingsRepo;
@@ -1275,6 +1483,9 @@ export interface Repos {
   oauth: OAuthRepo;
   auditLog: AuditLogRepo;
   serverOAuth: ServerOAuthRepo;
+  toolFingerprints: ToolFingerprintsRepo;
+  toolApprovals: ToolApprovalsRepo;
+  usage: UsageRepo;
 }
 
 export interface OAuthClient {
@@ -1654,5 +1865,8 @@ export function createRepos(store: Store): Repos {
     oauth: new OAuthRepo(store),
     auditLog: new AuditLogRepo(store),
     serverOAuth: new ServerOAuthRepo(store),
+    toolFingerprints: new ToolFingerprintsRepo(store),
+    toolApprovals: new ToolApprovalsRepo(store),
+    usage: new UsageRepo(store),
   };
 }

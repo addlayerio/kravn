@@ -14,6 +14,22 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/resources', authRead, async () => ({ resources: await s.repos.registry.listResources() }));
   app.get('/api/prompts', authRead, async () => ({ prompts: await s.repos.registry.listPrompts() }));
 
+  // ─── Tool-definition change review (rug-pull / tool-poisoning defence) ───────────────────────
+  // A tool whose definition silently changed since it was approved is surfaced here; under `enforce` it stays
+  // quarantined until an admin re-approves it (which re-baselines the fingerprint and re-materializes the tool).
+  app.get('/api/tool-changes', { preHandler: [app.authenticate, app.authorize('servers.read')] }, async () => ({
+    changes: await s.registry.listToolChanges(),
+  }));
+  app.post('/api/tool-changes/:id/approve', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    try {
+      await s.registry.approveToolChange(id, currentUser(req));
+      return { ok: true };
+    } catch (err) {
+      return sendError(reply, 400, 'approve_failed', err instanceof Error ? err.message : 'Could not approve tool change.');
+    }
+  });
+
   app.patch('/api/tools/:id', authWrite, async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = (req.body ?? {}) as { enabled?: boolean };

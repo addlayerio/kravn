@@ -6,7 +6,7 @@ import {
 import { newId, slugify, shortHash } from '../crypto.js';
 import { withSpan } from '../otel.js';
 import type { Encryptor } from '../crypto.js';
-import type { Repos } from '../db/repos.js';
+import type { Repos, ToolFingerprint } from '../db/repos.js';
 import type { SettingsService } from '../settings/settings.service.js';
 import type { UpstreamManager } from './upstream.js';
 import type { SsrfGuard } from '../http/ssrf.js';
@@ -17,6 +17,8 @@ import type { Metrics } from '../metrics.js';
 import type { PluginManager } from '../plugins/manager.js';
 import type { McpCallContext } from '@kravn/plugin-sdk';
 import type { AuthUser } from '../auth/auth.service.js';
+import type { AuditService } from '../audit/audit.service.js';
+import type { UsageService } from '../usage/usage.service.js';
 import type { Logger } from 'pino';
 
 export interface RegistryDeps {
@@ -31,6 +33,8 @@ export interface RegistryDeps {
   plugins: PluginManager;
   upstreamOAuth: UpstreamOAuthService;
   events: EventBus;
+  audit: AuditService;
+  usage: UsageService;
 }
 
 /**
@@ -55,6 +59,30 @@ function compositeId(prefix: string, serverId: string, key: string): string {
 const toolId = (serverId: string, name: string) => compositeId('tl', serverId, name);
 const resourceId = (serverId: string, uri: string) => compositeId('rs', serverId, uri);
 const promptId = (serverId: string, name: string) => compositeId('pr', serverId, name);
+
+/** Stable JSON (sorted keys) so a mere key-reorder from the upstream isn't mistaken for a definition change. */
+function stableJson(v: unknown): string {
+  const seen = new WeakSet<object>();
+  const norm = (x: any): any => {
+    if (x === null || typeof x !== 'object') return x;
+    if (seen.has(x)) return null; // guard cycles
+    seen.add(x);
+    if (Array.isArray(x)) return x.map(norm);
+    return Object.keys(x)
+      .sort()
+      .reduce((o: any, k) => ((o[k] = norm(x[k])), o), {});
+  };
+  try {
+    return JSON.stringify(norm(v));
+  } catch {
+    return '';
+  }
+}
+// Tamper fingerprint of a tool's externally-visible contract (description + input schema). Full SHA-256 hex
+// (64 chars, fits the varchar(64) column): a malicious upstream controls the description, so a truncated hash
+// would be second-preimage-feasible — it must be full-width. Row id uses a 160-bit prefix (fits `fp_` + 40).
+const toolFingerprint = (description: string, inputSchema: unknown) => shortHash(`${description}\0${stableJson(inputSchema)}`, 64);
+const fingerprintId = (serverId: string, name: string) => `fp_${shortHash(`${serverId}\0${name}`, 40)}`;
 
 // Catalog column limits — an upstream can return anything, so clamp bounded fields before storing so one long
 // value (a long resource name, a huge input schema on MySQL where TEXT caps at 64KB, …) can't fail the whole
@@ -195,6 +223,7 @@ export class RegistryService {
   async deleteServer(id: string): Promise<void> {
     await this.d.upstream.disconnect(id);
     await this.d.repos.servers.delete(id);
+    await this.d.repos.toolFingerprints.deleteByServer(id); // drop pinned baselines for the gone server
     this.refreshGauge();
     this.d.logstore.add('info', `Server removed`, { id });
     this.d.events.fire('registry');
@@ -279,16 +308,32 @@ export class RegistryService {
       }
     };
 
+    // Tool-definition pinning (rug-pull / tool-poisoning defence): compare each tool's definition against its
+    // approved baseline; under `enforce` a silently-changed tool is quarantined (skipped) until re-approved.
+    const pinning = this.d.settings.get().governance?.toolPinning ?? 'off';
+    const priorFps = pinning === 'off' ? new Map<string, ToolFingerprint>() : await this.loadFingerprints(server.id);
+    let quarantined = 0;
+
     const tools = await this.d.upstream.listTools(server.id);
     for (const t of tools.tools ?? []) {
+      const name = clampStr(t.name, MAX_NAME);
+      const description = clampStr(t.description ?? '', MAX_TEXT);
+      const inputSchema = clampJson(t.inputSchema ?? {}, {});
+
+      if (pinning !== 'off' && (await this.pinTool(server, t.name, description, inputSchema, priorFps, pinning))) {
+        quarantined++;
+        continue; // changed + enforce → skip insert so it is neither advertised nor invocable
+      }
+
       await store('tool', t.name, () =>
-        registry.upsertTool({
-          id: toolId(server.id, t.name),
-          serverId: server.id,
-          name: clampStr(t.name, MAX_NAME),
-          description: clampStr(t.description ?? '', MAX_TEXT),
-          inputSchema: clampJson(t.inputSchema ?? {}, {}),
-        }),
+        registry.upsertTool({ id: toolId(server.id, t.name), serverId: server.id, name, description, inputSchema }),
+      );
+    }
+    if (quarantined) {
+      this.d.logstore.add(
+        'warn',
+        `Quarantined ${quarantined} tool(s) on "${server.name}" whose definition changed since approval — review under Tool changes.`,
+        { id: server.id },
       );
     }
 
@@ -322,6 +367,104 @@ export class RegistryService {
     if (skipped) {
       this.d.logstore.add('warn', `Synced "${server.name}" but ${skipped} catalog item(s) were too large to store and were skipped`, { id: server.id });
     }
+  }
+
+  private async loadFingerprints(serverId: string): Promise<Map<string, ToolFingerprint>> {
+    try {
+      const rows = await this.d.repos.toolFingerprints.getByServer(serverId);
+      return new Map(rows.map((f) => [f.toolName, f]));
+    } catch (err) {
+      this.d.log.warn({ err, server: serverId }, 'tool fingerprint load failed (pinning skipped this sync)');
+      return new Map();
+    }
+  }
+
+  /**
+   * Compare one tool's live definition against its approved baseline. Records the baseline on first sight
+   * (trust-on-first-use), flags + audits a later change, and returns `true` iff the tool must be quarantined
+   * (i.e. changed AND mode === 'enforce'). Fail-open on any internal error — availability over strictness.
+   */
+  private async pinTool(
+    server: UpstreamServer,
+    toolName: string,
+    description: string,
+    inputSchema: unknown,
+    prior: Map<string, ToolFingerprint>,
+    mode: 'audit' | 'enforce',
+  ): Promise<boolean> {
+    try {
+      const fp = toolFingerprint(description, inputSchema);
+      const existing = prior.get(toolName);
+      const ts = new Date().toISOString();
+
+      if (!existing) {
+        await this.d.repos.toolFingerprints.create({
+          id: fingerprintId(server.id, toolName),
+          serverId: server.id,
+          toolName,
+          approvedHash: fp,
+          approvedDesc: description.slice(0, 500),
+          approvedBy: 'auto (first seen)',
+          ts,
+        });
+        return false;
+      }
+      if (existing.approvedHash === fp) {
+        if (existing.status === 'changed') await this.d.repos.toolFingerprints.clearPending(existing.id, ts); // reverted
+        return false;
+      }
+      // Definition changed since it was approved — the rug-pull signal. Record + audit once per new hash.
+      if (existing.pendingHash !== fp) {
+        await this.d.repos.toolFingerprints.markChanged(existing.id, fp, description.slice(0, 500), ts);
+        await this.d.audit
+          .record({
+            category: 'system',
+            action: 'mcp.tool.definition_changed',
+            outcome: 'failure',
+            resourceType: 'tool',
+            resourceId: existing.id,
+            details: {
+              server: server.name,
+              serverId: server.id,
+              tool: toolName,
+              mode,
+              approvedBy: existing.approvedBy,
+              approvedAt: existing.approvedAt,
+              oldHash: existing.approvedHash,
+              newHash: fp,
+              quarantined: mode === 'enforce',
+            },
+          })
+          .catch(() => {});
+      }
+      return mode === 'enforce';
+    } catch (err) {
+      this.d.log.warn({ err, server: server.name, tool: toolName }, 'tool fingerprint check failed (fail-open)');
+      return false;
+    }
+  }
+
+  /** Tool-definition changes awaiting admin re-approval (the rug-pull review queue). */
+  async listToolChanges(): Promise<ToolFingerprint[]> {
+    return this.d.repos.toolFingerprints.listChanged();
+  }
+
+  /** Admin re-approves a changed definition: it becomes the new baseline and the tool is re-materialized. */
+  async approveToolChange(id: string, actor: AuthUser): Promise<void> {
+    const fp = await this.d.repos.toolFingerprints.get(id);
+    if (!fp || fp.status !== 'changed' || !fp.pendingHash) throw new Error('No pending tool change to approve.');
+    await this.d.repos.toolFingerprints.approve(id, fp.pendingHash, fp.pendingDesc ?? '', actor.email, new Date().toISOString());
+    await this.d.audit
+      .record({
+        category: 'config',
+        action: 'mcp.tool.definition_approved',
+        actor: { id: actor.id, email: actor.email, role: actor.role },
+        resourceType: 'tool',
+        resourceId: id,
+        details: { serverId: fp.serverId, tool: fp.toolName, newHash: fp.pendingHash },
+      })
+      .catch(() => {});
+    await this.connectAndSync(fp.serverId); // re-materialize the now-approved tool into the registry
   }
 
   /** Connect + sync every enabled server (best-effort), used at startup. */
@@ -369,6 +512,8 @@ export class RegistryService {
     return withSpan(
       `mcp.tool ${tool.name}`,
       async () => {
+        // Cost/quota governance: refuse before touching the pipeline/upstream when a daily budget is exhausted.
+        await this.d.usage.assertCallBudget();
         // Apigee-style request hook: plugins may mutate the arguments or block the call.
         const callArgs = await this.d.plugins.applyToolPre(tool.serverId, tool.name, args, actor, vsId);
         try {
@@ -377,6 +522,7 @@ export class RegistryService {
           // Response hook: plugins may mutate the result.
           result = await this.d.plugins.applyToolPost(tool.serverId, tool.name, result, actor, vsId);
           this.d.metrics.toolCalls.inc({ server: tool.serverId, tool: tool.name });
+          void this.d.usage.meterToolCall(actor && { id: actor.id }, vsId); // best-effort usage metering
           this.d.logstore.add('info', `Tool "${tool.name}" invoked`, { server: tool.serverId });
           return result;
         } catch (err) {

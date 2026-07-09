@@ -642,8 +642,85 @@ const sessions: Migration = {
   },
 };
 
+// Tool-definition fingerprints — rug-pull / tool-poisoning defence. One row per (server, tool); we pin the
+// approved definition (hash of description + inputSchema) so a later silent change is detected on resync.
+const toolFingerprints: Migration = {
+  name: '016_tool_fingerprints',
+  async up(knex) {
+    await createIfMissing(knex, 'tool_fingerprints', (t) => {
+      t.string('id', 64).notNullable().unique(); // deterministic: hash(serverId, toolName)
+      t.string('server_id', 64).notNullable();
+      t.string('tool_name', 191).notNullable();
+      t.string('approved_hash', 64).notNullable(); // fingerprint of the currently-trusted definition
+      t.text('approved_desc'); // truncated approved description, for the review diff
+      t.string('approved_at', 40).notNullable();
+      t.string('approved_by', 191).notNullable(); // admin email, or 'auto (first seen)'
+      t.string('pending_hash', 64); // a detected changed definition awaiting re-approval
+      t.text('pending_desc'); // truncated changed description
+      t.string('status', 16).notNullable().defaultTo('approved'); // approved | changed
+      t.string('first_seen_at', 40).notNullable();
+      t.string('updated_at', 40).notNullable();
+      t.index(['server_id']);
+      t.index(['status']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('tool_fingerprints');
+  },
+};
+
+// Human-in-the-loop approval queue — a matching (high-risk) tool call is held here until an admin approves,
+// denies, or it times out. One row per held call.
+const toolApprovals: Migration = {
+  name: '017_tool_approvals',
+  async up(knex) {
+    await createIfMissing(knex, 'tool_approvals', (t) => {
+      t.string('id', 64).notNullable().unique();
+      t.string('server_id', 64).notNullable();
+      t.string('server_name', 191).notNullable().defaultTo('');
+      t.string('tool_name', 191).notNullable();
+      t.string('mcp_endpoint_id', 64);
+      t.string('actor_id', 64);
+      t.string('actor_email', 191);
+      t.text('args_preview'); // truncated, secret-redacted JSON of the call arguments
+      t.string('status', 16).notNullable().defaultTo('pending'); // pending | approved | denied | expired
+      t.text('reason');
+      t.string('resolved_by', 191);
+      t.string('created_at', 40).notNullable();
+      t.string('resolved_at', 40);
+      t.index(['status']);
+      t.index(['created_at']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('tool_approvals');
+  },
+};
+
+// Cost / quota governance — per-period usage counters, keyed by (period, scope). scope_type is
+// global | user | endpoint | model; scope_id is the matching id (or '' for global). Upsert-incremented on
+// each tool call and LLM round so budgets and chargeback can be checked/reported cheaply.
+const usageCounters: Migration = {
+  name: '018_usage_counters',
+  async up(knex) {
+    await createIfMissing(knex, 'usage_counters', (t) => {
+      t.string('period_key', 16).notNullable(); // e.g. 2026-07-09 (UTC day)
+      t.string('scope_type', 16).notNullable(); // global | user | endpoint | model
+      t.string('scope_id', 64).notNullable().defaultTo(''); // '' for global
+      t.integer('calls').notNullable().defaultTo(0);
+      t.bigInteger('input_tokens').notNullable().defaultTo(0);
+      t.bigInteger('output_tokens').notNullable().defaultTo(0);
+      t.string('updated_at', 40).notNullable();
+      t.primary(['period_key', 'scope_type', 'scope_id']);
+    });
+  },
+  async down(knex) {
+    await knex.schema.dropTableIfExists('usage_counters');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

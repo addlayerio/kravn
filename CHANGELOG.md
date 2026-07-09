@@ -12,6 +12,28 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.75] — 2026-07-09
+
+- 📣🔒 **MCP threat defence — rug-pull detection & tool-poisoning scanning.** A compromised or updated upstream
+  can silently change a tool's definition after you approved it, or hide instructions in a tool description
+  ("tool poisoning"). Kravn now defends against both. **Tool-definition pinning** (Settings → Governance →
+  *Tool-definition pinning*: `off` / `audit` / `enforce`) fingerprints each tool's description + input schema
+  on first sight; a later change is flagged, audited, and — under `enforce` — the tool is **quarantined** (not
+  advertised or invocable) until an admin re-approves it under **Governance → Tool changes**. The
+  **Prompt-Injection Guard** plugin now also scans tool *definitions* (add it to the `onListTools` junction):
+  it strips invisible/bidi/tag unicode, redacts/annotates injected phrases in descriptions, and flags
+  name-shadowing across servers.
+- 📣🔒 **Human approval gate (maker-checker) for agent actions.** The new **Human Approval Gate** plugin holds
+  a matching tool call (glob on tool name or `server/tool`) until a person approves it under **Governance →
+  Approvals**: approved → the call runs; denied → it's blocked; not decided within the timeout → blocked with
+  a queue id to retry (bounded-wait, configurable). It **fails closed**, enforces **separation of duties** (you
+  can't approve your own call), records every decision in the audit trail, and works across replicas.
+- 📣🔒 **Cost / quota governance.** Kravn now meters **tool calls** and **LLM tokens** per day (global, per
+  user, per endpoint, per model) for chargeback, and enforces **org-wide daily budgets** (Settings →
+  Governance): exceed the tool-call or token budget and Kravn either warns or blocks (`budgetAction`). Usage
+  and budgets are shown under **Governance → Usage** and exported to Prometheus (`kravn_llm_tokens_total`,
+  `kravn_budget_blocks_total`) and the audit trail. (Per-team / per-endpoint budgets are on the roadmap.)
+
 ## [0.1.74] — 2026-07-06
 
 - 📣🐛 **Non-admin users can now sign in to authorize an MCP endpoint (OAuth consent).** Connecting a Kravn

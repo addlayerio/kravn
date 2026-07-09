@@ -20,6 +20,8 @@ import { installGlobalSsrfDispatcher } from './http/client.js';
 import { UpstreamManager } from './mcp/upstream.js';
 import { RegistryService } from './mcp/registry.service.js';
 import { AuditService } from './audit/audit.service.js';
+import { ApprovalService } from './approvals/approval.service.js';
+import { UsageService } from './usage/usage.service.js';
 import { UpstreamOAuthService } from './auth/upstream-oauth.service.js';
 import { EventBus } from './events/bus.js';
 import { DownstreamMcp } from './mcp/downstream.js';
@@ -58,6 +60,10 @@ export interface Services {
   metrics: Metrics;
   /** Immutable, hash-chained, SIEM-exported audit trail (config changes, etc.). */
   audit: AuditService;
+  /** Human-in-the-loop maker-checker: holds high-risk tool calls until an admin approves/denies them. */
+  approvals: ApprovalService;
+  /** Cost/quota governance: meters tool calls + LLM tokens and enforces org-wide daily budgets. */
+  usage: UsageService;
   /** Cross-replica shared state (rate-limit counters, in-flight OIDC login); memory-backed when no Redis URL. */
   sharedStore: SharedStore;
 }
@@ -142,11 +148,16 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const upstream = new UpstreamManager(log, () => settings.get().mcp.requestTimeoutMs);
   // The code interpreter is shipped as a native plugin (privileged runtime); build it with the executor injected.
   const interpreter = new PyodideExecutor(log);
-  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter }), encryptor);
+  const events = new EventBus();
+  // Human-in-the-loop approvals: the approval-gate native hook holds a call and blocks in ApprovalService until
+  // an admin decides (or it times out). Built before the plugin manager so it can be injected into the hook.
+  const approvals = new ApprovalService({ repos, audit, events, log });
+  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter, approvals }), encryptor);
   upstream.setPluginManager(plugins);
   const upstreamOAuth = new UpstreamOAuthService({ repos, encryptor, ssrf, log });
-  const events = new EventBus();
-  const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins, upstreamOAuth, events });
+  // Cost/quota governance: meters tool calls + LLM tokens and enforces org-wide daily budgets.
+  const usage = new UsageService({ repos, settings, metrics, audit, log });
+  const registry = new RegistryService({ repos, encryptor, upstream, settings, ssrf, log, logstore, metrics, plugins, upstreamOAuth, events, audit, usage });
   const downstream = new DownstreamMcp(repos, registry, settings, plugins);
   plugins.onChange = () => {
     downstream.invalidateRegistryCache(); // a plugin toggle changes the tool/resource/prompt set — reflect now
@@ -165,11 +176,11 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
     .catch((err) => log.error({ err }, 'platform-admin reconciliation failed (admins keep console access via role)'));
   const sso = new SsoService(repos, encryptor, jwt, settings, log, sharedStore);
   const oauth = new OAuthService(repos, jwt, settings);
-  const chat = new ChatService(repos, encryptor, registry, log, plugins, settings);
+  const chat = new ChatService(repos, encryptor, registry, log, plugins, settings, usage);
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, interpreter, logstore, metrics, audit, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */

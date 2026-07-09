@@ -13,6 +13,19 @@ import { z } from 'zod';
 export const LOG_LEVELS = ['fatal', 'error', 'warn', 'info', 'debug', 'trace'] as const;
 export type LogLevel = (typeof LOG_LEVELS)[number];
 
+/**
+ * Tool-definition pinning (rug-pull / tool-poisoning defence):
+ *  - `off`     — do not track tool definitions.
+ *  - `audit`   — pin each tool's definition on first sight; record + audit any later silent change, but keep serving it.
+ *  - `enforce` — same, but a changed tool is quarantined (not advertised or invocable) until an admin re-approves it.
+ */
+export const TOOL_PINNING_MODES = ['off', 'audit', 'enforce'] as const;
+export type ToolPinningMode = (typeof TOOL_PINNING_MODES)[number];
+
+/** What to do when a cost/quota budget is exceeded: `warn` (log + audit, keep serving) or `block` (refuse). */
+export const BUDGET_ACTIONS = ['warn', 'block'] as const;
+export type BudgetAction = (typeof BUDGET_ACTIONS)[number];
+
 /** Cloud metadata endpoints that must stay blocked even when private networks are allowed. */
 export const DEFAULT_BLOCKED_HOSTS = [
   '169.254.169.254', // AWS / Azure / GCP IMDS
@@ -49,6 +62,17 @@ export const appSettingsSchema = z
         /** Model governance: allowlist of LLM model ids the chat may use (exact or `*` glob, e.g.
          *  `claude-*`). Empty = allow any model on a configured provider. */
         allowedModels: z.array(z.string()).default([]),
+      })
+      .default({}),
+
+    governance: z
+      .object({
+        /** Rug-pull / tool-poisoning defence — see TOOL_PINNING_MODES. Defaults to off (opt-in). */
+        toolPinning: z.enum(TOOL_PINNING_MODES).default('off'),
+        /** Org-wide daily budgets (0 = off). Enforced globally per UTC day; per-team/endpoint is on the roadmap. */
+        dailyTokenBudget: z.number().int().min(0).default(0),
+        dailyCallBudget: z.number().int().min(0).default(0),
+        budgetAction: z.enum(BUDGET_ACTIONS).default('warn'),
       })
       .default({}),
 
@@ -185,6 +209,15 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'security.rateLimitEnabled', label: 'Rate limiting', control: 'boolean' },
       { path: 'security.rateLimitPerMinute', label: 'Requests / minute', control: 'number' },
       { path: 'security.allowedModels', label: 'Allowed LLM models (empty = any; * glob ok)', control: 'string[]' },
+      {
+        path: 'governance.toolPinning',
+        label: 'Tool-definition pinning (rug-pull defence)',
+        control: 'enum',
+        options: TOOL_PINNING_MODES,
+      },
+      { path: 'governance.dailyTokenBudget', label: 'Daily LLM token budget (0 = off)', control: 'number' },
+      { path: 'governance.dailyCallBudget', label: 'Daily tool-call budget (0 = off)', control: 'number' },
+      { path: 'governance.budgetAction', label: 'When a budget is exceeded', control: 'enum', options: BUDGET_ACTIONS },
     ],
   },
   {

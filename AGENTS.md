@@ -31,6 +31,12 @@ hardcoded tool special-cased inside a service.
 - Provider tool-calling (OpenAI / Anthropic / Gemini function-calling) is a **separate layer**: making a
   tool "available to a model" means wiring that provider's tool-calling, regardless of where the tool
   lives. Don't conflate "is it a plugin" (tool source) with "can this model call it" (provider wiring).
+- A **hook** plugin that is stateless/dependency-free lives in `plugins/native-hooks.ts` (the redactor / DLP /
+  prompt-injection-guard family). One that needs a DB or a service (e.g. the **Human Approval Gate** needs
+  `ApprovalService`) goes in its **own file** with a `factory(deps)` and is wired through `nativePlugins(deps)`
+  in `plugins/native.ts` — never reach for repos inside `native-hooks.ts`. A **security-critical** `onToolCall`
+  pre-hook must **fail CLOSED**: `applyPre` treats a THROW as fail-**open** (skipped), so wrap the body and call
+  `ctx.deny(...)` on any error — only `ctx.deny` blocks; a thrown error does not.
 
 ### 2. Multi-tenant scoping on every per-user data path
 Chat conversations, projects, documents and attachments are per-user. Every repo query and route must be
@@ -76,6 +82,14 @@ sensitive virtual servers `restricted`**), and the per-change checklist + review
 change done, run the SECURITY.md §6 checklist against your diff; if it touches auth, tokens, routes, MCP,
 OAuth, SSO, plugins, DB or headers (§5), run the adversarial review and fix confirmed findings first. Add a
 row to the SECURITY.md change log for any release that touches security.
+
+Two invariants surfaced by the governance review, easy to reintroduce:
+- **Tamper / pinning fingerprints are full-width hashes, never a truncated `shortHash`.** A 48-bit digest of
+  attacker-controlled content (e.g. a tool description a malicious upstream fully controls) is
+  second-preimage-feasible in GPU-hours — defeating the detection. Use the full SHA-256; `shortHash(x, 64)`.
+- **A per-endpoint pipeline control must be enforced on BOTH planes.** Every `registry.invokeTool` caller must
+  pass `mcpEndpointId` — the MCP data plane (`mcp/downstream.ts`) **and** the built-in chat (`chat/chat.service.ts`) —
+  or a per-VS overlay (the approval gate, per-endpoint usage metering) silently no-ops on whichever path forgets it.
 
 ### 6. Live updates via SSE, never front-end polling
 When the operator (or any UI) needs to reflect server-side changes, push them over **Server-Sent Events**,

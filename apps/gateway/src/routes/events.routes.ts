@@ -28,7 +28,9 @@ export function eventRoutes(app: FastifyInstance, s: Services): void {
       }
     };
     const onRegistry = () => send('registry');
+    const onApprovals = () => send('approvals');
     s.events.on('registry', onRegistry);
+    s.events.on('approvals', onApprovals);
     const heartbeat = setInterval(() => {
       try {
         raw.write(': hb\n\n');
@@ -40,6 +42,7 @@ export function eventRoutes(app: FastifyInstance, s: Services): void {
     const cleanup = () => {
       clearInterval(heartbeat);
       s.events.off('registry', onRegistry);
+      s.events.off('approvals', onApprovals);
     };
     req.raw.on('close', cleanup);
     req.raw.on('error', cleanup);
