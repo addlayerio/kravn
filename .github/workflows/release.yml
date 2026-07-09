@@ -25,7 +25,6 @@ permissions:
   contents: read
   packages: write
   id-token: write # keyless cosign signing via GitHub OIDC (Sigstore Fulcio/Rekor)
-  security-events: write # upload the Trivy SARIF to the Security tab
 
 jobs:
   release:
@@ -109,32 +108,24 @@ jobs:
           done
           echo "::error::cosign sign (image) failed after 5 attempts"; exit 1
 
-      # Scan the released image for known vulnerabilities (same tool as the daily trivy.yml scan) and publish
-      # the findings to the repo's Security tab. Reporting only — it does not fail the release.
+      # Scan the released image and print the result to the build log as a per-version record. It does NOT
+      # upload to the Security tab on purpose: a release runs on a TAG ref, and tag-scoped code-scanning
+      # analyses never reconcile the default-branch alert view — uploading here would create alerts that can
+      # never be auto-closed (exactly what happened with v0.1.78). The Security tab is fed solely by trivy.yml
+      # scanning the image on the DEFAULT BRANCH, where alerts open AND close correctly. Reporting only.
       - name: Scan the released image (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true # reporting only — never fail a release on the scan
         env:
-          # Pull the vuln DB from our own GHCR mirror (populated by the "Mirror Trivy DB to GHCR" workflow),
-          # not the public registry. Run that workflow once first so the DB exists.
           TRIVY_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
           TRIVY_JAVA_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
           TRIVY_USERNAME: ${{ github.actor }} # auth for pulling the image + DB from our GHCR
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
-          format: sarif
-          output: trivy-results.sarif
+          format: table
           severity: CRITICAL,HIGH
           ignore-unfixed: true
-
-      - name: Upload Trivy results to the Security tab
-        uses: github/codeql-action/upload-sarif@v4
-        if: always()
-        continue-on-error: true # needs Code scanning enabled (free on public repos); don't fail the release
-        with:
-          sarif_file: trivy-results.sarif
-          category: trivy-release
 
       - uses: azure/setup-helm@v4
         with:
