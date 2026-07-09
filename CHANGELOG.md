@@ -12,6 +12,13 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.78] — 2026-07-09
+
+- 🔒 **Release images are vulnerability-scanned with Trivy.** Every release now runs a Trivy scan of the built
+  image (CRITICAL/HIGH, fixable only) and publishes the findings to the repo's Security tab — on top of the
+  SBOM, SLSA provenance and cosign signature. The Trivy vulnerability DB is mirrored into our own GHCR
+  (refreshed daily) so scans pull from a controlled source, not the public registry.
+
 ## [0.1.77] — 2026-07-09
 
 - 📣 **Settings page redesigned.** The one-long-scroll list of every option is now a sectioned two-pane
