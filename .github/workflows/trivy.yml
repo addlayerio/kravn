@@ -59,12 +59,14 @@ jobs:
           severity: CRITICAL,HIGH
           ignore-unfixed: true # only vulns with a fix available — actionable
 
-      # Same category as the release scan, uploaded on the default branch, so this run's (patched) results
-      # become the canonical set and any vulnerability no longer present is auto-closed.
+      # Category "trivy": the canonical default-branch image-scan lineage. Deliberately DIFFERENT from the
+      # old "trivy-release" (v0.1.78's tag scan) so that (a) this clean main analysis is its own set that
+      # opens/auto-closes correctly, and (b) dismissing the stuck v0.1.78 tag orphans never suppresses a real
+      # future recurrence here — a recurrence surfaces as a fresh "trivy" alert, unaffected by that dismissal.
       - name: Upload results to the Security tab
         uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true # needs Code scanning enabled (free on public repos)
         with:
           sarif_file: trivy-results.sarif
-          category: trivy-release
+          category: trivy
