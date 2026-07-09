@@ -1,9 +1,10 @@
-name: Mirror Trivy DB to GHCR
+name: Trivy image scan (+ DB mirror)
 
-# Mirror the Trivy vulnerability databases into THIS repo's own GHCR (where Kravn lives), once a day, so the
-# image scan in release.yml pulls the DB from our registry instead of the public ghcr.io/aquasecurity/* —
-# a controlled source with no public-registry pull rate limits. Uses skopeo + the built-in GITHUB_TOKEN; no
-# external registry or secrets. Run it once manually the first time so the DB exists before the first release.
+# Daily, on the DEFAULT BRANCH: mirror the Trivy DB into our own GHCR (a controlled source) and scan the latest
+# Kravn image, uploading findings to the Security tab. Scanning on main (a scheduled run runs against the
+# default branch) is what makes Code scanning open AND auto-CLOSE alerts as the image changes — a tag/release
+# scan does not reconcile the default-branch alert view, so fixed vulnerabilities would never disappear. The
+# per-release scan in release.yml is a supplementary per-version record.
 
 on:
   workflow_dispatch:
@@ -12,34 +13,50 @@ on:
 
 permissions:
   contents: read
-  packages: write # push the mirrored DB into this owner's GHCR
+  packages: write # push the mirrored DB
+  security-events: write # upload the scan SARIF to the Security tab
 
 jobs:
-  mirror:
+  scan:
     runs-on: ubuntu-latest
     steps:
       - name: Resolve lowercase owner
         id: vars
         run: echo "owner=${GITHUB_REPOSITORY_OWNER,,}" >> "$GITHUB_OUTPUT"
 
+      # ── Mirror the Trivy DB into our GHCR (controlled source; skopeo + the built-in GITHUB_TOKEN) ──
       - name: Set up skopeo
-        run: |
-          sudo apt-get update
-          sudo apt-get install -y skopeo
-
-      - name: Log in to GHCR
+        run: sudo apt-get update && sudo apt-get install -y skopeo
+      - name: Log in to GHCR (skopeo)
         run: skopeo login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
-
-      # trivy-db is tagged with its schema version (2); trivy-java-db with 1. Mirror those exact tags; the
-      # scan (release.yml) points TRIVY_DB_REPOSITORY / TRIVY_JAVA_DB_REPOSITORY at these tagged copies.
       - name: Mirror trivy-db
-        run: |
-          skopeo copy --all \
-            docker://ghcr.io/aquasecurity/trivy-db:2 \
-            docker://ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2
-
+        continue-on-error: true # a mirror hiccup must not block the scan (it falls back to the public DB below)
+        run: skopeo copy --all docker://ghcr.io/aquasecurity/trivy-db:2 docker://ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2
       - name: Mirror trivy-java-db
-        run: |
-          skopeo copy --all \
-            docker://ghcr.io/aquasecurity/trivy-java-db:1 \
-            docker://ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1
+        continue-on-error: true
+        run: skopeo copy --all docker://ghcr.io/aquasecurity/trivy-java-db:1 docker://ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1
+
+      # ── Scan the latest image; DB from our mirror, falling back to the public registry if it is missing ──
+      - name: Scan the Kravn image (Trivy)
+        uses: aquasecurity/trivy-action@v0.36.0
+        env:
+          TRIVY_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
+          TRIVY_USERNAME: ${{ github.actor }} # auth for pulling the image + DB from our GHCR
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
+        with:
+          image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:latest
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true # only vulns with a fix available — actionable
+
+      # Same category as the release scan, uploaded on the default branch, so this run's (patched) results
+      # become the canonical set and any vulnerability no longer present is auto-closed.
+      - name: Upload results to the Security tab
+        uses: github/codeql-action/upload-sarif@v4
+        if: always()
+        continue-on-error: true # needs Code scanning enabled (free on public repos)
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-release

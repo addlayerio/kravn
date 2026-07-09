@@ -117,8 +117,8 @@ jobs:
         env:
           # Pull the vuln DB from our own GHCR mirror (populated by the "Mirror Trivy DB to GHCR" workflow),
           # not the public registry. Run that workflow once first so the DB exists.
-          TRIVY_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2
-          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1
+          TRIVY_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2,ghcr.io/aquasecurity/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1,ghcr.io/aquasecurity/trivy-java-db:1
           TRIVY_USERNAME: ${{ github.actor }} # auth for pulling the image + DB from our GHCR
           TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
