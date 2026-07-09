@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.80] — 2026-07-09
 
 - 🧩📣 **Azure integration — read-only diagnostics & cost.** A new native **Azure** plugin connects Kravn to
   your Azure tenant over the Azure REST APIs — no external runner, no SDK. Query **any resource** with
