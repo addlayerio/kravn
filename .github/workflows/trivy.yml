@@ -56,8 +56,10 @@ jobs:
           image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:latest
           format: sarif
           output: trivy-results.sarif
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true # only vulns with a fix available — actionable
+          severity: CRITICAL,HIGH,MEDIUM,LOW # upload EVERY severity to the Security tab, not just the top two
+          ignore-unfixed: false # include vulnerabilities even when no upstream fix exists yet (full visibility;
+          # set back to true if the tab gets noisy with unfixable base-image CVEs and you only want actionable ones)
+          limit-severities-for-sarif: true # make the SARIF honour the severity list above (otherwise it may differ)
 
       # Category "trivy": the canonical default-branch image-scan lineage. Deliberately DIFFERENT from the
       # old "trivy-release" (v0.1.78's tag scan) so that (a) this clean main analysis is its own set that

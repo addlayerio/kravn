@@ -124,8 +124,8 @@ jobs:
         with:
           image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
           format: table
-          severity: CRITICAL,HIGH
-          ignore-unfixed: true
+          severity: CRITICAL,HIGH,MEDIUM,LOW # full per-version record in the build log, every severity
+          ignore-unfixed: false
 
       - uses: azure/setup-helm@v4
         with:
