@@ -112,7 +112,7 @@ jobs:
       # Scan the released image for known vulnerabilities (same tool as the daily trivy.yml scan) and publish
       # the findings to the repo's Security tab. Reporting only — it does not fail the release.
       - name: Scan the released image (Trivy)
-        uses: aquasecurity/trivy-action@0.24.0
+        uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true # reporting only — never fail a release on the scan
         with:
           image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
