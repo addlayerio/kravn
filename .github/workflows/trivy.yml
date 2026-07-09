@@ -8,6 +8,9 @@ name: Trivy image scan (+ DB mirror)
 
 on:
   workflow_dispatch:
+  push:
+    branches: [main] # re-scan the latest image on every push to the default branch, so the Security tab
+    # reconciles (auto-closes fixed alerts) without waiting for the daily run or a manual dispatch
   schedule:
     - cron: '0 5 * * *' # once a day, 05:00 UTC
 
