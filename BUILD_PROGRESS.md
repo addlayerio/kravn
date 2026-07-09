@@ -510,7 +510,7 @@ system if needed (welcomed — future clients can write advanced plugins). Done 
 - AGENTS.md principle #1 already codifies "tools are plugins"; this makes the interpreter actually obey it.
 
 ## ✅ PASS 18 — Deploy: Helm chart current + GitHub Actions publishing to the owner's GHCR (2026-06-29)
-Goal: the MCP gateway installable on Worldsys's cluster from the USER's own registry (not Worldsys's org).
+Goal: the MCP gateway installable on any cluster from the USER's own registry (not a third party's org).
 - **Helm chart (charts/kravn) updated**: added `role` (all|gateway|chat, default all), `publicUrl`, `clientUrl`; a
   generic `database` block (Postgres/MySQL/SQL Server via DATABASE_URL, supersedes the Postgres-only block, back-compat
   kept); bumped memory limit to 1280Mi (the Pyodide interpreter caps WASM at ~768MB) with a note to drop to 512Mi for
@@ -519,12 +519,12 @@ Goal: the MCP gateway installable on Worldsys's cluster from the USER's own regi
   (role=gateway, external mysql, ingress, 2 replicas, shared secret).
 - **.github/workflows/release.yml**: on tag `v*.*.*` (or manual) → build the gateway image (root Dockerfile) and push
   image + Helm chart (OCI) to **ghcr.io/<repo-owner>** using the built-in GITHUB_TOKEN (no extra secrets). Uses
-  `${GITHUB_REPOSITORY_OWNER,,}` so it publishes under the user's account by construction — never Worldsys's org.
+  `${GITHUB_REPOSITORY_OWNER,,}` so it publishes under the user's account by construction — never a third party's org.
 - **.github/workflows/ci.yml**: push/PR → pnpm install + `pnpm build` + `pnpm typecheck` + `helm lint`.
 - **Dockerfile**: added the native toolchain (python3/make/g++) to the build stage and (temporarily, then purged) to
   the runtime stage so better-sqlite3 always builds even if no prebuilt binary is fetched.
 - NOT yet done by the user (manual, outward-facing — left for them): `git init` + create a GitHub repo under THEIR
-  account + push + `git tag v0.1.0 && git push --tags` to trigger the release. Then on Worldsys:
+  account + push + `git tag v0.1.0 && git push --tags` to trigger the release. Then on the target cluster:
   `helm install kravn oci://ghcr.io/<owner>/charts/kravn --version 0.1.0` (make the GHCR packages public or add an
   imagePullSecret). Docker build not locally verifiable here (no Docker in this env); the CI runs it.
 

@@ -1,12 +1,18 @@
 # Kravn gateway image — the control-plane backend serving the operator SPA.
 # (The client app is a separate deployable with its own Dockerfile.)
+#
+# Hardened, self-contained two-stage build: an Alpine base, security-patched with `apk upgrade`, and a runtime
+# that strips the package managers + docs so their bundled transitive deps (pnpm/npm → tar, glob, minimatch,
+# cross-spawn, sigstore, …) aren't shipped as CVE surface. The runtime only runs `node`.
 
-# ── Build stage ───────────────────────────────────────────────────────────────
-FROM node:22-bookworm-slim AS build
+# ── Build stage (has the toolchain) ───────────────────────────────────────────
+FROM node:22-alpine AS build
 WORKDIR /app
-# Toolchain for native modules (better-sqlite3) in case no prebuilt binary is available.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
- && rm -rf /var/lib/apt/lists/*
+# Security patches + the native toolchain for better-sqlite3 (compiled from source if no musl prebuilt binary
+# is fetched). py3-setuptools/linux-headers are what node-gyp needs on modern Alpine.
+RUN apk update && apk upgrade \
+ && apk add --no-cache python3 py3-setuptools make g++ linux-headers \
+ && rm -rf /var/cache/apk/*
 RUN npm install -g pnpm@9.15.0
 
 # Manifests first for better layer caching.
@@ -22,8 +28,8 @@ RUN pnpm install
 COPY . .
 RUN pnpm --filter @kravn/contracts --filter @kravn/plugin-sdk --filter @kravn/operator --filter @kravn/gateway build
 
-# ── Runtime stage ─────────────────────────────────────────────────────────────
-FROM node:22-bookworm-slim AS runtime
+# ── Runtime stage (hardened + stripped, package-manager-free) ─────────────────
+FROM node:22-alpine AS runtime
 # The release version (git tag / chart appVersion) is injected here so the app reports it (dashboard,
 # MCP serverInfo) instead of a hardcoded constant. Defaults to a dev marker for local `docker build`.
 ARG VERSION=0.1.0-dev
@@ -32,7 +38,8 @@ ENV NODE_ENV=production \
     KRAVN_VERSION=${VERSION} \
     PORT=8080
 WORKDIR /app
-RUN npm install -g pnpm@9.15.0
+# Force the latest security-patched OS packages (zlib/musl/libssl CVEs the base image ships with).
+RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
 
 COPY package.json pnpm-workspace.yaml .npmrc ./
 COPY packages/contracts/package.json packages/contracts/
@@ -44,14 +51,23 @@ COPY --from=build /app/apps/gateway/dist ./apps/gateway/dist
 COPY --from=build /app/apps/gateway/public ./apps/gateway/public
 # Bundled Python wheels (openpyxl, et_xmlfile) for the offline Pyodide code interpreter.
 COPY --from=build /app/apps/gateway/assets ./apps/gateway/assets
-# Production deps only (gateway + its workspace deps). Install the native toolchain just long enough
-# to build better-sqlite3 if no prebuilt binary is fetched, then purge it to keep the runtime slim.
-RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ \
+
+# Production deps only. Install a THROWAWAY toolchain + pnpm just long enough to resolve prod deps (and build
+# better-sqlite3 if no musl prebuilt binary is fetched), then remove ALL of it — the package managers and
+# their bundled deps have no business in the runtime and are pure CVE surface. This is where the /usr/ Trivy
+# findings came from.
+RUN apk add --no-cache --virtual .build python3 py3-setuptools make g++ linux-headers \
+ && npm install -g pnpm@9.15.0 \
  && pnpm install --prod --filter @kravn/gateway... \
  && pnpm store prune \
- && apt-get purge -y python3 make g++ && apt-get autoremove -y && rm -rf /var/lib/apt/lists/*
+ && apk del .build \
+ && rm -rf /usr/local/lib/node_modules/pnpm /usr/local/bin/pnpm /usr/local/bin/pnpx \
+           /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx \
+           /usr/local/lib/node_modules/corepack /usr/local/bin/corepack \
+           /root/.local/share/pnpm /root/.npm /root/.cache \
+           /usr/share/man /usr/share/doc /usr/share/info /var/cache/apk/* /tmp/* /var/tmp/*
 
-RUN mkdir -p /data && chown -R node:node /data
+RUN mkdir -p /data && chown -R node:node /data /app
 USER node
 EXPOSE 8080
 VOLUME ["/data"]

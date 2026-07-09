@@ -4,7 +4,7 @@ Deploy Kravn — a seamless, self-configuring MCP gateway — onto Kubernetes.
 
 ## Install from the published chart (GHCR, OCI)
 
-CI publishes the image and chart to the repo owner's GHCR. On any cluster (e.g. Worldsys):
+CI publishes the image and chart to the repo owner's GHCR. On any cluster:
 
 ```bash
 helm install kravn oci://ghcr.io/<owner>/charts/kravn --version 0.1.0

@@ -6,7 +6,7 @@ name: release
 # Push a tag like v0.1.0 to cut a release:
 #   git tag v0.1.0 && git push origin v0.1.0
 #
-# Then install on the target cluster (e.g. Worldsys):
+# Then install on the target cluster:
 #   helm install kravn oci://ghcr.io/<owner>/charts/kravn --version 0.1.0
 #
 # GHCR auth uses the built-in GITHUB_TOKEN — no extra secrets needed. On the FIRST publish the

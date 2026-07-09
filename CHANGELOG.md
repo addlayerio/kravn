@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.79] — 2026-07-09
+
+- 🔒 **Dependency & image vulnerability hardening.** Fixed every flagged dependency CVE: `xlsx` moves to the
+  maintained SheetJS build (ReDoS + prototype pollution — reachable via uploaded spreadsheets), plus
+  `@fastify/static`, `fast-xml-parser`, and `echarts`/`vue-echarts`. The Docker image is now a hardened,
+  **package-manager-free Alpine** build — the build tooling (pnpm/npm and their bundled deps: tar, glob,
+  minimatch, cross-spawn, sigstore, …) no longer ships in the runtime, OS packages are `apk upgrade`-patched,
+  and it runs as a non-root user. Together this removes the bulk of the image's CVE surface (`pnpm audit` is
+  now clean, and the per-release Trivy scan from 0.1.78 verifies each image).
+
 ## [0.1.78] — 2026-07-09
 
 - 🔒 **Release images are vulnerability-scanned with Trivy.** Every release now runs a Trivy scan of the built

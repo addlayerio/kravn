@@ -6,7 +6,7 @@
 > **mandatory re-validation process** every change goes through. `AGENTS.md` §5 points here on purpose so
 > it is always in context.
 
-Kravn is an MCP **gateway / registry / proxy** exposed publicly (reference deployment: `mcp.worldsys.io`).
+Kravn is an MCP **gateway / registry / proxy** exposed publicly, self-hosted on your own infrastructure.
 It brokers untrusted external MCP clients (e.g. Claude connectors) to configured upstream MCP servers, runs
 an OAuth 2.1 authorization server, and executes admin-provided code (native + user plugins, stdio servers).
 The attack surface is real and the product **must be secure on its own** — a CDN/WAF (Cloudflare) is
