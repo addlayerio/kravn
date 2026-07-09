@@ -79,18 +79,40 @@ security team needs — no third-party audit required to establish provenance:
 - **SLSA provenance** — a tamper-proof, signed record of *which commit and which workflow* built the
   artifact, attached to the image.
 
-Verify before you deploy:
+Verify before you deploy — the image **and** the Helm chart are signed (keyless, so there is no key to
+manage or leak). Replace `0.1.76` with the version you are pulling:
 
 ```sh
-# Signature — proves it was built by the official release workflow
-cosign verify ghcr.io/addlayerio/kravn:0.1.69 \
+# 1. Signature — proves the artifact is the genuine build from Kravn's release workflow, untampered.
+cosign verify ghcr.io/addlayerio/kravn:0.1.76 \
   --certificate-identity-regexp '^https://github.com/addlayerio/kravn/.github/workflows/release.yml@' \
   --certificate-oidc-issuer https://token.actions.githubusercontent.com
 
-# SBOM + SLSA provenance attached to the image
-docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.69 --format '{{ json .SBOM }}'
-docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.69 --format '{{ json .Provenance }}'
+# Same for the chart:
+cosign verify ghcr.io/addlayerio/charts/kravn:0.1.76 \
+  --certificate-identity-regexp '^https://github.com/addlayerio/kravn/.github/workflows/release.yml@' \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com
+
+# 2. SBOM + SLSA provenance attached to the image:
+docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.76 --format '{{ json .SBOM }}'
+docker buildx imagetools inspect ghcr.io/addlayerio/kravn:0.1.76 --format '{{ json .Provenance }}'
 ```
+
+**What a passing check proves.** `cosign verify` prints the signing identity — confirm it is the Kravn
+release workflow at the tag you expect:
+
+```
+Subject:                  https://github.com/addlayerio/kravn/.github/workflows/release.yml@refs/tags/v0.1.76
+Issuer:                   https://token.actions.githubusercontent.com
+githubWorkflowRepository: addlayerio/kravn
+githubWorkflowSha:        <commit>          # the exact commit that built the image
+```
+
+That is the whole chain of custody — **git commit → release workflow → signed image** — recorded in the
+public **Rekor** transparency log. The `githubWorkflowSha` equals the release tag's commit
+(`git rev-parse v0.1.76`), so you can tie the running image back to an exact line of source. An image that was
+tampered with, or signed from any other repository, **fails** the identity check: there is no key to steal —
+the identity *is* the workflow. (If the GHCR package is private, run `docker login ghcr.io` first.)
 
 Combined with the source being open to inspection, this lets your team establish trust in the build
 without relying on a vendor's word.
