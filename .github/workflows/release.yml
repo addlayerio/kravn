@@ -129,7 +129,7 @@ jobs:
           ignore-unfixed: true
 
       - name: Upload Trivy results to the Security tab
-        uses: github/codeql-action/upload-sarif@v3
+        uses: github/codeql-action/upload-sarif@v4
         if: always()
         continue-on-error: true # needs Code scanning enabled (free on public repos); don't fail the release
         with:
