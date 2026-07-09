@@ -12,6 +12,17 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩📣 **Azure integration — read-only diagnostics & cost.** A new native **Azure** plugin connects Kravn to
+  your Azure tenant over the Azure REST APIs — no external runner, no SDK. Query **any resource** with
+  Resource Graph (KQL), run **Log Analytics KQL** for logs & platform diagnostics (e.g. a SQL Hyperscale DB),
+  break down **cost by service type** with Cost Management, and read **Azure Monitor metrics** — all from one
+  MCP endpoint, alongside Datadog, so an assistant can analyse an incident end-to-end. Auth is a Microsoft
+  Entra **service principal** (client id + secret, encrypted at rest); public, US Gov and China clouds are
+  supported. Every tool is **read-only** — there are no write tools at all, so it can never change anything in
+  your cloud.
+
 ## [0.1.79] — 2026-07-09
 
 - 🔒 **Dependency & image vulnerability hardening.** Fixed every flagged dependency CVE: `xlsx` moves to the

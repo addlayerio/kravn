@@ -915,4 +915,8 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-zoho', name: 'Zoho CRM', category: 'CRM',
     description: 'Zoho CRM over its v6 REST API — read/search/CRUD on any module, COQL queries with GROUP BY and COUNT/SUM/AVG aggregates, and convenience search for Leads, Contacts, Accounts and Deals. Server-to-server OAuth 2.0, region-aware.',
   },
+  {
+    id: 'kravn-azure', name: 'Azure', category: 'Cloud',
+    description: 'Read-only Azure diagnostics & cost — Resource Graph (KQL over any resource), Log Analytics (KQL logs/diagnostics), Cost Management (spend by service), and Azure Monitor metrics. Entra service-principal auth; public, US Gov and China clouds. No write tools.',
+  },
 ];
