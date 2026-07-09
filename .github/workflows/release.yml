@@ -114,6 +114,13 @@ jobs:
       - name: Scan the released image (Trivy)
         uses: aquasecurity/trivy-action@v0.36.0
         continue-on-error: true # reporting only — never fail a release on the scan
+        env:
+          # Pull the vuln DB from our own GHCR mirror (populated by the "Mirror Trivy DB to GHCR" workflow),
+          # not the public registry. Run that workflow once first so the DB exists.
+          TRIVY_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-db:2
+          TRIVY_JAVA_DB_REPOSITORY: ghcr.io/${{ steps.vars.outputs.owner }}/trivy-java-db:1
+          TRIVY_USERNAME: ${{ github.actor }} # auth for pulling the image + DB from our GHCR
+          TRIVY_PASSWORD: ${{ secrets.GITHUB_TOKEN }}
         with:
           image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
           format: sarif
