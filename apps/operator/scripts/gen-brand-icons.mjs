@@ -55,6 +55,8 @@ const OVERRIDE = {
 // Native mcp-server plugins (apps/gateway/src/plugins/*) — map id -> simple-icons slug.
 const NATIVE = [
   { id: 'kravn-azure', slug: 'microsoftazure' },
+  { id: 'kravn-aws', slug: 'amazonwebservices' },
+  { id: 'kravn-gcp', slug: 'googlecloud' },
   { id: 'kravn-confluence', slug: 'confluence' },
   { id: 'kravn-jira', slug: 'jira' },
   { id: 'kravn-odoo', slug: 'odoo' },

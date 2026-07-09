@@ -12,6 +12,19 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩📣 **AWS integration — read-only cost & diagnostics.** A new native **AWS** plugin connects Kravn to your
+  AWS account over the AWS REST APIs — no external runner, no aws-sdk. Break down **cost by service type** with
+  Cost Explorer, run **CloudWatch Logs Insights** queries (with log-group discovery) for diagnostics, and list
+  resources with the Resource Groups Tagging API. Auth is an IAM access key (encrypted at rest); every request
+  is signed with **AWS Signature V4**. Every tool is **read-only** — no write tools at all.
+- 🧩📣 **Google Cloud integration — read-only diagnostics & cost.** A new native **Google Cloud** plugin
+  connects Kravn to GCP over the Google REST APIs — no external runner, no google SDK. Search **any resource**
+  with Cloud Asset Inventory, query **Cloud Logging** and **Cloud Monitoring** for diagnostics, and read
+  **cost** from the BigQuery billing export. Auth is a service-account key (encrypted at rest); Kravn signs a
+  short-lived **RS256 JWT** for it. Every tool is **read-only** — no write tools at all.
+
 ## [0.1.80] — 2026-07-09
 
 - 🧩📣 **Azure integration — read-only diagnostics & cost.** A new native **Azure** plugin connects Kravn to

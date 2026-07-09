@@ -919,4 +919,12 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-azure', name: 'Azure', category: 'Cloud',
     description: 'Read-only Azure diagnostics & cost — Resource Graph (KQL over any resource), Log Analytics (KQL logs/diagnostics), Cost Management (spend by service), and Azure Monitor metrics. Entra service-principal auth; public, US Gov and China clouds. No write tools.',
   },
+  {
+    id: 'kravn-aws', name: 'AWS', category: 'Cloud',
+    description: 'Read-only AWS cost & diagnostics — Cost Explorer (spend by service), CloudWatch Logs Insights (log queries) + log-group discovery, and Resource Groups Tagging (resource inventory). IAM access-key auth, requests signed with AWS Signature V4. No write tools.',
+  },
+  {
+    id: 'kravn-gcp', name: 'Google Cloud', category: 'Cloud',
+    description: 'Read-only Google Cloud diagnostics & cost — Cloud Asset (search any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. Service-account (RS256 JWT) auth. No write tools.',
+  },
 ];
