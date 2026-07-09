@@ -25,6 +25,7 @@ permissions:
   contents: read
   packages: write
   id-token: write # keyless cosign signing via GitHub OIDC (Sigstore Fulcio/Rekor)
+  security-events: write # upload the Trivy SARIF to the Security tab
 
 jobs:
   release:
@@ -107,6 +108,26 @@ jobs:
             sleep $((i*5))
           done
           echo "::error::cosign sign (image) failed after 5 attempts"; exit 1
+
+      # Scan the released image for known vulnerabilities (same tool as the daily trivy.yml scan) and publish
+      # the findings to the repo's Security tab. Reporting only — it does not fail the release.
+      - name: Scan the released image (Trivy)
+        uses: aquasecurity/trivy-action@0.24.0
+        continue-on-error: true # reporting only — never fail a release on the scan
+        with:
+          image-ref: ghcr.io/${{ steps.vars.outputs.owner }}/kravn:${{ steps.vars.outputs.version }}
+          format: sarif
+          output: trivy-results.sarif
+          severity: CRITICAL,HIGH
+          ignore-unfixed: true
+
+      - name: Upload Trivy results to the Security tab
+        uses: github/codeql-action/upload-sarif@v3
+        if: always()
+        continue-on-error: true # needs Code scanning enabled (free on public repos); don't fail the release
+        with:
+          sarif_file: trivy-results.sarif
+          category: trivy-release
 
       - uses: azure/setup-helm@v4
         with:
