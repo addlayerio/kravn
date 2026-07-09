@@ -97,7 +97,8 @@ export function approvalGate(deps: { approvals: ApprovalService }): HookPlugin {
           tools: {
             type: 'array',
             items: { type: 'string' },
-            title: 'Tools requiring approval — glob on the TOOL NAME (recommended, e.g. *delete*, *transfer*), or on server-id/tool. Note: matches the server id, not its display name.',
+            'x-kravn-source': 'tools', // render as a picker of the live tools (like other screens), not free text
+            title: 'Tools requiring approval — pick from your active tools. (Power users: switch to JSON to add a glob like *delete* / *transfer*.)',
           },
           timeoutSeconds: { type: 'number', title: 'Max seconds to hold the call waiting for approval (5–900)', default: 60 },
         },

@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.76] — 2026-07-09
+
+- 🐛 **Governance settings are their own section now, and the Approval Gate picks tools from a list.** The
+  tool-definition pinning + budget settings moved out of *Security* into a dedicated **Settings → Governance**
+  group. The Human Approval Gate's "tools requiring approval" field now renders a **picker of your live tools**
+  (like the other screens) instead of a free-text "one per line" box — globs (`*delete*`) remain available via
+  the JSON view.
+
 ## [0.1.75] — 2026-07-09
 
 - 📣🔒 **MCP threat defence — rug-pull detection & tool-poisoning scanning.** A compromised or updated upstream

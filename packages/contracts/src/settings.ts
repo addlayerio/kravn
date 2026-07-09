@@ -209,14 +209,22 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'security.rateLimitEnabled', label: 'Rate limiting', control: 'boolean' },
       { path: 'security.rateLimitPerMinute', label: 'Requests / minute', control: 'number' },
       { path: 'security.allowedModels', label: 'Allowed LLM models (empty = any; * glob ok)', control: 'string[]' },
+    ],
+  },
+  {
+    key: 'governance',
+    label: 'Governance',
+    description: 'Runtime guardrails for agent activity. Review the queues under the Governance page.',
+    fields: [
       {
         path: 'governance.toolPinning',
         label: 'Tool-definition pinning (rug-pull defence)',
         control: 'enum',
         options: TOOL_PINNING_MODES,
+        help: 'off = ignore · audit = record + audit any tool-definition change · enforce = also quarantine a changed tool until re-approved under Governance → Tool changes.',
       },
-      { path: 'governance.dailyTokenBudget', label: 'Daily LLM token budget (0 = off)', control: 'number' },
       { path: 'governance.dailyCallBudget', label: 'Daily tool-call budget (0 = off)', control: 'number' },
+      { path: 'governance.dailyTokenBudget', label: 'Daily LLM token budget (0 = off)', control: 'number' },
       { path: 'governance.budgetAction', label: 'When a budget is exceeded', control: 'enum', options: BUDGET_ACTIONS },
     ],
   },
