@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.81] — 2026-07-09
 
 - 🧩📣 **AWS integration — read-only cost & diagnostics.** A new native **AWS** plugin connects Kravn to your
   AWS account over the AWS REST APIs — no external runner, no aws-sdk. Break down **cost by service type** with
