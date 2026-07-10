@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.84] — 2026-07-10
 
 - 🐛 **Governance usage table shows names, not raw ids.** The per-scope usage rows now resolve the id to a
   human name — the **user's email** for user rows and the **endpoint name** for endpoint rows — instead of an
