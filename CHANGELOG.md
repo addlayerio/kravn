@@ -12,6 +12,12 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Azure: discover Log Analytics workspaces.** New `azure_list_log_analytics_workspaces` tool lists every
+  workspace (name + workspace ID) visible in the subscription, so an assistant can query across several
+  workspaces without pinning one in config — the configured Workspace ID is a convenient default, not a limit.
+
 ## [0.1.81] — 2026-07-09
 
 - 🧩📣 **AWS integration — read-only cost & diagnostics.** A new native **AWS** plugin connects Kravn to your

@@ -256,11 +256,25 @@ const TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: 'azure_list_log_analytics_workspaces',
+    description:
+      'List the Log Analytics workspaces visible in the subscription (name + **workspace ID** GUID + resource ' +
+      'group + location). Use a returned workspace ID with azure_logs_query to query that workspace — handy when ' +
+      'there is no configured default or you have several. Optional `subscriptions` (JSON array).',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        subscriptions: { type: 'string', description: 'Optional JSON array of subscription GUIDs; defaults to the configured subscription.' },
+      },
+    },
+  },
+  {
     name: 'azure_logs_query',
     description:
       'Run a **KQL** query against a Log Analytics workspace — logs, platform diagnostics and metrics for any ' +
       'monitored resource (e.g. a SQL Hyperscale DB: `AzureDiagnostics | where ResourceProvider == "MICROSOFT.SQL" ' +
-      '| take 50`). Optional `workspaceId` (GUID) overrides the configured default; `timespan` is ISO-8601 (e.g. PT1H, P1D, or start/end).',
+      '| take 50`). `workspaceId` (GUID) picks the workspace — omit to use the configured default, or discover ' +
+      'workspaces with azure_list_log_analytics_workspaces. `timespan` is ISO-8601 (e.g. PT1H, P1D, or start/end).',
     inputSchema: {
       type: 'object',
       properties: {
@@ -326,10 +340,8 @@ async function listSubscriptions(cfg: AzureConfig): Promise<McpToolResult> {
   return text(subs.length ? clip(subs.join('\n')) : 'No subscriptions visible to this service principal.');
 }
 
-async function resourceGraph(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
-  const query = String(args.query ?? '').trim();
-  if (!query) return text('Error: query (a Resource Graph KQL statement) is required.', true);
-  let subscriptions: string[];
+/** Resolve the target subscriptions from an optional `subscriptions` JSON-array arg, else the configured default. */
+function resolveSubscriptions(cfg: AzureConfig, args: Record<string, unknown>): string[] {
   if (args.subscriptions) {
     let arr: unknown;
     try {
@@ -338,16 +350,35 @@ async function resourceGraph(cfg: AzureConfig, args: Record<string, unknown>): P
       throw new AzureError('subscriptions must be a JSON array of subscription GUIDs.');
     }
     if (!Array.isArray(arr) || !arr.length) throw new AzureError('subscriptions must be a non-empty JSON array.');
-    subscriptions = arr.map((s) => guid(s, 'subscription'));
-  } else {
-    subscriptions = [guid(cfg.subscriptionId, 'subscriptionId (configure a default or pass subscriptions)')];
+    return arr.map((s) => guid(s, 'subscription'));
   }
+  return [guid(cfg.subscriptionId, 'subscriptionId (configure a default or pass subscriptions)')];
+}
+
+async function resourceGraph(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const query = String(args.query ?? '').trim();
+  if (!query) return text('Error: query (a Resource Graph KQL statement) is required.', true);
+  const subscriptions = resolveSubscriptions(cfg, args);
   const data = await armApi(cfg, 'POST', '/providers/Microsoft.ResourceGraph/resources', {
     apiVersion: '2022-10-01',
     body: { subscriptions, query },
   });
   const rows = (data.data ?? []) as unknown[];
   return text(`${data.count ?? rows.length} row(s):\n\n${clip(JSON.stringify(rows, null, 2))}`);
+}
+
+async function listWorkspaces(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const subscriptions = resolveSubscriptions(cfg, args);
+  const query =
+    "resources | where type =~ 'microsoft.operationalinsights/workspaces' " +
+    '| project name, resourceGroup, location, workspaceId = tostring(properties.customerId) | order by name asc';
+  const data = await armApi(cfg, 'POST', '/providers/Microsoft.ResourceGraph/resources', {
+    apiVersion: '2022-10-01',
+    body: { subscriptions, query },
+  });
+  const rows = (data.data ?? []) as any[];
+  const lines = rows.map((r) => `• ${r.name}  (${r.resourceGroup} / ${r.location})  —  workspaceId: ${r.workspaceId}`);
+  return text(lines.length ? `${rows.length} Log Analytics workspace(s):\n\n${clip(lines.join('\n'))}` : 'No Log Analytics workspaces visible in the subscription.');
 }
 
 async function logsQuery(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -492,6 +523,8 @@ export function azurePlugin(): McpServerPlugin {
               return await listSubscriptions(cfg);
             case 'azure_resource_graph_query':
               return await resourceGraph(cfg, args);
+            case 'azure_list_log_analytics_workspaces':
+              return await listWorkspaces(cfg, args);
             case 'azure_logs_query':
               return await logsQuery(cfg, args);
             case 'azure_cost_by_service':
