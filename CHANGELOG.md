@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.83] — 2026-07-10
 
 - 🧩 **Teams: also fetch image _file attachments_, not just inline images.** `teams_get_message_images` now
   handles screenshots shared as a **file** (📎), resolving the attachment to its SharePoint/OneDrive item and
