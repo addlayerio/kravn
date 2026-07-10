@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.85] — 2026-07-11
 
 - 🧩📣 **Email attachments (Gmail & Outlook).** `gmail_send` / `outlook_send_mail` can now send **attachments**.
   Two ways: **`attachFiles`** — names of files already in the conversation, **including one a tool just produced**
