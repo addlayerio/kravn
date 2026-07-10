@@ -25,13 +25,28 @@ reaches the service:
 
 - **Built-in** connectors are `mcp-server` plugins **maintained by Kravn** that speak the vendor's own API
   directly (Microsoft Graph, REST, JSON-RPC) from inside the gateway — nothing extra to deploy or operate.
-  Kravn ships them for common corporate systems — **SharePoint, Microsoft Teams, Jira, Confluence, Odoo,
-  Zoho CRM** — plus a **Code Interpreter** (Python in a Pyodide/WASM sandbox for reading and transforming
-  attached files).
+  Kravn ships them for common corporate systems, the major clouds and email (see the table below).
 - **Remote MCP servers** are public MCP endpoints you point Kravn at (Notion, Linear, Sentry, Stripe,
   Supabase, Vercel, Hugging Face, Google, and dozens more). Servers with no auth or an API key connect
   immediately; for **OAuth 2.1** servers, click **Connect** — Kravn runs the whole flow (discovery, dynamic
   client registration, PKCE) and stores the tokens encrypted, refreshing them automatically.
+
+### Built-in integrations
+
+| Integration | What it does |
+|---|---|
+| **SharePoint** | Search, browse document libraries and read documents (Word/PDF/Excel/text) over Microsoft Graph. |
+| **Microsoft Teams** | Find people, read chats and channel posts, list teams/channels, and fetch a message's images — over Microsoft Graph. |
+| **Outlook** | Read **and send** email (search, read, send, reply/reply-all) over Microsoft 365 / Exchange Online (Graph). |
+| **Gmail** | Read **and send** email (search, read, send, reply into a thread) over the Gmail API. |
+| **Jira** | Query and read issues via the Jira REST API. |
+| **Confluence** | Search and read Confluence pages. |
+| **Odoo** | CRM & ERP over Odoo JSON-RPC — CRUD, server-side aggregation & counts, and search across leads, contacts, sales orders, invoices, products, tasks. |
+| **Zoho CRM** | Read/search/CRUD over any module plus COQL queries (GROUP BY + aggregates), over the Zoho v6 REST API. |
+| **Azure** | Read-only diagnostics & cost — Resource Graph (KQL over any resource), Log Analytics (KQL), Cost Management (spend by service), and Azure Monitor metrics. |
+| **AWS** | Read-only cost & diagnostics — Cost Explorer (spend by service), CloudWatch Logs Insights, and resource inventory. Requests signed with SigV4. |
+| **Google Cloud** | Read-only diagnostics & cost — Cloud Asset (any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. |
+| **Code Interpreter** | Runs Python in a Pyodide/WASM sandbox (no host filesystem or network) to read and transform attached files — e.g. complete an Excel and return it as a download. |
 
 Both reach the target system over the network, so **whether data stays on-prem depends on the target**, not
 on the connector kind — a self-hosted Odoo/SharePoint stays inside your perimeter; a cloud service does not.
