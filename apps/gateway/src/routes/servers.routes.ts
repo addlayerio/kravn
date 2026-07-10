@@ -127,4 +127,39 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
     await s.upstreamOAuth.saveConfig(id, b);
     return reply.code(204).send();
   });
+
+  // ── Native plugin INSTANCES ──────────────────────────────────────────────────────────────────────
+  // A native integration (Azure, Outlook, …) can be added more than once: each instance is a plugin-backed
+  // server with its own credentials, composable into different endpoints. This creates one.
+  app.post('/api/servers/plugin-instance', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
+    const b = (req.body ?? {}) as { typeId?: string; name?: string; config?: Record<string, unknown> };
+    if (!b.typeId || !b.name) return sendError(reply, 400, 'invalid', 'typeId and name are required.');
+    try {
+      const server = await s.registry.createPluginInstance(b.typeId, String(b.name), b.config ?? {});
+      return reply.code(201).send({ server });
+    } catch (err) {
+      return sendError(reply, 400, 'create_failed', err instanceof Error ? err.message : 'Could not create instance.');
+    }
+  });
+
+  // Masked config for a plugin instance's edit form (secret values are blanked; secretsSet says which are set).
+  app.get('/api/servers/:id/plugin-config', { preHandler: [app.authenticate, app.authorize('servers.read')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const view = await s.registry.getInstanceConfigView(id);
+    if (!view) return sendError(reply, 404, 'not_found', 'Plugin instance not found.');
+    return view;
+  });
+
+  // Update a plugin instance's config (secrets are write-only: leave blank to keep the stored value).
+  app.patch('/api/servers/:id/plugin-config', { preHandler: [app.authenticate, app.authorize('servers.write')] }, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const b = (req.body ?? {}) as { config?: Record<string, unknown> };
+    try {
+      const server = await s.registry.setInstanceConfig(id, b.config ?? {});
+      if (!server) return sendError(reply, 404, 'not_found', 'Plugin instance not found.');
+      return { server };
+    } catch (err) {
+      return sendError(reply, 400, 'update_failed', err instanceof Error ? err.message : 'Could not update config.');
+    }
+  });
 }

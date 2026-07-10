@@ -117,19 +117,24 @@ export class PluginManager {
   // at rest (prefixed `enc:`), decrypted only when handed to the plugin at runtime, and never returned
   // to the UI — write-only, matching how upstream-server and LLM credentials are handled.
 
-  private secretFieldsOf(r: PluginRecord): string[] {
-    const props = (r.manifest as { configSchema?: { properties?: Record<string, { secret?: boolean }> } })?.configSchema
+  /** Secret field keys from a plugin manifest's configSchema. Manifest-based so instance config (stored on a
+   *  server row, not a PluginRecord) can reuse the exact same encryption against the plugin TYPE's schema. */
+  private secretFieldsOfManifest(manifest: unknown): string[] {
+    const props = (manifest as { configSchema?: { properties?: Record<string, { secret?: boolean }> } })?.configSchema
       ?.properties;
     if (!props) return [];
     return Object.entries(props)
       .filter(([, p]) => p?.secret === true)
       .map(([k]) => k);
   }
+  private secretFieldsOf(r: PluginRecord): string[] {
+    return this.secretFieldsOfManifest(r.manifest);
+  }
 
-  /** Encrypt incoming secret fields; a blank/absent secret preserves the previously stored value. */
-  private encryptConfig(r: PluginRecord, incoming: Record<string, unknown>, prev: Record<string, unknown>): Record<string, unknown> {
+  /** Encrypt incoming secret fields against a manifest; a blank/absent secret preserves the previously stored value. */
+  private encryptSecrets(manifest: unknown, incoming: Record<string, unknown>, prev: Record<string, unknown>): Record<string, unknown> {
     const out = { ...incoming };
-    for (const k of this.secretFieldsOf(r)) {
+    for (const k of this.secretFieldsOfManifest(manifest)) {
       const v = incoming[k];
       if (typeof v === 'string' && v.length > 0) {
         out[k] = this.encryptor ? this.encryptor.encrypt(v) : v; // encrypt() is prefixed + idempotent
@@ -141,12 +146,15 @@ export class PluginManager {
     }
     return out;
   }
+  private encryptConfig(r: PluginRecord, incoming: Record<string, unknown>, prev: Record<string, unknown>): Record<string, unknown> {
+    return this.encryptSecrets(r.manifest, incoming, prev);
+  }
 
-  /** Decrypt secret fields for runtime use by the plugin. */
-  private decryptConfig(r: PluginRecord): Record<string, unknown> {
-    const out = { ...r.config };
+  /** Decrypt secret fields (against a manifest) for runtime use by the plugin. */
+  private decryptSecrets(manifest: unknown, config: Record<string, unknown>): Record<string, unknown> {
+    const out = { ...config };
     if (!this.encryptor) return out;
-    for (const k of this.secretFieldsOf(r)) {
+    for (const k of this.secretFieldsOfManifest(manifest)) {
       const v = out[k];
       if (typeof v === 'string' && this.encryptor.isEncrypted(v)) {
         try {
@@ -157,6 +165,9 @@ export class PluginManager {
       }
     }
     return out;
+  }
+  private decryptConfig(r: PluginRecord): Record<string, unknown> {
+    return this.decryptSecrets(r.manifest, r.config);
   }
 
   /** Strip secret values for the UI, plus a map of which secrets are currently set. */
@@ -608,41 +619,112 @@ export class PluginManager {
       .map((r) => ({ id: r.id, name: r.name }));
   }
 
-  private mcpPlugin(id: string): { plugin: McpServerPlugin; config: Record<string, unknown> } {
-    const r = this.records.get(id);
-    // Native plugins are in-code; user/imported ones come from the loaded map.
-    const p = (this.native.get(id) ?? this.loaded.get(id)) as McpServerPlugin | undefined;
-    if (!r || !r.enabled || r.type !== 'mcp-server' || !p) {
-      throw new Error(`plugin server '${id}' is not available`);
-    }
-    return { plugin: p, config: this.decryptConfig(r) };
+  /** All mcp-server plugin TYPE ids (native or loaded), regardless of enabled — for instance validation + GC.
+   *  An instance is independent of the type's "default" enabled state (it has its own config + server enabled). */
+  mcpServerTypeIds(): Set<string> {
+    return new Set(
+      [...this.records.values()]
+        .filter((r) => r.type === 'mcp-server' && (this.loaded.has(r.id) || this.isNative(r.id)))
+        .map((r) => r.id),
+    );
   }
 
-  async serverListTools(id: string) {
-    const m = this.mcpPlugin(id);
-    return { tools: await m.plugin.server.listTools(m.config) };
+  /** Resolve the plugin TYPE object + record by plugin id (no config yet). */
+  private mcpPluginObject(typeId: string): { plugin: McpServerPlugin; record: PluginRecord } {
+    const r = this.records.get(typeId);
+    // Native plugins are in-code; user/imported ones come from the loaded map.
+    const p = (this.native.get(typeId) ?? this.loaded.get(typeId)) as McpServerPlugin | undefined;
+    // No `enabled` gate here: a plugin INSTANCE runs based on its own server's enabled flag, independent of the
+    // type's "default" enabled state (which only governs the auto-created default instance).
+    if (!r || r.type !== 'mcp-server' || !p) {
+      throw new Error(`plugin server '${typeId}' is not available`);
+    }
+    return { plugin: p, record: r };
   }
-  async serverListResources(id: string) {
-    const m = this.mcpPlugin(id);
-    return { resources: m.plugin.server.listResources ? await m.plugin.server.listResources(m.config) : [] };
+
+  /** Config for a call: a specific INSTANCE's plugin_config (from its server row) if present, else the plugin
+   *  TYPE's own config (the "default instance" — the pre-existing seeded config, unchanged). Secrets decrypted
+   *  against the TYPE's configSchema either way. */
+  private async resolveConfig(record: PluginRecord, instanceServerId?: string): Promise<Record<string, unknown>> {
+    if (instanceServerId) {
+      const raw = await this.repos.servers.getPluginConfig(instanceServerId);
+      if (raw && raw !== '{}') {
+        let parsed: Record<string, unknown> = {};
+        try {
+          parsed = JSON.parse(raw);
+        } catch {
+          /* fall through to the type config */
+        }
+        return this.decryptSecrets(record.manifest, parsed);
+      }
+    }
+    return this.decryptConfig(record);
   }
-  async serverListPrompts(id: string) {
-    const m = this.mcpPlugin(id);
-    return { prompts: m.plugin.server.listPrompts ? await m.plugin.server.listPrompts(m.config) : [] };
+
+  async serverListTools(id: string, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    return { tools: await plugin.server.listTools(await this.resolveConfig(record, instanceServerId)) };
   }
-  async serverCallTool(id: string, name: string, args: Record<string, unknown>, ctx?: McpCallContext) {
-    const m = this.mcpPlugin(id);
-    return m.plugin.server.callTool(name, args, m.config, ctx);
+  async serverListResources(id: string, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    return { resources: plugin.server.listResources ? await plugin.server.listResources(await this.resolveConfig(record, instanceServerId)) : [] };
   }
-  async serverReadResource(id: string, uri: string) {
-    const m = this.mcpPlugin(id);
-    if (!m.plugin.server.readResource) throw new Error('plugin does not support resources');
-    return m.plugin.server.readResource(uri, m.config);
+  async serverListPrompts(id: string, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    return { prompts: plugin.server.listPrompts ? await plugin.server.listPrompts(await this.resolveConfig(record, instanceServerId)) : [] };
   }
-  async serverGetPrompt(id: string, name: string, args: Record<string, unknown>) {
-    const m = this.mcpPlugin(id);
-    if (!m.plugin.server.getPrompt) throw new Error('plugin does not support prompts');
-    return m.plugin.server.getPrompt(name, args, m.config);
+  async serverCallTool(id: string, name: string, args: Record<string, unknown>, ctx?: McpCallContext, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    return plugin.server.callTool(name, args, await this.resolveConfig(record, instanceServerId), ctx);
+  }
+  async serverReadResource(id: string, uri: string, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    if (!plugin.server.readResource) throw new Error('plugin does not support resources');
+    return plugin.server.readResource(uri, await this.resolveConfig(record, instanceServerId));
+  }
+  async serverGetPrompt(id: string, name: string, args: Record<string, unknown>, instanceServerId?: string) {
+    const { plugin, record } = this.mcpPluginObject(id);
+    if (!plugin.server.getPrompt) throw new Error('plugin does not support prompts');
+    return plugin.server.getPrompt(name, args, await this.resolveConfig(record, instanceServerId));
+  }
+
+  /** Create/update a native-plugin INSTANCE's config, stored (secrets encrypted, write-only preserve) on its
+   *  server row. `typeId` is the plugin type (the server's `command`). */
+  async setInstanceConfig(instanceServerId: string, typeId: string, config: Record<string, unknown>): Promise<void> {
+    const r = this.records.get(typeId);
+    if (!r) throw new Error('Unknown plugin type.');
+    let prev: Record<string, unknown> = {};
+    const raw = await this.repos.servers.getPluginConfig(instanceServerId);
+    if (raw) {
+      try {
+        prev = JSON.parse(raw);
+      } catch {
+        /* ignore */
+      }
+    }
+    await this.repos.servers.setPluginConfig(instanceServerId, JSON.stringify(this.encryptSecrets(r.manifest, config, prev)));
+    await this.onChange?.();
+  }
+
+  /** Masked view of an instance's config for the UI (secret values blanked + which are set). */
+  async instanceConfigView(instanceServerId: string, typeId: string): Promise<{ config: Record<string, unknown>; secretsSet: Record<string, boolean> }> {
+    const r = this.records.get(typeId);
+    const raw = await this.repos.servers.getPluginConfig(instanceServerId);
+    let cfg: Record<string, unknown> = {};
+    if (raw) {
+      try {
+        cfg = JSON.parse(raw);
+      } catch {
+        /* ignore */
+      }
+    }
+    const config = { ...cfg };
+    const secretsSet: Record<string, boolean> = {};
+    for (const k of this.secretFieldsOfManifest(r?.manifest)) {
+      secretsSet[k] = typeof config[k] === 'string' && (config[k] as string).length > 0;
+      config[k] = '';
+    }
+    return { config, secretsSet };
   }
 
   // ─── Management ──────────────────────────────────────────────────────────────────────────────

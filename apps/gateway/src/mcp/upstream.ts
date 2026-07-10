@@ -100,17 +100,19 @@ export class UpstreamManager {
     return this.conns.get(id)?.client;
   }
 
-  private pluginShim(pluginId: string): PluginClientLike {
+  // pluginId = the plugin TYPE (server.command); instanceId = this specific server row, so the manager can load
+  // THIS instance's own config (multiple servers can back the same plugin type with different credentials).
+  private pluginShim(pluginId: string, instanceId: string): PluginClientLike {
     const pm = this.plugins;
     if (!pm) throw new Error('plugin manager not available');
     return {
-      listTools: () => pm.serverListTools(pluginId),
-      listResources: () => pm.serverListResources(pluginId),
-      listPrompts: () => pm.serverListPrompts(pluginId),
-      callTool: ({ name, arguments: args }) => pm.serverCallTool(pluginId, name, args),
-      callToolCtx: (name, args, ctx) => pm.serverCallTool(pluginId, name, args, ctx),
-      readResource: ({ uri }) => pm.serverReadResource(pluginId, uri),
-      getPrompt: ({ name, arguments: args }) => pm.serverGetPrompt(pluginId, name, args),
+      listTools: () => pm.serverListTools(pluginId, instanceId),
+      listResources: () => pm.serverListResources(pluginId, instanceId),
+      listPrompts: () => pm.serverListPrompts(pluginId, instanceId),
+      callTool: ({ name, arguments: args }) => pm.serverCallTool(pluginId, name, args, undefined, instanceId),
+      callToolCtx: (name, args, ctx) => pm.serverCallTool(pluginId, name, args, ctx, instanceId),
+      readResource: ({ uri }) => pm.serverReadResource(pluginId, uri, instanceId),
+      getPrompt: ({ name, arguments: args }) => pm.serverGetPrompt(pluginId, name, args, instanceId),
       close: async () => {},
     };
   }
@@ -120,7 +122,7 @@ export class UpstreamManager {
 
     // Plugin-backed servers delegate to an in-process MCP-server plugin.
     if (server.transport === 'plugin') {
-      const shim = this.pluginShim(server.command);
+      const shim = this.pluginShim(server.command, server.id);
       this.conns.set(server.id, { client: shim, close: async () => {} });
       this.log.info({ server: server.name, plugin: server.command }, 'bound plugin MCP server');
       return shim;

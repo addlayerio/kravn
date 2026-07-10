@@ -181,6 +181,52 @@ export class RegistryService {
     return server;
   }
 
+  /** Create a native-plugin INSTANCE: a plugin-backed server (transport='plugin', command=<typeId>) with its
+   *  OWN config on the row. This is how the same native integration is added more than once, each with different
+   *  credentials — e.g. Azure subscription A for one endpoint, subscription B for another. */
+  async createPluginInstance(typeId: string, name: string, config: Record<string, unknown>): Promise<UpstreamServer> {
+    if (!this.d.plugins.mcpServerTypeIds().has(typeId)) {
+      throw new Error(`Unknown plugin type '${typeId}'.`);
+    }
+    const id = newId();
+    const slug = await this.uniqueSlug(name);
+    await this.d.repos.servers.create({
+      id,
+      name,
+      slug,
+      description: 'Provided by Kravn',
+      transport: 'plugin',
+      url: '',
+      command: typeId,
+      args: [],
+      env: {},
+      headers: {},
+      authType: 'none',
+      authValueEncrypted: '',
+      enabled: true,
+    });
+    await this.d.plugins.setInstanceConfig(id, typeId, config); // encrypt secrets + store on the row
+    this.d.logstore.add('info', `Plugin instance "${name}" (${typeId}) created`, { id });
+    void this.connectAndSync(id);
+    return (await this.d.repos.servers.getById(id))!;
+  }
+
+  /** Update a plugin instance's config (secrets encrypted, write-only preserve) and reconnect it. */
+  async setInstanceConfig(serverId: string, config: Record<string, unknown>): Promise<UpstreamServer | undefined> {
+    const server = await this.d.repos.servers.getById(serverId);
+    if (!server || server.transport !== 'plugin') return undefined;
+    await this.d.plugins.setInstanceConfig(serverId, server.command, config);
+    void this.connectAndSync(serverId);
+    return server;
+  }
+
+  /** Masked view of a plugin instance's config (secret values blanked) for the edit form. */
+  async getInstanceConfigView(serverId: string): Promise<{ config: Record<string, unknown>; secretsSet: Record<string, boolean> } | undefined> {
+    const server = await this.d.repos.servers.getById(serverId);
+    if (!server || server.transport !== 'plugin') return undefined;
+    return this.d.plugins.instanceConfigView(serverId, server.command);
+  }
+
   async updateServer(id: string, req: UpdateServerRequest): Promise<UpstreamServer | undefined> {
     const existing = await this.d.repos.servers.getById(id);
     if (!existing) return undefined;
@@ -541,10 +587,15 @@ export class RegistryService {
   async syncPluginServers(): Promise<void> {
     const desired = this.d.plugins.enabledMcpServers();
     const desiredIds = new Set(desired.map((d) => d.id));
+    const known = this.d.plugins.mcpServerTypeIds();
     const all = await this.d.repos.servers.list();
 
     for (const s of all) {
-      if (s.transport === 'plugin' && !desiredIds.has(s.command)) {
+      if (s.transport !== 'plugin') continue;
+      const isDefault = s.id === `plg_${s.command}`;
+      // Remove servers of an uninstalled plugin, and the auto-created default of a disabled type — but KEEP
+      // user-created instances of a known type (they are independent, with their own config + enabled flag).
+      if (!known.has(s.command) || (isDefault && !desiredIds.has(s.command))) {
         await this.d.upstream.disconnect(s.id);
         await this.d.repos.servers.delete(s.id);
       }
