@@ -190,6 +190,9 @@ export interface ServerInsert {
   /** Already-encrypted client key (or '' for none). */
   tlsClientKeyEncrypted?: string;
   enabled: boolean;
+  /** For native-plugin instances: the per-instance plugin config as a JSON string with secret fields already
+   *  encrypted (or '{}'). Remote servers leave this empty. */
+  pluginConfig?: string;
 }
 
 export class ServersRepo {
@@ -199,13 +202,13 @@ export class ServersRepo {
     const ts = now();
     await this.store.run(
       `INSERT INTO servers (id, name, slug, description, transport, url, command, args, env, headers,
-        auth_type, auth_value, tls_ca, tls_client_cert, tls_client_key, enabled, status, last_error, last_seen_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        auth_type, auth_value, tls_ca, tls_client_cert, tls_client_key, plugin_config, enabled, status, last_error, last_seen_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [
         s.id, s.name, s.slug, s.description, s.transport, s.url, s.command,
         JSON.stringify(s.args), JSON.stringify(s.env), JSON.stringify(s.headers),
         s.authType, s.authValueEncrypted, s.tlsCa ?? '', s.tlsClientCert ?? '', s.tlsClientKeyEncrypted ?? '',
-        intify(s.enabled), 'unknown', '', null, ts, ts,
+        s.pluginConfig ?? '{}', intify(s.enabled), 'unknown', '', null, ts, ts,
       ],
     );
     return (await this.getById(s.id))!;
@@ -231,6 +234,15 @@ export class ServersRepo {
       [id],
     );
     return { ca: r?.tls_ca ?? '', cert: r?.tls_client_cert ?? '', keyEncrypted: r?.tls_client_key ?? '' };
+  }
+  /** For native-plugin instances: the per-instance plugin config JSON (secret fields still encrypted), or ''. */
+  async getPluginConfig(id: string): Promise<string> {
+    const r = await this.store.get<{ plugin_config: string }>('SELECT plugin_config FROM servers WHERE id = ?', [id]);
+    return r?.plugin_config ?? '';
+  }
+  /** Write a native-plugin instance's config (JSON string; secret fields must already be encrypted). */
+  async setPluginConfig(id: string, json: string): Promise<void> {
+    await this.store.run('UPDATE servers SET plugin_config = ?, updated_at = ? WHERE id = ?', [json, now(), id]);
   }
   async list(): Promise<UpstreamServer[]> {
     const rows = await this.store.all('SELECT * FROM servers ORDER BY created_at ASC');

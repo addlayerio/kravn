@@ -719,8 +719,27 @@ const usageCounters: Migration = {
   },
 };
 
+// Per-instance native-plugin config. Lets a native plugin (e.g. Azure, Outlook) be added as MULTIPLE server
+// instances, each with its own credentials — unifying native + remote as one multi-instance "MCP Server" model.
+// Additive + non-destructive: just a nullable column. The existing seeded ("default") instance keeps reading the
+// plugin's current config via fallback, so nothing needs re-configuring; only NEW instances use plugin_config.
+const pluginInstanceConfig: Migration = {
+  name: '019_plugin_config',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('servers'))) return;
+    if (!(await knex.schema.hasColumn('servers', 'plugin_config'))) {
+      await knex.schema.alterTable('servers', (t) => t.text('plugin_config').nullable()); // JSON; secret fields encrypted at rest
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('servers')) && (await knex.schema.hasColumn('servers', 'plugin_config'))) {
+      await knex.schema.alterTable('servers', (t) => t.dropColumn('plugin_config'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle
