@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-sdk';
+import type { McpServerPlugin, McpToolResult, McpToolDef, McpContent } from '@kravn/plugin-sdk';
 import { htmlToMarkdown } from '../lib/html.js';
 
 /**
@@ -24,6 +24,7 @@ const GRAPH_BASE = 'https://graph.microsoft.com/v1.0';
 const GRAPH_PREFIX = 'https://graph.microsoft.com/';
 const REQUEST_TIMEOUT_MS = 20_000;
 const MAX_OUTPUT_CHARS = 60_000;
+const MAX_IMAGE_BYTES = 5_000_000; // skip a hosted image larger than this (keeps tool results sane)
 
 const TEAMS_SETUP = [
   'This plugin talks to **Microsoft Graph** with an app-only (client-credentials) **Entra ID** app registration. Set it up in the Azure / Entra admin center:',
@@ -117,6 +118,19 @@ async function graphGet(cfg: TeamsConfig, pathOrUrl: string, headers?: Record<st
   return data;
 }
 
+/** Fetch BINARY content from Graph (e.g. a message's hosted image `/$value`). Same host hardening as graphGet:
+ *  the resolved URL must be on graph.microsoft.com and no redirect is followed, so the bearer can't leak. */
+async function graphBytes(cfg: TeamsConfig, pathOrUrl: string): Promise<{ buf: Buffer; contentType: string }> {
+  const url = pathOrUrl.startsWith('https://') ? pathOrUrl : `${GRAPH_BASE}${pathOrUrl}`;
+  if (!url.startsWith(GRAPH_PREFIX)) throw new TeamsError('Refusing to call a non-Graph URL.');
+  const token = await getToken(cfg);
+  const res = await fetch(url, { headers: { authorization: `Bearer ${token}` }, redirect: 'error', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  if (res.status === 404) throw new TeamsError('Hosted content not found.');
+  if (!res.ok) throw new TeamsError(`Graph HTTP ${res.status}`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  return { buf, contentType: res.headers.get('content-type') || 'application/octet-stream' };
+}
+
 /** Page through a Graph collection, following only same-host nextLinks, up to `maxItems` (and a page cap). */
 async function graphPaged(cfg: TeamsConfig, path: string, maxItems: number, headers?: Record<string, string>): Promise<any[]> {
   const items: any[] = [];
@@ -205,6 +219,13 @@ function renderBody(msg: any): string {
   return msg?.body?.contentType === 'html' ? htmlToMarkdown(content) : content.trim();
 }
 
+/** Distinct hosted-content ids referenced by a message body — Teams inline images (pasted screenshots etc.). */
+function hostedImageIds(msg: any): string[] {
+  const content = String(msg?.body?.content ?? '');
+  const ids = [...content.matchAll(/hostedContents\/([^/'"\\)>\s]+)\/\$value/g)].map((m) => m[1]);
+  return [...new Set(ids)];
+}
+
 /** Build a readable, chronological transcript from Graph chat/channel messages. */
 function transcript(messages: any[]): string {
   const at = (v: unknown): number => {
@@ -224,6 +245,8 @@ function transcript(messages: any[]): string {
     lines.push(`[${m?.createdDateTime ?? ''}] ${author}:`);
     if (body) lines.push(body);
     if (attachments.length) lines.push(`  📎 ${attachments.join(', ')}`);
+    const imgs = hostedImageIds(m);
+    if (imgs.length) lines.push(`  🖼️ ${imgs.length} inline image(s) — view with teams_get_message_images (messageId="${m?.id ?? ''}")`);
     if (m?.deletedDateTime) lines.push('  (deleted)');
     lines.push('');
   }
@@ -337,6 +360,25 @@ const TOOLS: McpToolDef[] = [
       required: ['teamId', 'channelId'],
     },
   },
+  {
+    name: 'teams_get_message_images',
+    description:
+      'Fetch the INLINE images of a specific Teams message (pasted screenshots etc.) so they can be viewed — the ' +
+      'read tools only show that an image exists (a 🖼️ hint). Pass the `messageId` from that hint and EITHER ' +
+      '`chatId` (chat message) OR `teamId`+`channelId` (channel message). Returns the images themselves; images ' +
+      'larger than 5 MB are skipped.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        messageId: { type: 'string', description: 'The message id (from the 🖼️ hint in a transcript).' },
+        chatId: { type: 'string', description: 'Chat id — for a chat message.' },
+        teamId: { type: 'string', description: 'Team id — for a channel message (with channelId).' },
+        channelId: { type: 'string', description: 'Channel id — for a channel message (with teamId).' },
+        limit: { type: 'number', description: 'Max images to return (default 5, max 10).' },
+      },
+      required: ['messageId'],
+    },
+  },
 ];
 
 async function findUser(cfg: TeamsConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -432,17 +474,58 @@ async function readChannelMessages(cfg: TeamsConfig, args: Record<string, unknow
   return text(cap(`# Channel messages (${msgs.length}${rangeLabel(since, until)})\n\n${transcript(msgs)}`));
 }
 
+async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const messageId = String(args.messageId ?? '').trim();
+  if (!messageId) return text('Error: messageId is required.', true);
+  const chatId = String(args.chatId ?? '').trim();
+  const teamId = String(args.teamId ?? '').trim();
+  const channelId = String(args.channelId ?? '').trim();
+  let base: string;
+  if (chatId) base = `/chats/${encodeURIComponent(chatId)}/messages/${encodeURIComponent(messageId)}`;
+  else if (teamId && channelId) base = `/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages/${encodeURIComponent(messageId)}`;
+  else return text('Error: provide chatId (for a chat) OR teamId + channelId (for a channel).', true);
+  const limit = clamp(args.limit, 1, 10, 5);
+
+  const list = await graphGet(cfg, `${base}/hostedContents`);
+  const items: any[] = Array.isArray(list?.value) ? list.value : [];
+  const images = items.filter((h) => !h?.contentType || String(h.contentType).startsWith('image/'));
+  if (!images.length) return text('This message has no inline (hosted) images.');
+
+  const content: McpContent[] = [];
+  const notes: string[] = [];
+  for (const h of images.slice(0, limit)) {
+    try {
+      const { buf, contentType } = await graphBytes(cfg, `${base}/hostedContents/${encodeURIComponent(String(h?.id ?? ''))}/$value`);
+      if (buf.length > MAX_IMAGE_BYTES) {
+        notes.push(`skipped an image (${(buf.length / 1e6).toFixed(1)} MB > 5 MB)`);
+        continue;
+      }
+      content.push({
+        type: 'image',
+        data: buf.toString('base64'),
+        mimeType: contentType.startsWith('image/') ? contentType : String(h?.contentType || 'image/png'),
+      });
+    } catch (e) {
+      notes.push(`could not fetch an image: ${(e as Error).message}`);
+    }
+  }
+  const header = content.length
+    ? `${content.length} image(s) from the message${notes.length ? `\n(${notes.join('; ')})` : ''}`
+    : `No images could be returned${notes.length ? ` — ${notes.join('; ')}` : '.'}`;
+  return { content: [{ type: 'text', text: header }, ...content], isError: content.length === 0 };
+}
+
 export function teamsPlugin(): McpServerPlugin {
   return {
     manifest: {
       id: TEAMS_ID,
       name: 'Microsoft Teams',
-      version: '0.2.0',
+      version: '0.3.0',
       type: 'mcp-server',
       description:
         'Interact with Microsoft Teams over MCP via Microsoft Graph (app-only). Find people, find/list/read chats ' +
-        '(scopable by a date range), and list teams/channels + read channel posts. Requires an Entra app ' +
-        'registration with read-only Application permissions (see setup).',
+        '(scopable by a date range), list teams/channels + read channel posts, and fetch a message\'s inline ' +
+        'images (pasted screenshots). Requires an Entra app registration with read-only Application permissions (see setup).',
       author: 'Kravn',
       priority: 100,
       setup: TEAMS_SETUP,
@@ -476,6 +559,8 @@ export function teamsPlugin(): McpServerPlugin {
               return await listChannels(cfg, args);
             case 'teams_read_channel_messages':
               return await readChannelMessages(cfg, args);
+            case 'teams_get_message_images':
+              return await getMessageImages(cfg, args);
             default:
               return text(`Unknown tool: ${name}`, true);
           }

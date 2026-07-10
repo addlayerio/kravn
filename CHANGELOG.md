@@ -14,6 +14,10 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Teams: view a message's inline images.** The Teams read tools now flag when a message has pasted
+  images/screenshots (a 🖼️ hint with the messageId), and a new `teams_get_message_images` tool fetches those
+  hosted images from Graph and returns them as viewable images — so an assistant can actually see a screenshot
+  in a chat, not just its filename. Uses the same read-only permissions; images over 5 MB are skipped.
 - 🧩📣 **Add any integration more than once (multi-instance).** A native integration can now be added
   multiple times, each as its own **MCP Server** with its **own credentials** — e.g. Azure subscription A on
   the DevOps team's endpoint and subscription B on the Dev team's, or two different Outlook/Gmail accounts.
