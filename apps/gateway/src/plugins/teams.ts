@@ -261,14 +261,14 @@ function transcript(messages: any[]): string {
     const attachments = (m?.attachments ?? []).map((a: any) => a?.name || a?.contentType).filter(Boolean);
     lines.push(`[${m?.createdDateTime ?? ''}] ${author}:`);
     if (body) lines.push(body);
-    if (attachments.length) lines.push(`  📎 ${attachments.join(', ')}`);
+    // Always surface the real messageId when a message carries anything fetchable (an attachment or an inline
+    // image), so the model never has to guess it. teams_get_message_images works with any of them.
+    if (attachments.length) {
+      lines.push(`  📎 ${attachments.join(', ')} — messageId="${m?.id ?? ''}" (get images with teams_get_message_images)`);
+    }
     const inlineImgs = hostedImageIds(m);
-    const imgAttach = (m?.attachments ?? []).filter((a: any) => IMG_EXT.test(String(a?.name || '')));
-    if (inlineImgs.length || imgAttach.length) {
-      const parts: string[] = [];
-      if (inlineImgs.length) parts.push(`${inlineImgs.length} inline`);
-      if (imgAttach.length) parts.push(`${imgAttach.length} attached`);
-      lines.push(`  🖼️ ${parts.join(' + ')} image(s) — view with teams_get_message_images (messageId="${m?.id ?? ''}")`);
+    if (inlineImgs.length) {
+      lines.push(`  🖼️ ${inlineImgs.length} inline image(s) — messageId="${m?.id ?? ''}" (view with teams_get_message_images)`);
     }
     if (m?.deletedDateTime) lines.push('  (deleted)');
     lines.push('');
