@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🐛 **Governance usage table shows names, not raw ids.** The per-scope usage rows now resolve the id to a
+  human name — the **user's email** for user rows and the **endpoint name** for endpoint rows — instead of an
+  opaque hash (it falls back to the id if the user/endpoint was deleted).
+- 🐛 **Teams: the read transcript now always surfaces the real messageId** for any message with an attachment
+  or inline image, so `teams_get_message_images` never has to guess it.
+
 ## [0.1.83] — 2026-07-10
 
 - 🧩 **Teams: also fetch image _file attachments_, not just inline images.** `teams_get_message_images` now

@@ -30,6 +30,7 @@ interface ToolChange {
 interface UsageRow {
   scopeType: 'global' | 'user' | 'endpoint' | 'model';
   scopeId: string;
+  name?: string; // resolved display name (user email / endpoint name) when available
   calls: number;
   inputTokens: number;
   outputTokens: number;
@@ -214,12 +215,15 @@ useEventStream((type) => {
       <p class="muted small">Metering resets daily (UTC). Budgets are enforced org-wide; per-team / per-endpoint budgets are on the roadmap. Configure them in <RouterLink to="/settings">Settings → Governance</RouterLink>.</p>
       <table v-if="byScope.length" class="tbl">
         <thead>
-          <tr><th>Scope</th><th>Id</th><th class="right">Calls</th><th class="right">Input tokens</th><th class="right">Output tokens</th></tr>
+          <tr><th>Scope</th><th>Name</th><th class="right">Calls</th><th class="right">Input tokens</th><th class="right">Output tokens</th></tr>
         </thead>
         <tbody>
           <tr v-for="u in byScope" :key="u.scopeType + u.scopeId">
             <td>{{ scopeLabel[u.scopeType] }}</td>
-            <td class="mono small">{{ u.scopeId }}</td>
+            <td>
+              <span v-if="u.name">{{ u.name }}</span>
+              <span v-else class="mono small" :title="u.scopeId">{{ u.scopeId }}</span>
+            </td>
             <td class="right">{{ fmt(u.calls) }}</td>
             <td class="right">{{ fmt(u.inputTokens) }}</td>
             <td class="right">{{ fmt(u.outputTokens) }}</td>

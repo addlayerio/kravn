@@ -79,8 +79,22 @@ export class UsageService {
     this.d.log.warn({ kind, message }, 'cost budget exceeded (warn mode — not blocking)');
   }
 
-  /** Today's usage counters, for the admin report. */
-  report(): Promise<UsageRow[]> {
-    return this.d.repos.usage.list(utcDay());
+  /** Today's usage counters, for the admin report — with user/endpoint ids resolved to human-readable names
+   *  (user email, endpoint name) so the Governance table shows who/what, not an opaque id. Best-effort: a
+   *  deleted user/endpoint (or a model row, whose id is already its name) just leaves `name` undefined. */
+  async report(): Promise<Array<UsageRow & { name?: string }>> {
+    const rows = await this.d.repos.usage.list(utcDay());
+    const userIds = [...new Set(rows.filter((r) => r.scopeType === 'user').map((r) => r.scopeId))];
+    const epIds = [...new Set(rows.filter((r) => r.scopeType === 'endpoint').map((r) => r.scopeId))];
+    const [users, eps] = await Promise.all([
+      Promise.all(userIds.map(async (id) => [id, await this.d.repos.users.getById(id).catch(() => undefined)] as const)),
+      Promise.all(epIds.map(async (id) => [id, await this.d.repos.mcpEndpoints.getById(id).catch(() => undefined)] as const)),
+    ]);
+    const userName = new Map(users.map(([id, u]) => [id, u ? u.email || u.name : undefined]));
+    const epName = new Map(eps.map(([id, e]) => [id, e?.name]));
+    return rows.map((r) => ({
+      ...r,
+      name: r.scopeType === 'user' ? userName.get(r.scopeId) : r.scopeType === 'endpoint' ? epName.get(r.scopeId) : undefined,
+    }));
   }
 }
