@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩📣 **Add any integration more than once (multi-instance).** A native integration can now be added
+  multiple times, each as its own **MCP Server** with its **own credentials** — e.g. Azure subscription A on
+  the DevOps team's endpoint and subscription B on the Dev team's, or two different Outlook/Gmail accounts.
+  From the Catalog, "Add" a built-in integration, name the instance, and enter its credentials; each instance
+  is composable into a different endpoint, enabled/governed independently, with its secrets encrypted at rest.
+  Native and remote integrations are now one unified, multi-instance "MCP Server" model (built-in ones just
+  carry a badge). Your existing integrations keep working unchanged as their default instance — no
+  re-configuration.
 - 🧩📣 **Email integrations — Gmail & Outlook (read _and_ send).** Two new native plugins let an assistant
   work with email end-to-end: **search/read** messages and **send** new mail (Outlook also reply/reply-all),
   so a workflow can, for example, email a summary when a task finishes — something you couldn't do before.

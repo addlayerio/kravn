@@ -149,6 +149,17 @@ const catalogItems = computed<CatalogItem[]>(() => {
 
 const detailItem = ref<CatalogItem | null>(null);
 const configPlugin = ref<PluginView | null>(null);
+// A native integration can be added more than once: each is a plugin-backed server INSTANCE with its own
+// credentials. `instanceConfig` drives the create/edit modal (reusing the schema form).
+const instanceConfig = ref<{ plugin: PluginView; serverId?: string; name?: string } | null>(null);
+function addInstance(p: PluginView) {
+  instanceConfig.value = { plugin: p };
+}
+async function onInstanceSaved() {
+  instanceConfig.value = null;
+  toast.success('Instance saved.');
+  await load();
+}
 
 async function refreshNative() {
   if (!canConfigure) return;
@@ -175,8 +186,8 @@ async function toggleNative(p: PluginView) {
   }
 }
 
-function onPluginSaved(res: { plugins: PluginView[] }) {
-  nativeIntegrations.value = res.plugins.filter((p) => p.type === 'mcp-server');
+function onPluginSaved(res?: { plugins: PluginView[] }) {
+  if (res) nativeIntegrations.value = res.plugins.filter((p) => p.type === 'mcp-server');
   toast.success('Configuration saved.');
 }
 
@@ -206,9 +217,12 @@ function openCreate() {
 // modal instead of the generic upstream-server form, so install and edit ask for the same thing.
 function editServer(s: UpstreamServer) {
   if (s.transport === 'plugin') {
-    const plugin = nativeIntegrations.value.find((p) => `plg_${p.id}` === s.id);
-    if (plugin) {
-      configPlugin.value = plugin;
+    const type = nativeIntegrations.value.find((p) => p.id === s.command);
+    if (type) {
+      // The auto-created default instance edits the plugin's own config; a user-created instance edits its
+      // own per-instance config (stored on the server row).
+      if (s.id === `plg_${s.command}`) configPlugin.value = type;
+      else instanceConfig.value = { plugin: type, serverId: s.id, name: s.name };
       return;
     }
   }
@@ -464,11 +478,12 @@ async function remove(srv: UpstreamServer) {
         </div>
         <div class="cc-foot">
           <template v-if="e.kind === 'native'">
-            <span class="badge" :class="e.plugin?.enabled ? 'online' : 'disabled'">{{ e.plugin?.enabled ? 'on' : 'off' }}</span>
             <template v-if="auth.can('settings.write')">
               <button class="btn" @click="configPlugin = e.plugin ?? null">Config</button>
               <button class="btn" :class="{ primary: !e.plugin?.enabled }" @click="e.plugin && toggleNative(e.plugin)">{{ e.plugin?.enabled ? 'Disable' : 'Enable' }}</button>
             </template>
+            <!-- Add another INSTANCE (its own credentials), same flow as a remote server. -->
+            <button v-if="auth.can('servers.write') && e.plugin" class="btn primary" @click="addInstance(e.plugin)">Add</button>
           </template>
           <template v-else>
             <span v-if="e.installed" class="muted">Added ✓</span>
@@ -533,6 +548,13 @@ async function remove(srv: UpstreamServer) {
   </div>
 
   <PluginConfigModal v-if="configPlugin" :plugin="configPlugin" @close="configPlugin = null" @saved="onPluginSaved" />
+  <PluginConfigModal
+    v-if="instanceConfig"
+    :plugin="instanceConfig.plugin"
+    :instance="{ serverId: instanceConfig.serverId, name: instanceConfig.name }"
+    @close="instanceConfig = null"
+    @saved="onInstanceSaved"
+  />
 
   <!-- OAuth client credentials (providers without automatic app registration, e.g. GitHub) -->
   <div v-if="oauthClient" class="modal-backdrop" @click.self="oauthClient = null">

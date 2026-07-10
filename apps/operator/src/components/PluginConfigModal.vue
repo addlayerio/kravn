@@ -10,11 +10,20 @@ import { serverIconId } from '../lib/server-icon';
  * Schema-driven plugin configuration modal, extracted from PluginsView so BOTH the Plugins page (hooks) and
  * the unified integrations Catalog (native mcp-server plugins) configure a plugin with the same UX.
  */
-const props = defineProps<{ plugin: PluginView }>();
+// `plugin` is the plugin TYPE (schema + setup + name). Without `instance` this configures the plugin's own
+// (singleton) config via /api/plugins. With `instance` it configures a plugin-backed SERVER instance via
+// /api/servers — create (no serverId) or edit (serverId) — so a native integration can be added N times.
+const props = defineProps<{ plugin: PluginView; instance?: { serverId?: string; name?: string } }>();
 const emit = defineEmits<{
   (e: 'close'): void;
-  (e: 'saved', res: { plugins: PluginView[]; loadErrors: { source: string; error: string }[] }): void;
+  (e: 'saved', res?: { plugins: PluginView[]; loadErrors: { source: string; error: string }[] }): void;
 }>();
+
+const isInstance = computed(() => !!props.instance);
+const isInstanceEdit = computed(() => !!props.instance?.serverId);
+const instanceName = ref('');
+const instanceSecretsSet = ref<Record<string, boolean>>({});
+const activeSecretsSet = computed<Record<string, boolean>>(() => (isInstance.value ? instanceSecretsSet.value : props.plugin.configSecretsSet ?? {}));
 
 type SourceKind = 'tools' | 'resources' | 'prompts' | 'servers';
 interface Field {
@@ -92,7 +101,21 @@ const jsonText = reactive<Record<string, string>>({});
 async function init() {
   const p = props.plugin;
   configError.value = '';
-  const cfg = p.config ?? {};
+  instanceName.value = props.instance?.name ?? '';
+  instanceSecretsSet.value = {};
+  let cfg: Record<string, unknown> = p.config ?? {};
+  if (isInstance.value) {
+    cfg = {}; // create: empty
+    if (isInstanceEdit.value) {
+      try {
+        const v = await api.get<{ config: Record<string, unknown>; secretsSet: Record<string, boolean> }>(`/api/servers/${props.instance!.serverId}/plugin-config`);
+        cfg = v.config ?? {};
+        instanceSecretsSet.value = v.secretsSet ?? {};
+      } catch {
+        cfg = {};
+      }
+    }
+  }
   const f = fieldsFromSchema(p.configSchema);
   for (const k of Object.keys(model)) delete model[k];
   for (const k of Object.keys(arrText)) delete arrText[k];
@@ -114,7 +137,7 @@ async function init() {
     else model[field.key] = cur ?? '';
   }
 }
-watch(() => props.plugin.id, init, { immediate: true });
+watch([() => props.plugin.id, () => props.instance?.serverId, () => isInstance.value], init, { immediate: true });
 
 async function saveConfig() {
   configError.value = '';
@@ -127,7 +150,7 @@ async function saveConfig() {
       return;
     }
   } else {
-    config = { ...(props.plugin.config ?? {}) };
+    config = { ...(isInstance.value ? {} : props.plugin.config ?? {}) };
     for (const f of fields.value) {
       if (f.control === 'string[]') config[f.key] = (arrText[f.key] ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
       else if (f.control === 'pick-multi') config[f.key] = Array.isArray(model[f.key]) ? model[f.key] : [];
@@ -147,6 +170,24 @@ async function saveConfig() {
     }
   }
   try {
+    if (isInstance.value) {
+      if (isInstanceEdit.value) {
+        await api.patch(`/api/servers/${props.instance!.serverId}/plugin-config`, { config });
+        // Best-effort rename (the config is what matters; ignore a rename validation quirk).
+        if (instanceName.value.trim() && instanceName.value.trim() !== props.instance!.name) {
+          await api.patch(`/api/servers/${props.instance!.serverId}`, { name: instanceName.value.trim() }).catch(() => {});
+        }
+      } else {
+        if (!instanceName.value.trim()) {
+          configError.value = 'Give this instance a name (e.g. "Azure — DevOps").';
+          return;
+        }
+        await api.post('/api/servers/plugin-instance', { typeId: props.plugin.id, name: instanceName.value.trim(), config });
+      }
+      emit('saved');
+      emit('close');
+      return;
+    }
     const res = await api.patch<{ plugins: PluginView[]; loadErrors: { source: string; error: string }[] }>(
       `/api/plugins/${props.plugin.id}`,
       { config },
@@ -163,8 +204,16 @@ async function saveConfig() {
   <div class="modal-backdrop" @click.self="emit('close')">
     <div class="modal">
       <div class="row spread">
-        <h2 style="margin: 0">Configure: {{ plugin.name }}</h2>
+        <h2 style="margin: 0">
+          {{ isInstance ? (isInstanceEdit ? 'Configure ' + (instanceName || plugin.name) : 'Add ' + plugin.name + ' instance') : 'Configure: ' + plugin.name }}
+        </h2>
         <button v-if="fields" class="btn" @click="rawMode = !rawMode">{{ rawMode ? 'Form' : 'Edit as JSON' }}</button>
+      </div>
+
+      <div v-if="isInstance" class="field" style="margin-top: 0.75rem">
+        <label>Instance name</label>
+        <input v-model="instanceName" placeholder="e.g. Azure — DevOps" />
+        <span class="field-help">A label for this connection. You can add the same integration more than once, each with its own credentials.</span>
       </div>
 
       <div v-if="plugin.setup" class="setup-note">
@@ -215,7 +264,7 @@ async function saveConfig() {
             type="password"
             autocomplete="new-password"
             v-model="model[f.key]"
-            :placeholder="plugin.configSecretsSet?.[f.key] ? '•••••• (set — leave blank to keep)' : ''"
+            :placeholder="activeSecretsSet[f.key] ? '•••••• (set — leave blank to keep)' : ''"
           />
           <input v-else v-model="model[f.key]" />
           <MarkdownText v-if="f.help" :text="f.help" inline class="field-help" />

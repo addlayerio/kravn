@@ -260,7 +260,7 @@ function configFromDetail() {
     v-if="configPlugin"
     :plugin="configPlugin"
     @close="configPlugin = null"
-    @saved="(res) => { applyList(res); toast.success('Plugin configuration saved.'); }"
+    @saved="(res) => { if (res) applyList(res); toast.success('Plugin configuration saved.'); }"
   />
 </template>
 
