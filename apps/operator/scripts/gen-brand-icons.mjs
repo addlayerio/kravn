@@ -57,6 +57,8 @@ const NATIVE = [
   { id: 'kravn-azure', slug: 'microsoftazure' },
   { id: 'kravn-aws', slug: 'amazonwebservices' },
   { id: 'kravn-gcp', slug: 'googlecloud' },
+  { id: 'kravn-gmail', slug: 'gmail' },
+  { id: 'kravn-outlook', slug: 'microsoftoutlook' },
   { id: 'kravn-confluence', slug: 'confluence' },
   { id: 'kravn-jira', slug: 'jira' },
   { id: 'kravn-odoo', slug: 'odoo' },

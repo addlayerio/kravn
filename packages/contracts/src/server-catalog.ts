@@ -927,4 +927,12 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-gcp', name: 'Google Cloud', category: 'Cloud',
     description: 'Read-only Google Cloud diagnostics & cost — Cloud Asset (search any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. Service-account (RS256 JWT) auth. No write tools.',
   },
+  {
+    id: 'kravn-gmail', name: 'Gmail', category: 'Email',
+    description: 'Read and send email over the Gmail API — search/read messages and send mail (incl. replying into a thread). OAuth 2.0 (client id/secret + refresh token). Includes a send action.',
+  },
+  {
+    id: 'kravn-outlook', name: 'Outlook', category: 'Email',
+    description: 'Read and send email over Microsoft 365 / Exchange Online (Microsoft Graph) — search/read messages, send, and reply/reply-all. App-only Graph auth (Mail.Read + Mail.Send). Includes a send action.',
+  },
 ];

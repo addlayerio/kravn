@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩📣 **Email integrations — Gmail & Outlook (read _and_ send).** Two new native plugins let an assistant
+  work with email end-to-end: **search/read** messages and **send** new mail (Outlook also reply/reply-all),
+  so a workflow can, for example, email a summary when a task finishes — something you couldn't do before.
+  **Gmail** uses OAuth 2.0 (client id/secret + refresh token); **Outlook** uses app-only Microsoft Graph
+  (Mail.Read + Mail.Send), the same auth as the SharePoint/Teams plugins. Secrets are encrypted at rest.
+  Sending is a mutating action — put the send tools behind the **approval gate** if you want a human to
+  confirm outbound mail.
 - 🧩 **Azure: discover Log Analytics workspaces.** New `azure_list_log_analytics_workspaces` tool lists every
   workspace (name + workspace ID) visible in the subscription, so an assistant can query across several
   workspaces without pinning one in config — the configured Workspace ID is a convenient default, not a limit.
