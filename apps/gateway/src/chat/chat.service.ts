@@ -110,7 +110,7 @@ export class ChatService {
 
     // The per-turn file workspace handed to file-aware tools (e.g. the interpreter), and the output
     // files those tools produce (persisted as downloadable attachments on the assistant message).
-    const workspaceFiles = await this.repos.chat.getAttachmentFiles(actor.id, conversationId);
+    const workspaceFiles: Array<{ name: string; b64: string; mime?: string }> = await this.repos.chat.getAttachmentFiles(actor.id, conversationId);
     const producedAttachmentIds: string[] = [];
     let finalText = '';
 
@@ -149,6 +149,15 @@ export class ChatService {
             // from remote MCP upstreams (toolId `tl_plg_…` ⇒ plugin server). See review F1.
             const trusted = toolId.startsWith('tl_plg_');
             resultText = await this.persistToolFiles(actor, conversationId, result, producedAttachmentIds, trusted);
+            // Make trusted tool-produced files available to LATER tools THIS SAME turn — e.g. so a PDF the
+            // code interpreter just generated can be attached to an email (via attachFiles) without the model
+            // ever handling the raw bytes.
+            const produced = (result as { files?: Array<{ name?: string; b64?: string; mime?: string }> }).files;
+            if (trusted && Array.isArray(produced)) {
+              for (const f of produced) {
+                if (f?.name && f?.b64 && !workspaceFiles.some((w) => w.name === f.name)) workspaceFiles.push({ name: f.name, b64: f.b64, mime: f.mime });
+              }
+            }
           } catch (err) {
             resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
           }

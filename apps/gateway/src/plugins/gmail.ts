@@ -1,5 +1,5 @@
 import crypto from 'node:crypto';
-import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-sdk';
+import type { McpServerPlugin, McpToolResult, McpToolDef, McpCallContext } from '@kravn/plugin-sdk';
 
 /**
  * Native Gmail plugin — read AND send mail over the Gmail REST API (no external runner, no google SDK).
@@ -111,18 +111,74 @@ function encodeHeader(v: string): string {
   // RFC 2047 encode only if it contains non-ASCII (keeps plain ASCII readable).
   return /[^\x20-\x7E]/.test(v) ? `=?UTF-8?B?${Buffer.from(v, 'utf8').toString('base64')}?=` : v;
 }
-function buildMime(opts: { to: string; cc?: string; bcc?: string; subject: string; body: string; html: boolean }): string {
+interface Attachment {
+  name: string;
+  mimeType: string;
+  data: string; // base64
+}
+
+const MAX_ATTACH_BYTES = 25_000_000; // Gmail caps a whole message at ~25 MB
+
+/** Collect attachments from explicit base64 (`attachments`) and/or files already attached to the conversation
+ *  (`attachFiles`, referenced by name — so a big file needn't be echoed as base64 through the model). */
+function resolveAttachments(args: Record<string, unknown>, ctx?: McpCallContext): Attachment[] {
+  const out: Attachment[] = [];
+  if (args.attachments) {
+    let arr: unknown;
+    try {
+      arr = typeof args.attachments === 'string' ? JSON.parse(args.attachments) : args.attachments;
+    } catch {
+      throw new GmailError('attachments must be a JSON array of {name, mimeType, data(base64)}.');
+    }
+    if (Array.isArray(arr))
+      for (const a of arr as any[]) {
+        if (a?.name && a?.data) out.push({ name: String(a.name), mimeType: String(a.mimeType || 'application/octet-stream'), data: String(a.data).replace(/\s+/g, '') });
+      }
+  }
+  if (args.attachFiles) {
+    let names: unknown;
+    try {
+      names = typeof args.attachFiles === 'string' ? JSON.parse(args.attachFiles) : args.attachFiles;
+    } catch {
+      throw new GmailError('attachFiles must be a JSON array of file names attached to the conversation.');
+    }
+    const files = ctx?.files ?? [];
+    if (Array.isArray(names))
+      for (const n of names) {
+        const f = files.find((x) => x.name === String(n));
+        if (!f) throw new GmailError(`Attachment "${n}" isn't among the files attached to this conversation.`);
+        out.push({ name: f.name, mimeType: f.mime || 'application/octet-stream', data: f.b64 });
+      }
+  }
+  if (out.reduce((s, a) => s + a.data.length, 0) > MAX_ATTACH_BYTES * 1.37) throw new GmailError("Attachments exceed Gmail's ~25 MB message limit.");
+  return out;
+}
+
+function buildMime(opts: { to: string; cc?: string; bcc?: string; subject: string; body: string; html: boolean; attachments?: Attachment[] }): string {
   const h: string[] = [];
   h.push(`To: ${opts.to}`);
   if (opts.cc) h.push(`Cc: ${opts.cc}`);
   if (opts.bcc) h.push(`Bcc: ${opts.bcc}`);
   h.push(`Subject: ${encodeHeader(opts.subject)}`);
   h.push('MIME-Version: 1.0');
-  h.push(`Content-Type: ${opts.html ? 'text/html' : 'text/plain'}; charset="UTF-8"`);
-  h.push('Content-Transfer-Encoding: base64');
-  // base64-encode the body (76-col wrapped) so any UTF-8 content is transported safely.
-  const b64 = Buffer.from(opts.body, 'utf8').toString('base64').replace(/(.{76})/g, '$1\r\n');
-  return `${h.join('\r\n')}\r\n\r\n${b64}`;
+  const wrap = (s: string) => s.replace(/(.{76})/g, '$1\r\n');
+  const bodyMime = `${opts.html ? 'text/html' : 'text/plain'}; charset="UTF-8"`;
+  const bodyB64 = wrap(Buffer.from(opts.body, 'utf8').toString('base64'));
+  if (!opts.attachments || !opts.attachments.length) {
+    h.push(`Content-Type: ${bodyMime}`, 'Content-Transfer-Encoding: base64');
+    return `${h.join('\r\n')}\r\n\r\n${bodyB64}`;
+  }
+  // multipart/mixed: the text/html body part + one part per attachment.
+  const boundary = `kravn_${crypto.randomBytes(12).toString('hex')}`;
+  h.push(`Content-Type: multipart/mixed; boundary="${boundary}"`);
+  const parts: string[] = [`Content-Type: ${bodyMime}\r\nContent-Transfer-Encoding: base64\r\n\r\n${bodyB64}`];
+  for (const a of opts.attachments) {
+    const nm = a.name.replace(/["\r\n]/g, '');
+    const mt = a.mimeType.replace(/[\r\n]/g, '');
+    parts.push(`Content-Type: ${mt}; name="${nm}"\r\nContent-Disposition: attachment; filename="${nm}"\r\nContent-Transfer-Encoding: base64\r\n\r\n${wrap(a.data)}`);
+  }
+  const bodyBlock = parts.map((p) => `--${boundary}\r\n${p}`).join('\r\n') + `\r\n--${boundary}--`;
+  return `${h.join('\r\n')}\r\n\r\n${bodyBlock}`;
 }
 
 function headersOf(msg: any): Record<string, string> {
@@ -175,9 +231,11 @@ const TOOLS: McpToolDef[] = [
   {
     name: 'gmail_send',
     description:
-      'Send an email (or reply into a thread). `to` is a comma-separated recipient list; optional `cc`/`bcc`. ' +
-      '`html` = true to send an HTML body. To reply within an existing conversation, pass its `threadId` ' +
-      '(from gmail_get_message). NOTE: this sends real mail — a mutating action.',
+      'Send an email (or reply into a thread), optionally with attachments. `to` is a comma-separated recipient ' +
+      'list; optional `cc`/`bcc`. `html` = true for an HTML body. Reply within a conversation with `threadId`. ' +
+      'Attach files two ways: `attachFiles` (a JSON array of names of files already attached to THIS conversation ' +
+      "— preferred, no base64 needed) and/or `attachments` (a JSON array of {name, mimeType, data} where data is " +
+      'base64). NOTE: this sends real mail — a mutating action.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -188,6 +246,8 @@ const TOOLS: McpToolDef[] = [
         bcc: { type: 'string', description: 'Optional comma-separated BCC.' },
         html: { type: 'boolean', description: 'Send the body as HTML (default false = plain text).' },
         threadId: { type: 'string', description: 'Optional thread id to reply within a conversation.' },
+        attachFiles: { type: 'string', description: 'Optional JSON array of file names attached to this conversation to send as attachments, e.g. ["report.pdf"].' },
+        attachments: { type: 'string', description: 'Optional JSON array of {name, mimeType, data} attachments where data is base64.' },
       },
       required: ['to', 'subject', 'body'],
     },
@@ -232,17 +292,19 @@ async function getMessage(cfg: GmailConfig, args: Record<string, unknown>): Prom
   return text(clip(JSON.stringify(out, null, 2)));
 }
 
-async function send(cfg: GmailConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+async function send(cfg: GmailConfig, args: Record<string, unknown>, ctx?: McpCallContext): Promise<McpToolResult> {
   const to = String(args.to ?? '').trim();
   const subject = String(args.subject ?? '').trim();
   const body = String(args.body ?? '');
   if (!to) return text('Error: to (recipient) is required.', true);
   if (!subject && !body) return text('Error: provide at least a subject or a body.', true);
-  const mime = buildMime({ to, cc: args.cc ? String(args.cc) : undefined, bcc: args.bcc ? String(args.bcc) : undefined, subject, body, html: args.html === true });
+  const attachments = resolveAttachments(args, ctx);
+  const mime = buildMime({ to, cc: args.cc ? String(args.cc) : undefined, bcc: args.bcc ? String(args.bcc) : undefined, subject, body, html: args.html === true, attachments });
   const payload: Record<string, unknown> = { raw: Buffer.from(mime, 'utf8').toString('base64url') };
   if (args.threadId) payload.threadId = String(args.threadId);
   const res = await gmailApi(cfg, 'POST', '/messages/send', payload);
-  return text(`Sent. Message id ${res.id}${res.threadId ? `, thread ${res.threadId}` : ''}.`);
+  const att = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
+  return text(`Sent${att}. Message id ${res.id}${res.threadId ? `, thread ${res.threadId}` : ''}.`);
 }
 
 async function listLabels(cfg: GmailConfig): Promise<McpToolResult> {
@@ -287,7 +349,7 @@ export function gmailPlugin(): McpServerPlugin {
     },
     server: {
       listTools: () => TOOLS,
-      async callTool(name, args, config): Promise<McpToolResult> {
+      async callTool(name, args, config, ctx): Promise<McpToolResult> {
         try {
           const cfg = readConfig(config);
           switch (name) {
@@ -296,7 +358,7 @@ export function gmailPlugin(): McpServerPlugin {
             case 'gmail_get_message':
               return await getMessage(cfg, args);
             case 'gmail_send':
-              return await send(cfg, args);
+              return await send(cfg, args, ctx);
             case 'gmail_list_labels':
               return await listLabels(cfg);
             default:

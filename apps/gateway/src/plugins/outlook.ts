@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-sdk';
+import type { McpServerPlugin, McpToolResult, McpToolDef, McpCallContext } from '@kravn/plugin-sdk';
 
 /**
  * Native Outlook / Exchange Online plugin — read AND send mail over Microsoft Graph (no external runner, no SDK).
@@ -137,8 +137,11 @@ const TOOLS: McpToolDef[] = [
   {
     name: 'outlook_send_mail',
     description:
-      'Send an email from the mailbox. `to` is a comma-separated recipient list; optional `cc`/`bcc`. `html` = ' +
-      'true for an HTML body. Optional `mailbox` override. NOTE: this sends real mail — a mutating action.',
+      'Send an email from the mailbox, optionally with attachments. `to` is a comma-separated recipient list; ' +
+      'optional `cc`/`bcc`. `html` = true for an HTML body. Attach files two ways: `attachFiles` (a JSON array of ' +
+      'names of files already attached to THIS conversation — preferred, no base64 needed) and/or `attachments` ' +
+      '(a JSON array of {name, mimeType, data} where data is base64). Total attachments must stay under ~3 MB. ' +
+      'NOTE: this sends real mail — a mutating action.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -149,6 +152,8 @@ const TOOLS: McpToolDef[] = [
         bcc: { type: 'string', description: 'Optional comma-separated BCC.' },
         html: { type: 'boolean', description: 'Send the body as HTML (default false).' },
         mailbox: { type: 'string', description: 'Sending mailbox email/UPN (defaults to the configured one).' },
+        attachFiles: { type: 'string', description: 'Optional JSON array of file names attached to this conversation to send, e.g. ["report.pdf"].' },
+        attachments: { type: 'string', description: 'Optional JSON array of {name, mimeType, data} attachments where data is base64.' },
       },
       required: ['to', 'subject', 'body'],
     },
@@ -218,7 +223,46 @@ async function getMessage(cfg: OutlookConfig, args: Record<string, unknown>): Pr
   return text(clip(JSON.stringify(out, null, 2)));
 }
 
-async function sendMail(cfg: OutlookConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+// Graph's sendMail caps the whole request at ~4 MB, so keep attachments under ~3 MB total (larger would need a
+// draft + upload-session flow). Attachments come from base64 (`attachments`) and/or conversation files (`attachFiles`).
+const MAX_ATTACH_BYTES = 3_000_000;
+
+function resolveAttachments(args: Record<string, unknown>, ctx?: McpCallContext): Array<{ name: string; mimeType: string; data: string }> {
+  const out: Array<{ name: string; mimeType: string; data: string }> = [];
+  if (args.attachments) {
+    let arr: unknown;
+    try {
+      arr = typeof args.attachments === 'string' ? JSON.parse(args.attachments) : args.attachments;
+    } catch {
+      throw new OutlookError('attachments must be a JSON array of {name, mimeType, data(base64)}.');
+    }
+    if (Array.isArray(arr))
+      for (const a of arr as any[]) {
+        if (a?.name && a?.data) out.push({ name: String(a.name), mimeType: String(a.mimeType || 'application/octet-stream'), data: String(a.data).replace(/\s+/g, '') });
+      }
+  }
+  if (args.attachFiles) {
+    let names: unknown;
+    try {
+      names = typeof args.attachFiles === 'string' ? JSON.parse(args.attachFiles) : args.attachFiles;
+    } catch {
+      throw new OutlookError('attachFiles must be a JSON array of file names attached to the conversation.');
+    }
+    const files = ctx?.files ?? [];
+    if (Array.isArray(names))
+      for (const n of names) {
+        const f = files.find((x) => x.name === String(n));
+        if (!f) throw new OutlookError(`Attachment "${n}" isn't among the files attached to this conversation.`);
+        out.push({ name: f.name, mimeType: f.mime || 'application/octet-stream', data: f.b64 });
+      }
+  }
+  if (out.reduce((s, a) => s + a.data.length, 0) > MAX_ATTACH_BYTES * 1.37) {
+    throw new OutlookError('Attachments exceed ~3 MB — Graph sendMail can’t carry them (a larger-attachment flow via a draft is not yet supported).');
+  }
+  return out;
+}
+
+async function sendMail(cfg: OutlookConfig, args: Record<string, unknown>, ctx?: McpCallContext): Promise<McpToolResult> {
   const mb = reqMailbox(cfg, args.mailbox);
   const to = recipients(args.to);
   if (!to.length) return text('Error: to (at least one recipient) is required.', true);
@@ -231,8 +275,13 @@ async function sendMail(cfg: OutlookConfig, args: Record<string, unknown>): Prom
   const bcc = recipients(args.bcc);
   if (cc.length) message.ccRecipients = cc;
   if (bcc.length) message.bccRecipients = bcc;
+  const attachments = resolveAttachments(args, ctx);
+  if (attachments.length) {
+    message.attachments = attachments.map((a) => ({ '@odata.type': '#microsoft.graph.fileAttachment', name: a.name, contentType: a.mimeType, contentBytes: a.data }));
+  }
   await graph(cfg, 'POST', `/users/${mb}/sendMail`, { message, saveToSentItems: true });
-  return text(`Sent to ${to.map((r) => r.emailAddress.address).join(', ')}.`);
+  const att = attachments.length ? ` with ${attachments.length} attachment(s)` : '';
+  return text(`Sent${att} to ${to.map((r) => r.emailAddress.address).join(', ')}.`);
 }
 
 async function reply(cfg: OutlookConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -290,7 +339,7 @@ export function outlookPlugin(): McpServerPlugin {
     },
     server: {
       listTools: () => TOOLS,
-      async callTool(name, args, config): Promise<McpToolResult> {
+      async callTool(name, args, config, ctx): Promise<McpToolResult> {
         try {
           const cfg = readConfig(config);
           switch (name) {
@@ -299,7 +348,7 @@ export function outlookPlugin(): McpServerPlugin {
             case 'outlook_get_message':
               return await getMessage(cfg, args);
             case 'outlook_send_mail':
-              return await sendMail(cfg, args);
+              return await sendMail(cfg, args, ctx);
             case 'outlook_reply':
               return await reply(cfg, args);
             case 'outlook_list_folders':

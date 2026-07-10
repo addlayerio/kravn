@@ -12,6 +12,15 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩📣 **Email attachments (Gmail & Outlook).** `gmail_send` / `outlook_send_mail` can now send **attachments**.
+  Two ways: **`attachFiles`** — names of files already in the conversation, **including one a tool just produced**
+  (e.g. a PDF from the Code Interpreter), so nothing is echoed as base64 through the model — and/or
+  **`attachments`** (a JSON array of `{name, mimeType, data}` with base64). Files a trusted plugin produces during
+  a turn are now added to the conversation's file workspace, so a later tool (like the mailer) can attach them by
+  name. Limits: Gmail ~25 MB, Outlook ~3 MB (Graph `sendMail`).
+
 ## [0.1.84] — 2026-07-10
 
 - 🐛 **Governance usage table shows names, not raw ids.** The per-scope usage rows now resolve the id to a
