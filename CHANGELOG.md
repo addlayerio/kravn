@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.82] — 2026-07-10
 
 - 🧩 **Teams: view a message's inline images.** The Teams read tools now flag when a message has pasted
   images/screenshots (a 🖼️ hint with the messageId), and a new `teams_get_message_images` tool fetches those
