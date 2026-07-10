@@ -38,6 +38,7 @@ const TEAMS_SETUP = [
   '   - `ChannelMessage.Read.All` — read channel posts',
   '   - `Chat.Read.All` — list and read chats',
   "   - `User.Read.All` — find people, list a user's teams/chats",
+  '   - `Files.Read.All` *(optional)* — to download image **file attachments** shared in a message (inline pasted images work without this)',
   '5. Click **Grant admin consent** for the tenant (a Global Administrator must approve).',
   '',
   'All permissions are **read-only** — no write access is requested. Then enter the **Tenant ID**, **Client ID** and **Client Secret** below (the secret is stored encrypted).',
@@ -129,6 +130,22 @@ async function graphBytes(cfg: TeamsConfig, pathOrUrl: string): Promise<{ buf: B
   if (!res.ok) throw new TeamsError(`Graph HTTP ${res.status}`);
   const buf = Buffer.from(await res.arrayBuffer());
   return { buf, contentType: res.headers.get('content-type') || 'application/octet-stream' };
+}
+
+const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?)$/i;
+
+/** Encode a sharing URL as a Graph `shares` id, to resolve a shared file (a Teams file attachment's contentUrl)
+ *  to its driveItem. Per the shares API: `u!` + base64url(url). */
+function encodeShareId(url: string): string {
+  return 'u!' + Buffer.from(url, 'utf8').toString('base64').replace(/=+$/, '').replace(/\//g, '_').replace(/\+/g, '-');
+}
+
+/** Fetch a pre-authenticated download URL (a driveItem's `@microsoft.graph.downloadUrl`). No bearer is sent —
+ *  the URL is already signed and came from a trusted Graph response — so this can never leak the token; timed. */
+async function downloadUrlBytes(url: string): Promise<Buffer> {
+  const res = await fetch(url, { redirect: 'follow', signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+  if (!res.ok) throw new TeamsError(`Download failed: HTTP ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
 /** Page through a Graph collection, following only same-host nextLinks, up to `maxItems` (and a page cap). */
@@ -245,8 +262,14 @@ function transcript(messages: any[]): string {
     lines.push(`[${m?.createdDateTime ?? ''}] ${author}:`);
     if (body) lines.push(body);
     if (attachments.length) lines.push(`  📎 ${attachments.join(', ')}`);
-    const imgs = hostedImageIds(m);
-    if (imgs.length) lines.push(`  🖼️ ${imgs.length} inline image(s) — view with teams_get_message_images (messageId="${m?.id ?? ''}")`);
+    const inlineImgs = hostedImageIds(m);
+    const imgAttach = (m?.attachments ?? []).filter((a: any) => IMG_EXT.test(String(a?.name || '')));
+    if (inlineImgs.length || imgAttach.length) {
+      const parts: string[] = [];
+      if (inlineImgs.length) parts.push(`${inlineImgs.length} inline`);
+      if (imgAttach.length) parts.push(`${imgAttach.length} attached`);
+      lines.push(`  🖼️ ${parts.join(' + ')} image(s) — view with teams_get_message_images (messageId="${m?.id ?? ''}")`);
+    }
     if (m?.deletedDateTime) lines.push('  (deleted)');
     lines.push('');
   }
@@ -363,10 +386,10 @@ const TOOLS: McpToolDef[] = [
   {
     name: 'teams_get_message_images',
     description:
-      'Fetch the INLINE images of a specific Teams message (pasted screenshots etc.) so they can be viewed — the ' +
-      'read tools only show that an image exists (a 🖼️ hint). Pass the `messageId` from that hint and EITHER ' +
-      '`chatId` (chat message) OR `teamId`+`channelId` (channel message). Returns the images themselves; images ' +
-      'larger than 5 MB are skipped.',
+      "Fetch a Teams message's images so they can be viewed — both INLINE images (pasted into the message body) " +
+      'and image FILE attachments (a screenshot shared as a file). The read tools flag these with a 🖼️ hint; pass ' +
+      'its `messageId` and EITHER `chatId` (chat) OR `teamId`+`channelId` (channel). Images over 5 MB are skipped. ' +
+      '(Fetching file attachments needs Files.Read.All on the app; inline pasted images do not.)',
     inputSchema: {
       type: 'object',
       properties: {
@@ -486,33 +509,59 @@ async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>)
   else return text('Error: provide chatId (for a chat) OR teamId + channelId (for a channel).', true);
   const limit = clamp(args.limit, 1, 10, 5);
 
-  const list = await graphGet(cfg, `${base}/hostedContents`);
-  const items: any[] = Array.isArray(list?.value) ? list.value : [];
-  const images = items.filter((h) => !h?.contentType || String(h.contentType).startsWith('image/'));
-  if (!images.length) return text('This message has no inline (hosted) images.');
-
+  const msg = await graphGet(cfg, base);
   const content: McpContent[] = [];
   const notes: string[] = [];
-  for (const h of images.slice(0, limit)) {
+
+  // 1) Inline images pasted into the message body (Graph "hosted contents").
+  for (const id of hostedImageIds(msg)) {
+    if (content.length >= limit) break;
     try {
-      const { buf, contentType } = await graphBytes(cfg, `${base}/hostedContents/${encodeURIComponent(String(h?.id ?? ''))}/$value`);
+      const { buf, contentType } = await graphBytes(cfg, `${base}/hostedContents/${encodeURIComponent(id)}/$value`);
       if (buf.length > MAX_IMAGE_BYTES) {
-        notes.push(`skipped an image (${(buf.length / 1e6).toFixed(1)} MB > 5 MB)`);
+        notes.push('skipped a large inline image (>5 MB)');
         continue;
       }
-      content.push({
-        type: 'image',
-        data: buf.toString('base64'),
-        mimeType: contentType.startsWith('image/') ? contentType : String(h?.contentType || 'image/png'),
-      });
+      content.push({ type: 'image', data: buf.toString('base64'), mimeType: contentType.startsWith('image/') ? contentType : 'image/png' });
     } catch (e) {
-      notes.push(`could not fetch an image: ${(e as Error).message}`);
+      notes.push(`inline image: ${(e as Error).message}`);
     }
   }
-  const header = content.length
-    ? `${content.length} image(s) from the message${notes.length ? `\n(${notes.join('; ')})` : ''}`
-    : `No images could be returned${notes.length ? ` — ${notes.join('; ')}` : '.'}`;
-  return { content: [{ type: 'text', text: header }, ...content], isError: content.length === 0 };
+
+  // 2) Image FILE attachments (a screenshot SHARED as a file → a SharePoint/OneDrive driveItem). Resolve the
+  //    attachment's contentUrl via the shares API, then download it. Needs Files.Read.All / Sites.Read.All.
+  const atts: any[] = Array.isArray(msg?.attachments) ? msg.attachments : [];
+  for (const a of atts) {
+    if (content.length >= limit) break;
+    const url = String(a?.contentUrl ?? '');
+    const name = String(a?.name ?? '');
+    if (!url || !IMG_EXT.test(name)) continue; // only image files
+    try {
+      const item = await graphGet(cfg, `/shares/${encodeShareId(url)}/driveItem`);
+      const dl = item?.['@microsoft.graph.downloadUrl'];
+      const mime = String(item?.file?.mimeType ?? '');
+      if (!dl) {
+        notes.push(`no download URL for "${name}"`);
+        continue;
+      }
+      if (Number(item?.size) > MAX_IMAGE_BYTES) {
+        notes.push(`skipped large attachment "${name}"`);
+        continue;
+      }
+      const buf = await downloadUrlBytes(String(dl));
+      content.push({ type: 'image', data: buf.toString('base64'), mimeType: mime.startsWith('image/') ? mime : 'image/png' });
+    } catch (e) {
+      notes.push(`attachment "${name}": ${(e as Error).message}`);
+    }
+  }
+
+  if (!content.length) {
+    const hasImgAttach = atts.some((a) => IMG_EXT.test(String(a?.name || '')));
+    const hint = hasImgAttach ? ' Image file-attachments need the Files.Read.All (or Sites.Read.All) permission on the Teams app.' : '';
+    return text(`No images could be returned${notes.length ? ` — ${notes.join('; ')}.` : '.'}${hint}`, true);
+  }
+  const header = `${content.length} image(s) from the message${notes.length ? `\n(${notes.join('; ')})` : ''}`;
+  return { content: [{ type: 'text', text: header }, ...content], isError: false };
 }
 
 export function teamsPlugin(): McpServerPlugin {
@@ -520,7 +569,7 @@ export function teamsPlugin(): McpServerPlugin {
     manifest: {
       id: TEAMS_ID,
       name: 'Microsoft Teams',
-      version: '0.3.0',
+      version: '0.4.0',
       type: 'mcp-server',
       description:
         'Interact with Microsoft Teams over MCP via Microsoft Graph (app-only). Find people, find/list/read chats ' +

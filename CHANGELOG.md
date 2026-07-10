@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Teams: also fetch image _file attachments_, not just inline images.** `teams_get_message_images` now
+  handles screenshots shared as a **file** (📎), resolving the attachment to its SharePoint/OneDrive item and
+  downloading it — on top of the inline (pasted) images it already fetched. The read transcripts now surface a
+  🖼️ hint (with the messageId) for both kinds. Fetching file attachments needs the `Files.Read.All` (or
+  `Sites.Read.All`) permission on the Teams app; inline images don't.
+
 ## [0.1.82] — 2026-07-10
 
 - 🧩 **Teams: view a message's inline images.** The Teams read tools now flag when a message has pasted
