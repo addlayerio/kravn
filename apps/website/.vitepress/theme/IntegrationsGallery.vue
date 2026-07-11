@@ -75,7 +75,15 @@ function monogram(name: string) {
       <div v-for="it in shown" :key="it.id" class="ig-card" :class="{ 'ig-card--featured': featured }">
         <span class="ig-icon" :title="it.name">
           <span v-if="it.icon" class="ig-brand">
-            <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path :d="it.icon.path" :fill="it.icon.hex" /></svg>
+            <img v-if="it.icon.src" :src="it.icon.src" alt="" class="ig-img" />
+            <svg
+              v-else-if="it.icon.body"
+              :viewBox="it.icon.viewBox"
+              xmlns="http://www.w3.org/2000/svg"
+              :style="it.icon.hex ? { color: it.icon.hex } : undefined"
+              v-html="it.icon.body"
+            ></svg>
+            <svg v-else viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path :d="it.icon.path" :fill="it.icon.hex" /></svg>
           </span>
           <span v-else class="ig-mono" :style="{ background: monogram(it.name).bg }">{{ monogram(it.name).initials }}</span>
         </span>
@@ -189,7 +197,9 @@ function monogram(name: string) {
   padding: 16%;
   box-sizing: border-box;
 }
-.ig-brand svg { width: 100%; height: 100%; display: block; }
+.ig-brand svg,
+.ig-brand .ig-img { width: 100%; height: 100%; display: block; }
+.ig-brand .ig-img { object-fit: contain; }
 .ig-mono { color: #fff; font-weight: 700; font-size: 0.8rem; }
 
 .ig-body { min-width: 0; }

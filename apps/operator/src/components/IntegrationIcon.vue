@@ -21,7 +21,18 @@ const monogram = computed(() => {
 <template>
   <span class="int-icon" :style="{ '--sz': size + 'px' }" :title="name" aria-hidden="true">
     <span v-if="brand" class="int-brand">
-      <svg viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path :d="brand.path" :fill="brand.hex" /></svg>
+      <!-- Logo.dev raster logo, baked as a data URI (CSP allows img-src data:). -->
+      <img v-if="brand.src" :src="brand.src" alt="" class="int-img" />
+      <!-- Iconify icon (logos = full colour; mdi/cib = mono tinted via currentColor). Body is
+           build-baked, trusted markup from @kravn/contracts — not user input. -->
+      <svg
+        v-else-if="brand.body"
+        :viewBox="brand.viewBox"
+        xmlns="http://www.w3.org/2000/svg"
+        :style="brand.hex ? { color: brand.hex } : undefined"
+        v-html="brand.body"
+      ></svg>
+      <svg v-else viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg"><path :d="brand.path" :fill="brand.hex" /></svg>
     </span>
     <span v-else class="int-mono" :style="{ background: monogram.bg }">{{ monogram.initials }}</span>
   </span>
@@ -50,10 +61,14 @@ const monogram = computed(() => {
   padding: 16%;
   box-sizing: border-box;
 }
-.int-brand svg {
+.int-brand svg,
+.int-brand .int-img {
   width: 100%;
   height: 100%;
   display: block;
+}
+.int-brand .int-img {
+  object-fit: contain;
 }
 .int-mono {
   color: #fff;

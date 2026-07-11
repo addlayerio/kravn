@@ -12,6 +12,17 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.86] — 2026-07-11
+
+- 🧩 **Real brand logos for (almost) every integration.** Integrations that simple-icons doesn't ship now
+  show their **actual brand logo** instead of a lettered monogram, from two added sources baked into the
+  shared icon map: **Iconify** (`logos`/`mdi`/`cib`) for Microsoft/Amazon (Azure, AWS, Teams, Outlook,
+  SharePoint) + Salesforce, Slack, monday, Canva, Power BI, Microsoft Learn/Foundry, AWS Knowledge; and
+  **Logo.dev** (baked as PNG data URIs at build time) for real companies no icon set has — ServiceNow, Plaid,
+  Ramp, Apify, Attio, Telnyx, Semgrep, ThoughtSpot, Stytch, and ~40 more. Coverage went from ~54 to **119 of
+  123**; the handful with no logo anywhere keep the monogram (a wrong logo is worse than initials). Build-time
+  only — nothing new ships at runtime (logos are inlined; no external logo requests from the app).
+
 ## [0.1.85] — 2026-07-11
 
 - 🧩📣 **Email attachments (Gmail & Outlook).** `gmail_send` / `outlook_send_mail` can now send **attachments**.

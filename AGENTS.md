@@ -28,6 +28,21 @@ hardcoded tool special-cased inside a service.
   preserves), and decrypts only when handing config to the plugin at runtime. A native plugin whose
   `configSchema.required` is non-empty is seeded **disabled** (it needs config first). This is the pattern for
   every credential-bearing catalog plugin.
+- **Native vs remote is just a badge — every MCP server is instanceable.** A native plugin is **not** a
+  singleton: it can be added **N times**, each instance a distinct `servers` row with its own
+  `secret`-encrypted config in `servers.plugin_config` (migration 019, additive/nullable — a null column means
+  "use the plugin-type default config", so pre-existing single-instance natives keep working with no re-config).
+  Create an instance via `POST /api/servers/plugin-instance` (`registry.createPluginInstance(typeId, name,
+  config)`); read/edit its config via `GET`/`PATCH /api/servers/:id/plugin-config` — all behind the
+  `servers.write` console gate. `resolveConfig(record, instanceServerId?)` reads the instance's own config
+  (falling back to the type default), and `pluginShim(pluginId, instanceId)` threads the instance id through
+  `serverCallTool`, so two instances of the same plugin (two Azure subscriptions / two Outlook accounts, each
+  with different credentials and access) **never cross-read** and compose into different MCP endpoints.
+  `createPluginInstance` validates against the **known** plugin-type set (`mcpServerTypeIds()`), not just
+  *enabled* types (a credential-bearing native seeds disabled), and `syncPluginServers` GC only reaps
+  default/known-type rows — never a user-created instance. **Consequence for the UI:** the user sees one unified
+  "MCP Servers" surface with a native/remote badge; do **not** re-introduce a separate screen or a
+  "can only add once" gate for native plugins.
 - Provider tool-calling (OpenAI / Anthropic / Gemini function-calling) is a **separate layer**: making a
   tool "available to a model" means wiring that provider's tool-calling, regardless of where the tool
   lives. Don't conflate "is it a plugin" (tool source) with "can this model call it" (provider wiring).
@@ -107,17 +122,32 @@ polling of `/api/*` for freshness.
 Each catalog server and native `mcp-server` plugin shows a **brand logo** in the operator so users can
 tell products apart at a glance (unified catalog cards, detail modal, installed list — reused anywhere a
 tool's origin is shown, e.g. the grouped Tools/Resources/Prompts lists — and on the public website's
-integrations gallery). Logos are baked from **simple-icons** (a build-time devDependency) into
-`packages/contracts/src/brand-icons.ts` as `{ path, hex }` per integration id, so **both** the operator
-(`IntegrationIcon.vue`) and the website render from one source — nothing imports simple-icons at runtime,
-and the operator CSP blocks remote images so icons must stay inlined/baked. Missing brand → a deterministic
-coloured **monogram** fallback.
+integrations gallery). Logos are baked (build-time devDependencies only, nothing imported at runtime; the
+operator CSP blocks remote images so icons must stay inlined) into `packages/contracts/src/brand-icons.ts`
+from **three** sources, in priority order: (1) **simple-icons** as a monochrome `{ path, hex }` (24×24);
+(2) **Iconify** (`@iconify-json/{logos,mdi,cib}`) for brands simple-icons dropped/lacks — Microsoft/Amazon
+were removed from simple-icons — baked as a full-SVG `{ body, viewBox }` (logos = full colour; mdi/cib =
+monochrome tinted by `hex` via `currentColor`); and (3) **Logo.dev** as a last resort for real companies no
+icon set has — fetched at build time and baked as a base64-PNG data URI `{ src }` (the operator CSP allows
+`img-src data:`). All three render from one source — the operator (`IntegrationIcon.vue`) and the website
+(`IntegrationsGallery.vue`) each branch on `icon.src` (`<img>`) / `icon.body` (v-html of build-baked, trusted
+markup) / `icon.path`. Missing brand in **all** sources → a deterministic coloured **monogram** fallback (a
+wrong/unrelated icon is worse than initials — some niche MCP servers genuinely have no brand logo anywhere).
 
 **When you add a new integration, do ALL of the following:**
-1. **Icon** — regenerate the shared map: `node apps/operator/scripts/gen-brand-icons.mjs`, then rebuild.
-   If the logo doesn't match (id doesn't normalise to the simple-icons slug), add an entry to `OVERRIDE`
-   (catalog) or `NATIVE`/`DERIVED` (plugin/shared-glyph) in that script; if simple-icons genuinely lacks the
-   brand (niche/removed for trademark), the monogram fallback is expected — leave it.
+1. **Icon** — regenerate the shared map: `node apps/operator/scripts/gen-brand-icons.mjs`, then rebuild
+   `@kravn/contracts` (the operator/website typecheck against its `dist`, not the source). If the logo
+   doesn't match (id doesn't normalise to the simple-icons slug), add an entry to `OVERRIDE` (catalog) or
+   `NATIVE`/`DERIVED` (plugin/shared-glyph). If simple-icons lacks the brand, add it to the **`ICONIFY`** map
+   (id → `'set:name'`, plus a tint hex for a monochrome mdi/cib icon) — browse `logos`/`mdi`/`cib` (or the
+   whole collection at icon-sets.iconify.design) for the right one; add the set as a build-time devDep if
+   it's not `logos`/`mdi`/`cib`. If **no** icon set has it but it's a real company, add it to the **`LOGODEV`**
+   map (id → domain; resolve the canonical domain via Logo.dev's search API) and regen **with a token**:
+   `LOGODEV_TOKEN=pk_… node apps/operator/scripts/gen-brand-icons.mjs` — it bakes the PNG as a data URI and
+   the `fallback=404` probe drops anything Logo.dev has no real logo for (those stay monogram). The token is
+   build-time only — never commit it; the generator preserves already-baked Logo.dev logos when run without
+   it. Note: Logo.dev's free tier expects attribution. Only if the brand exists in **no** source is the
+   monogram fallback correct — leave it (do not force an unrelated icon).
 2. **Public website** — a new integration is user-facing, so it MUST appear on the site. The integrations
    gallery (`apps/website/.vitepress/integrations.data.ts` + `theme/IntegrationsGallery.vue`, shown on the
    landing page and `/integrations`) is **generated from the shared catalog**, so:

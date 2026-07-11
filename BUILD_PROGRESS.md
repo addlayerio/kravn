@@ -1119,6 +1119,36 @@ Goal: the MCP gateway installable on any cluster from the USER's own registry (n
 - All security-sensitive changes adversarially reviewed (SECURITY.md rows); each feature typecheck+build green
   and boot/behaviour-validated; shipped incrementally then bumped together.
 
+## ✅ PASS 65 — Cloud + email connectors, multi-instance MCP servers, Trivy reconciliation (v0.1.80–v0.1.85)
+- **Native cloud diagnostics/cost plugins (read-only):** Azure (Entra client-credentials; v0.1.80), AWS
+  (SigV4, test-vector-verified) + Google Cloud (RS256 SA-JWT, signing verified live; v0.1.81). Diagnostics +
+  cost only — **no write/deploy tool by design** ("no k8s ops from an LLM"). Each credential `secret`-encrypted;
+  fixed hosts (no SSRF); least-privilege RBAC in the setup card (Azure: Reader + Log Analytics Reader + Cost
+  Management Reader). Added `azure_list_log_analytics_workspaces` discovery tool.
+- **Native email connectors (read + send):** Gmail (user OAuth refresh-token) + Outlook (Graph app-only) —
+  search/list/get AND send new mail, so an agent can email at the end of a task (v0.1.82). Attachments on the
+  send path (v0.1.85): inline base64 or by-name from `ctx.files`, size-capped (Gmail ≤25 MB, Outlook ≤3 MB); a
+  tool-produced file is re-fed to the outbound workspace only when the producing tool is **trusted**.
+- **Multi-instance native plugins (v0.1.83):** any native plugin can be added N times, each a `servers` row with
+  its own `secret`-encrypted `plugin_config` (migration 019, additive). Subscription-A/DevOps vs
+  Subscription-B/Dev with different app registrations compose into different endpoints without sharing
+  credentials. Unifies the model — **native vs remote is now just a badge**; the operator adds/edits an instance
+  through the same server flow. The Postgres migration is column-add only (no re-config of existing natives).
+  Routes: `POST /api/servers/plugin-instance`, `GET`/`PATCH /api/servers/:id/plugin-config`.
+- **Teams attachments (v0.1.83–84):** fetch a message's inline images (hosted content) + image FILE attachments
+  (shares API + `downloadUrl`, no bearer); the transcript always surfaces the real Graph `messageId`. Needs
+  `Files.Read.All` on the Entra app.
+- **Governance usage names (v0.1.84):** the metering table resolves scope ids → user email / endpoint name (raw
+  id as fallback), admin-only view.
+- **Trivy code-scanning reconciliation:** the main image scan runs on push to `main` with `actions/checkout` and
+  its own `trivy` category so alerts auto-close; the release scan is log-only (tag-ref SARIF uploads are
+  un-closeable orphans); the scan now uploads ALL severities (incl. unfixed), not just HIGH/CRITICAL.
+- **Public site + brand icons:** all new connectors added to `NATIVE_INTEGRATIONS` (auto-gallery) and the
+  built-in table in `guide/plugins.md`; brand icons generated. Per AGENTS.md §7.
+- Security-sensitive changes recorded in SECURITY.md rows (v0.1.80–v0.1.85); each feature typecheck+build green
+  and boot/behaviour-validated (backend E2E; operator UI typecheck+build). Shipped incrementally, bumped per
+  user request.
+
 ### Deferred to later phases (intentional, not missing)
 Per-team model policy (global allowlist done) · per-detector DLP metrics (needs metrics in the hook context) ·
 step-up auth (folds into maker-checker #5) · ZIP plugin bundles (manifest+entry+assets) — part C of the plugin extension, designed not built ·
@@ -1129,4 +1159,7 @@ per-team entitlements for **resources/prompts** (tools done) · SCIM **Groups**�
 gRPC-to-MCP reflection · OpenTelemetry export · resources/prompts test playground (tools playground is done) ·
 live smoke against real pg/mysql/mssql servers · project-document RAG/embeddings · agents/knowledge-bases port ·
 Gemini/Anthropic tool-calling (currently OpenAI-family only) · interpreter pandas/numpy + WASM cap ·
-attachment image/vision · object-storage for attachment bytes (currently base64 in DB).
+attachment image/vision · object-storage for attachment bytes (currently base64 in DB) ·
+Outlook send attachments >3 MB via draft + upload-session (Gmail already ≤25 MB inline) ·
+multi-instance phase 3: migrate seeded singleton natives to normal instances + clear the redundant
+`plugins.config` fallback + same-endpoint tool-name collision handling.

@@ -1,7 +1,7 @@
 // VitePress build-time data loader — the public integrations gallery, generated from the SAME
 // catalog + brand icons the product ships (@kravn/contracts). Add an integration to the catalog or
 // NATIVE_INTEGRATIONS and it appears here automatically; nothing to hand-maintain.
-import { MCP_SERVER_CATALOG, NATIVE_INTEGRATIONS, BRAND_ICONS } from '@kravn/contracts';
+import { MCP_SERVER_CATALOG, NATIVE_INTEGRATIONS, BRAND_ICONS, type BrandIcon } from '@kravn/contracts';
 
 export interface GalleryItem {
   id: string;
@@ -10,7 +10,7 @@ export interface GalleryItem {
   description: string;
   kind: 'built-in' | 'catalog';
   auth?: 'open' | 'apikey' | 'oauth';
-  icon: { path: string; hex: string } | null;
+  icon: BrandIcon | null;
 }
 
 export interface GalleryData {
