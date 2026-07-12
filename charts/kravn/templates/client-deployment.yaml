@@ -23,17 +23,13 @@ spec:
         {{- toYaml . | nindent 8 }}
       {{- end }}
       securityContext:
-        runAsNonRoot: true
-        seccompProfile:
-          type: RuntimeDefault
+        {{- toYaml .Values.client.podSecurityContext | nindent 8 }}
       containers:
         - name: client
           image: {{ include "kravn.client.image" . }}
           imagePullPolicy: {{ .Values.client.image.pullPolicy }}
           securityContext:
-            allowPrivilegeEscalation: false
-            capabilities:
-              drop: ["ALL"]
+            {{- toYaml .Values.client.securityContext | nindent 12 }}
           ports:
             - name: http
               containerPort: 8080

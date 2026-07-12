@@ -204,6 +204,19 @@ client:
       memory: 32Mi
     limits:
       memory: 128Mi
+  # runAsUser is REQUIRED here: the nginx-unprivileged image declares its user by NAME ("nginx"), and with
+  # runAsNonRoot: true Kubernetes can only verify non-root from a NUMERIC uid — 101 is that image's nginx uid.
+  podSecurityContext:
+    runAsNonRoot: true
+    runAsUser: 101
+    runAsGroup: 101
+    seccompProfile:
+      type: RuntimeDefault
+  securityContext:
+    allowPrivilegeEscalation: false
+    readOnlyRootFilesystem: false   # nginx writes /var/cache/nginx, /tmp, its pid
+    capabilities:
+      drop: ["ALL"]
 
 metrics:
   serviceMonitor:

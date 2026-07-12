@@ -2,6 +2,7 @@
 # the gateway. The SPA calls SAME-ORIGIN relative /api paths, so it must share an origin with the API: in
 # Kubernetes the Helm chart mounts an nginx.conf ConfigMap that points /api at the gateway Service. This is
 # a SEPARATE deployable from the gateway image on purpose (its own domain / scaling / lifecycle).
+ARG NGINX_BASE=docker.io/nginxinc/nginx-unprivileged:1.27-alpine
 
 # ── Build stage (toolchain) ─────────────────────────────────────────────────────────────────────────
 FROM docker.io/library/node:22-alpine AS build
@@ -20,7 +21,7 @@ COPY . .
 RUN pnpm --filter @kravn/contracts --filter @kravn/client build
 
 # ── Runtime stage (rootless nginx) ──────────────────────────────────────────────────────────────────
-FROM docker.io/nginxinc/nginx-unprivileged:1.27-alpine AS runtime
+FROM ${NGINX_BASE} AS runtime
 # Patch OS CVEs the base image ships with.
 USER root
 RUN apk update && apk upgrade && rm -rf /var/cache/apk/*
