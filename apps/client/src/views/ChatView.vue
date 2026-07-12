@@ -1,14 +1,14 @@
 <script setup lang="ts">
-import { nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment } from '@kravn/contracts';
+import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember } from '@kravn/contracts';
 import { api, ApiError } from '../api';
 import { useAuthStore } from '../stores/auth';
 import RavenLogo from '../RavenLogo.vue';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
 interface VsOpt { slug: string; name: string }
-interface ProjectDetail { project: ChatProject; documents: ChatProjectDocument[]; conversations: ChatConversation[] }
+interface ProjectDetail { project: ChatProject; documents: ChatProjectDocument[]; conversations: ChatConversation[]; members: ProjectMember[] }
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -68,6 +68,35 @@ const projectError = ref('');
 const savingInstr = ref(false);
 const newDoc = reactive({ name: '', content: '' });
 const docBusy = ref(false);
+
+// Sharing — the caller's access to the open project drives what they can do.
+const isOwner = computed(() => project.value?.project.access === 'owner');
+const canEdit = computed(() => project.value != null && project.value.project.access !== 'viewer'); // owner OR editor
+const share = reactive({ email: '', role: 'viewer' as 'editor' | 'viewer' });
+const sharing = ref(false);
+const shareError = ref('');
+async function shareProject() {
+  if (!project.value || !share.email.trim()) return;
+  sharing.value = true;
+  shareError.value = '';
+  try {
+    const res = await api.post<{ members: ProjectMember[] }>(`/api/chat/projects/${project.value.project.id}/share`, {
+      email: share.email.trim(),
+      role: share.role,
+    });
+    project.value.members = res.members;
+    share.email = '';
+  } catch (e) {
+    shareError.value = e instanceof ApiError ? e.message : 'Could not share the project.';
+  } finally {
+    sharing.value = false;
+  }
+}
+async function unshareMember(m: ProjectMember) {
+  if (!project.value) return;
+  await api.del(`/api/chat/projects/${project.value.project.id}/share/${m.userId}`);
+  project.value.members = project.value.members.filter((x) => x.userId !== m.userId);
+}
 
 async function load() {
   const [opts, convs, projs] = await Promise.all([
@@ -291,6 +320,7 @@ async function logout() {
           @click="openProject(p)"
         >
           📁 {{ p.name }}
+          <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">shared · {{ p.ownerEmail }}</small>
         </div>
 
         <div class="side-section" style="margin-top: 6px"><span>Chats</span></div>
@@ -359,18 +389,20 @@ async function logout() {
       <!-- Project panel -->
       <div v-else-if="project" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
-          <span>📁 {{ project.project.name }}</span>
+          <span>📁 {{ project.project.name }}
+            <small v-if="project.project.access !== 'owner'" class="muted" style="font-size: 12px">· {{ project.project.access }} · shared by {{ project.project.ownerEmail }}</small>
+          </span>
           <div class="btn-row">
             <button class="btn primary" @click="openNew(project.project.id)">+ New chat in project</button>
-            <button class="btn" @click="deleteProject(project.project)">Delete</button>
+            <button v-if="isOwner" class="btn" @click="deleteProject(project.project)">Delete</button>
           </div>
         </div>
 
         <div class="panel-card">
           <h3>Project instructions</h3>
           <p class="muted" style="margin: 0; font-size: 12px">Prepended to every chat started in this project.</p>
-          <textarea v-model="project.project.instructions" rows="5" placeholder="e.g. You are a compliance assistant. Always cite the source document."></textarea>
-          <div class="btn-row" style="justify-content: flex-end">
+          <textarea v-model="project.project.instructions" rows="5" :readonly="!canEdit" placeholder="e.g. You are a compliance assistant. Always cite the source document."></textarea>
+          <div v-if="canEdit" class="btn-row" style="justify-content: flex-end">
             <button class="btn primary" :disabled="savingInstr" @click="saveInstructions">{{ savingInstr ? 'Saving…' : 'Save instructions' }}</button>
           </div>
         </div>
@@ -383,15 +415,40 @@ async function logout() {
             <span>📄 {{ d.name }}</span>
             <span class="row" style="gap: 0.6rem; align-items: center">
               <span class="doc-meta">{{ Math.ceil(d.size / 1024) }} KB</span>
-              <button class="btn" @click="deleteDocument(d)">Remove</button>
+              <button v-if="canEdit" class="btn" @click="deleteDocument(d)">Remove</button>
+            </span>
+          </div>
+          <template v-if="canEdit">
+            <hr style="border: none; border-top: 1px solid var(--border); margin: 0.4rem 0" />
+            <div class="field"><label>Add document</label><input v-model="newDoc.name" placeholder="Document name (e.g. policy.md)" /></div>
+            <textarea v-model="newDoc.content" rows="4" placeholder="Paste the document text…"></textarea>
+            <div class="btn-row" style="justify-content: flex-end">
+              <button class="btn primary" :disabled="docBusy || !newDoc.name.trim() || !newDoc.content.trim()" @click="addDocument">{{ docBusy ? 'Adding…' : 'Add document' }}</button>
+            </div>
+          </template>
+        </div>
+
+        <!-- Sharing (owner only) -->
+        <div v-if="isOwner" class="panel-card">
+          <h3>Sharing <span class="muted" style="font-weight: 400">({{ project.members.length }})</span></h3>
+          <p class="muted" style="margin: 0; font-size: 12px">Give another Kravn user access to this project's instructions and documents.</p>
+          <div v-if="project.members.length === 0" class="muted" style="font-size: 13px">Not shared with anyone yet.</div>
+          <div v-for="m in project.members" :key="m.userId" class="doc-item">
+            <span>👤 {{ m.email }}</span>
+            <span class="row" style="gap: 0.6rem; align-items: center">
+              <span class="doc-meta">{{ m.role }}</span>
+              <button class="btn" @click="unshareMember(m)">Remove</button>
             </span>
           </div>
           <hr style="border: none; border-top: 1px solid var(--border); margin: 0.4rem 0" />
-          <div class="field"><label>Add document</label><input v-model="newDoc.name" placeholder="Document name (e.g. policy.md)" /></div>
-          <textarea v-model="newDoc.content" rows="4" placeholder="Paste the document text…"></textarea>
-          <div class="btn-row" style="justify-content: flex-end">
-            <button class="btn primary" :disabled="docBusy || !newDoc.name.trim() || !newDoc.content.trim()" @click="addDocument">{{ docBusy ? 'Adding…' : 'Add document' }}</button>
+          <div class="row" style="gap: 0.5rem; align-items: flex-end; flex-wrap: wrap">
+            <div class="field" style="flex: 1; min-width: 180px"><label>Share with (email)</label><input v-model="share.email" placeholder="user@company.com" @keydown.enter.prevent="shareProject" /></div>
+            <div class="field"><label>Role</label>
+              <select v-model="share.role"><option value="viewer">Viewer</option><option value="editor">Editor</option></select>
+            </div>
+            <button class="btn primary" :disabled="sharing || !share.email.trim()" @click="shareProject">{{ sharing ? 'Sharing…' : 'Share' }}</button>
           </div>
+          <p v-if="shareError" class="muted" style="color: #e5484d; font-size: 12px; margin: 0.3rem 0 0">{{ shareError }}</p>
         </div>
 
         <div class="panel-card" v-if="project.conversations.length">

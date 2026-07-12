@@ -45,6 +45,7 @@ const HOOK_TRACE_SPEC: Record<string, { kind: 'list' | 'pre' | 'post'; key: stri
   onToolResult: { kind: 'post', key: 'result' },
   onResourceResult: { kind: 'post', key: 'result' },
   onPromptResult: { kind: 'post', key: 'result' },
+  onChatInput: { kind: 'pre', key: 'content' },
 };
 
 function traceClone<T>(v: T): T {
@@ -582,6 +583,11 @@ export class PluginManager {
   }
   applyPromptPost(server: string, prompt: string, result: any, actor?: any, vsId?: string) {
     return this.applyPost('onPromptResult', { server, prompt }, result, actor, vsId);
+  }
+
+  // Chat — DLP on the end-user message BEFORE it reaches the LLM (redact/tokenize PII, or deny).
+  applyChatInput(content: string, actor?: any, vsId?: string): Promise<string> {
+    return this.applyPre('onChatInput', 'content', {}, content, actor, vsId) as Promise<string>;
   }
 
   // Auth

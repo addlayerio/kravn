@@ -187,8 +187,13 @@ from the repo alone.
    to the new `0.1.x`. That is the release version; the app reports it and the image/chart are tagged with it.
 6. **Release**: commit (imperative subject + a body explaining what/why + the `Co-Authored-By` trailer), then
    `git tag v0.1.x` and push both `main` and the tag. Pushing the tag triggers the GitHub Actions release
-   workflow, which builds the gateway image and publishes the image + Helm chart (OCI) to the owner's GHCR.
-   `ci.yml` runs build + typecheck + `helm lint` on every push/PR.
+   workflow, which builds the gateway + client images and publishes them + the Helm chart (OCI) to the owner's
+   GHCR (image `:latest`, cosign-signed, SBOM). `ci.yml` runs build + typecheck + `helm lint` on every push/PR.
+   **Testing WITHOUT a release:** don't cut a `vX.Y.Z` for every server test. `dev-image.yml` (manual dispatch
+   or push to the `beta` branch) builds **unofficial** `ghcr.io/<owner>/kravn:dev-<sha>` + `kravn-client:dev-<sha>`
+   images — no `:latest`, no chart publish, no release, no version bump. Deploy from a local checkout to test the
+   unreleased chart + image together: `helm upgrade --install kravn ./charts/kravn --set image.tag=dev-<sha>
+   [--set client.enabled=true --set client.image.tag=dev-<sha>]`. Only bump/tag a real release once a batch proves out.
 7. **Update the records — [`CHANGELOG.md`](./CHANGELOG.md) is mandatory for EVERY versioned release.** Add an
    entry under a `## [0.1.x] — <date>` heading: a benefit-first, user-facing line saying *what you can now do*
    (not the internal mechanic), tagged with the marker legend (📣 announce-worthy · 🔒 security · ⚡ perf ·

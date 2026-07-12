@@ -1,0 +1,17 @@
+{{- if .Values.client.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "kravn.client.fullname" . }}
+  labels:
+    {{- include "kravn.client.labels" . | nindent 4 }}
+spec:
+  type: {{ .Values.client.service.type }}
+  selector:
+    {{- include "kravn.client.selectorLabels" . | nindent 4 }}
+  ports:
+    - name: http
+      port: {{ .Values.client.service.port }}
+      targetPort: http
+      protocol: TCP
+{{- end }}

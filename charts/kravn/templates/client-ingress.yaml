@@ -1,0 +1,35 @@
+{{- if and .Values.client.enabled .Values.client.ingress.enabled }}
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: {{ include "kravn.client.fullname" . }}
+  labels:
+    {{- include "kravn.client.labels" . | nindent 4 }}
+  {{- with .Values.client.ingress.annotations }}
+  annotations:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+spec:
+  {{- if .Values.client.ingress.className }}
+  ingressClassName: {{ .Values.client.ingress.className }}
+  {{- end }}
+  {{- with .Values.client.ingress.tls }}
+  tls:
+    {{- toYaml . | nindent 4 }}
+  {{- end }}
+  rules:
+    {{- range .Values.client.ingress.hosts }}
+    - host: {{ .host | quote }}
+      http:
+        paths:
+          {{- range .paths }}
+          - path: {{ .path }}
+            pathType: {{ .pathType }}
+            backend:
+              service:
+                name: {{ include "kravn.client.fullname" $ }}
+                port:
+                  number: {{ $.Values.client.service.port }}
+          {{- end }}
+    {{- end }}
+{{- end }}

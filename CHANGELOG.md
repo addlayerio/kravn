@@ -12,6 +12,31 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Deploy the chat client from Helm (`client.enabled`).** The chart can now stand up the end-user chat
+  client (apps/client) as its **own pod + Service** — an nginx image (`ghcr.io/<owner>/kravn-client`, built +
+  cosign-signed by CI) that serves the SPA and **reverse-proxies `/api` to the gateway Service** (the client
+  uses same-origin paths, so the browser sees one origin — no CORS). Enable with `client.enabled=true` (+ an
+  optional `client.ingress`); the client's public URL is auto-wired to the gateway as `KRAVN_CLIENT_URL` for
+  SSO. One `helm install` now runs the gateway (control-plane + operator + chat API) and the client in
+  parallel. Client pods carry a distinct name so the gateway Service never selects them.
+- 📣 **Shared projects (multi-user).** A project owner can now share a project with other Kravn users by
+  email, at two levels: **editor** (edit the instructions + documents) or **viewer** (read + chat with the
+  project's context). Shared projects appear in each member's list ("shared by …") and their chats get the
+  same instructions + document context. Access is enforced by a single membership gate on every project
+  path, so a user with no grant sees nothing and **un-sharing is fail-closed** (the context stops reaching
+  their chats immediately). Owner-only: deleting the project and managing who it's shared with.
+  (`chat_project_members`, migration 021.)
+- 🔒📣 **DLP on the chat input — redact PII before it reaches the AI model.** New pipeline junction
+  **Chat Input** (`onChatInput`): whatever an end-user types in the chat client is now run through the
+  pipeline **before** it's sent to the connected LLM. Add the **PII Tokenizer** to that junction and a CUIT,
+  CBU, email, credit card or phone number in a message is replaced with a stable token (`⟦TAX_ID_ab12⟧`) —
+  the raw value **never reaches the model**, while the user still sees exactly what they typed. Auditable:
+  each message stores both what the user wrote (`content`) and what the model received (`model_content`, new
+  nullable column, migration 020). Opt-in per the pipeline (global + per-endpoint overlays); nothing changes
+  until an operator adds a hook to the Chat Input junction. Any text hook can now target chat input.
+
 ## [0.1.86] — 2026-07-11
 
 - 🧩 **Real brand logos for (almost) every integration.** Integrations that simple-icons doesn't ship now

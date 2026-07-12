@@ -17,6 +17,7 @@ import type {
   TeamMember,
   TeamRole,
   ChatProject,
+  ProjectRole,
   ChatConversation,
   ChatMessage,
   ChatRole,
@@ -1045,13 +1046,48 @@ function mapSession(r: any): SessionRow {
 export class ChatRepo {
   constructor(private store: Store) {}
 
+  /** Projects the caller can see: their own (access='owner') + those shared with them (editor/viewer). */
   async listProjects(userId: string): Promise<ChatProject[]> {
-    const rows = await this.store.all<any>('SELECT * FROM chat_projects WHERE user_id = ? ORDER BY created_at ASC, id ASC', [userId]);
-    return rows.map(mapProject);
+    const owned = await this.store.all<any>('SELECT * FROM chat_projects WHERE user_id = ? ORDER BY created_at ASC, id ASC', [userId]);
+    const shared = await this.store.all<any>(
+      `SELECT p.*, m.role AS member_role, u.email AS owner_email
+         FROM chat_project_members m
+         JOIN chat_projects p ON p.id = m.project_id
+         JOIN users u ON u.id = p.user_id
+        WHERE m.user_id = ?
+        ORDER BY p.created_at ASC, p.id ASC`,
+      [userId],
+    );
+    const list = owned.map((r) => { const p = mapProject(r); p.access = 'owner'; return p; });
+    for (const r of shared) { const p = mapProject(r); p.access = r.member_role as ProjectRole; p.ownerEmail = r.owner_email; list.push(p); }
+    return list;
   }
+  /** The caller's access to a project: 'owner' | 'editor' | 'viewer' | null (no access) — the single gate. */
+  async getProjectAccess(userId: string, projectId: string): Promise<ProjectRole | null> {
+    const owner = await this.store.get<any>('SELECT 1 AS x FROM chat_projects WHERE id = ? AND user_id = ?', [projectId, userId]);
+    if (owner) return 'owner';
+    const m = await this.store.get<any>('SELECT role FROM chat_project_members WHERE project_id = ? AND user_id = ?', [projectId, userId]);
+    return m ? (m.role as ProjectRole) : null;
+  }
+  /** Owner-only lookup (kept for owner-scoped call sites). */
   async getProject(userId: string, id: string): Promise<ChatProject | undefined> {
     const r = await this.store.get<any>('SELECT * FROM chat_projects WHERE id = ? AND user_id = ?', [id, userId]);
-    return r ? mapProject(r) : undefined;
+    if (!r) return undefined;
+    const p = mapProject(r); p.access = 'owner'; return p;
+  }
+  /** Read-access lookup: the project if the caller is owner OR a member; undefined otherwise (fail-closed). */
+  async getProjectForUser(userId: string, id: string): Promise<ChatProject | undefined> {
+    const access = await this.getProjectAccess(userId, id);
+    if (!access) return undefined;
+    const r = await this.store.get<any>('SELECT * FROM chat_projects WHERE id = ?', [id]);
+    if (!r) return undefined;
+    const p = mapProject(r);
+    p.access = access;
+    if (access !== 'owner') {
+      const owner = await this.store.get<any>('SELECT email FROM users WHERE id = ?', [r.user_id]);
+      if (owner) p.ownerEmail = owner.email;
+    }
+    return p;
   }
   async createProject(userId: string, id: string, name: string, instructions = ''): Promise<ChatProject> {
     const ts = now();
@@ -1059,22 +1095,47 @@ export class ChatRepo {
       'INSERT INTO chat_projects (id, user_id, name, instructions, created_at, updated_at) VALUES (?,?,?,?,?,?)',
       [id, userId, name, instructions, ts, ts],
     );
-    return { id, name, instructions, createdAt: ts, updatedAt: ts };
+    return { id, name, instructions, access: 'owner', createdAt: ts, updatedAt: ts };
   }
-  async updateProject(userId: string, id: string, patch: { name?: string; instructions?: string }): Promise<void> {
+  /** Update by project id — the caller must already be gated to owner/editor at the route. */
+  async updateProject(id: string, patch: { name?: string; instructions?: string }): Promise<void> {
     const sets: string[] = [];
     const vals: unknown[] = [];
     if (patch.name !== undefined) { sets.push('name = ?'); vals.push(patch.name); }
     if (patch.instructions !== undefined) { sets.push('instructions = ?'); vals.push(patch.instructions); }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
-    vals.push(now(), id, userId);
-    await this.store.run(`UPDATE chat_projects SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+    vals.push(now(), id);
+    await this.store.run(`UPDATE chat_projects SET ${sets.join(', ')} WHERE id = ?`, vals);
   }
+  /** Owner-only: verify ownership, then cascade (un-link every conversation, delete docs + member rows). */
   async deleteProject(userId: string, id: string): Promise<void> {
-    await this.store.run('UPDATE chat_conversations SET project_id = NULL WHERE project_id = ? AND user_id = ?', [id, userId]);
-    await this.store.run('DELETE FROM chat_project_documents WHERE project_id = ? AND user_id = ?', [id, userId]);
-    await this.store.run('DELETE FROM chat_projects WHERE id = ? AND user_id = ?', [id, userId]);
+    const owned = await this.store.get<any>('SELECT 1 AS x FROM chat_projects WHERE id = ? AND user_id = ?', [id, userId]);
+    if (!owned) return;
+    await this.store.run('UPDATE chat_conversations SET project_id = NULL WHERE project_id = ?', [id]);
+    await this.store.run('DELETE FROM chat_project_documents WHERE project_id = ?', [id]);
+    await this.store.run('DELETE FROM chat_project_members WHERE project_id = ?', [id]);
+    await this.store.run('DELETE FROM chat_projects WHERE id = ?', [id]);
+  }
+
+  // Sharing — the owner grants other Kravn users editor/viewer access (all owner-gated at the route).
+  async shareProject(projectId: string, targetUserId: string, role: 'editor' | 'viewer'): Promise<void> {
+    const existing = await this.store.get<any>('SELECT 1 AS x FROM chat_project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+    if (existing) await this.store.run('UPDATE chat_project_members SET role = ? WHERE project_id = ? AND user_id = ?', [role, projectId, targetUserId]);
+    else await this.store.run('INSERT INTO chat_project_members (project_id, user_id, role, created_at) VALUES (?,?,?,?)', [projectId, targetUserId, role, now()]);
+  }
+  async unshareProject(projectId: string, targetUserId: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_project_members WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+    // The removed user's conversations in this project lose context; un-link so nothing dangles.
+    await this.store.run('UPDATE chat_conversations SET project_id = NULL WHERE project_id = ? AND user_id = ?', [projectId, targetUserId]);
+  }
+  async listProjectMembers(projectId: string): Promise<Array<{ userId: string; email: string; role: 'editor' | 'viewer' }>> {
+    const rows = await this.store.all<any>(
+      `SELECT m.user_id, m.role, u.email FROM chat_project_members m JOIN users u ON u.id = m.user_id
+        WHERE m.project_id = ? ORDER BY u.email ASC`,
+      [projectId],
+    );
+    return rows.map((r) => ({ userId: r.user_id, email: r.email, role: r.role as 'editor' | 'viewer' }));
   }
 
   // Project documents (injected into the model context at chat time).
@@ -1090,8 +1151,9 @@ export class ChatRepo {
     );
     return { id, projectId, name, content, createdAt: ts };
   }
-  async deleteDocument(userId: string, projectId: string, docId: string): Promise<void> {
-    await this.store.run('DELETE FROM chat_project_documents WHERE id = ? AND project_id = ? AND user_id = ?', [docId, projectId, userId]);
+  /** Delete a document by project (the caller must already be gated to owner/editor at the route). */
+  async deleteDocument(projectId: string, docId: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_project_documents WHERE id = ? AND project_id = ?', [docId, projectId]);
   }
 
   async listConversations(userId: string): Promise<ChatConversation[]> {
@@ -1130,12 +1192,20 @@ export class ChatRepo {
 
   async listMessages(conversationId: string): Promise<ChatMessage[]> {
     const rows = await this.store.all<any>('SELECT * FROM chat_messages WHERE conversation_id = ? ORDER BY created_at ASC, id ASC', [conversationId]);
-    return rows.map((r) => ({ id: r.id, conversationId: r.conversation_id, role: r.role as ChatRole, content: r.content ?? '', createdAt: r.created_at }));
+    return rows.map((r) => ({
+      id: r.id, conversationId: r.conversation_id, role: r.role as ChatRole, content: r.content ?? '',
+      modelContent: r.model_content ?? undefined, createdAt: r.created_at,
+    }));
   }
-  async addMessage(id: string, conversationId: string, role: ChatRole, content: string): Promise<ChatMessage> {
+  /** `modelContent` = what the LLM received (e.g. PII tokenized by the onChatInput pipeline); null = the model saw `content` verbatim. */
+  async addMessage(id: string, conversationId: string, role: ChatRole, content: string, modelContent?: string | null): Promise<ChatMessage> {
     const ts = now();
-    await this.store.run('INSERT INTO chat_messages (id, conversation_id, role, content, created_at) VALUES (?,?,?,?,?)', [id, conversationId, role, content, ts]);
-    return { id, conversationId, role, content, createdAt: ts };
+    const mc = modelContent != null && modelContent !== content ? modelContent : null;
+    await this.store.run(
+      'INSERT INTO chat_messages (id, conversation_id, role, content, model_content, created_at) VALUES (?,?,?,?,?,?)',
+      [id, conversationId, role, content, mc, ts],
+    );
+    return { id, conversationId, role, content, modelContent: mc ?? undefined, createdAt: ts };
   }
 
   // ── Attachments (files uploaded into a conversation) ──────────────────────────────────────────

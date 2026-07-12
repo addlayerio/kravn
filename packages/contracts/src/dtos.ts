@@ -105,6 +105,13 @@ export const addProjectDocumentSchema = z.object({
 });
 export type AddProjectDocumentRequest = z.infer<typeof addProjectDocumentSchema>;
 
+/** Share a project with another Kravn user (by email) at a given role. */
+export const shareProjectSchema = z.object({
+  email: z.string().email(),
+  role: z.enum(['editor', 'viewer']).default('viewer'),
+});
+export type ShareProjectRequest = z.infer<typeof shareProjectSchema>;
+
 export const createConversationSchema = z.object({
   projectId: z.string().optional(),
   title: z.string().max(200).default('New chat'),
@@ -395,7 +402,7 @@ export interface HookPointMeta {
 }
 
 export interface PipelineScopeMeta {
-  key: 'tools' | 'resources' | 'prompts' | 'auth';
+  key: 'tools' | 'resources' | 'prompts' | 'chat' | 'auth';
   label: string;
   /** Spine node labels for the flow diagram, in order (source → … → sink). */
   spine: string[];
@@ -432,6 +439,12 @@ export const HOOK_LIFECYCLE: PipelineScopeMeta[] = [
       { method: 'onPromptGet', label: 'Prompt Pre-Fetch', kind: 'pre', canDeny: true },
       { method: 'onPromptResult', label: 'Prompt Post-Fetch', kind: 'post', canDeny: false },
     ],
+  },
+  {
+    key: 'chat',
+    label: 'Chat',
+    spine: ['End user', 'Kravn', 'LLM'],
+    points: [{ method: 'onChatInput', label: 'Chat Input', kind: 'pre', canDeny: true }],
   },
   {
     key: 'auth',

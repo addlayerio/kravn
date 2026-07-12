@@ -239,15 +239,30 @@ export const CHAT_ROLES = ['user', 'assistant', 'system', 'tool'] as const;
 export type ChatRole = (typeof CHAT_ROLES)[number];
 export const chatRoleSchema = z.enum(CHAT_ROLES);
 
+export const projectRoleSchema = z.enum(['owner', 'editor', 'viewer']);
+export type ProjectRole = z.infer<typeof projectRoleSchema>;
+
 export const chatProjectSchema = z.object({
   id: z.string(),
   name: z.string().min(1).max(120),
   /** Project-level system instructions, prepended to every chat started in the project. */
   instructions: z.string().default(''),
+  /** The CALLER's access to this project: `owner` (created it) or `editor`/`viewer` (shared with them). */
+  access: projectRoleSchema.optional(),
+  /** Email of the owner — set on projects shared WITH the caller, so the UI can show "shared by …". */
+  ownerEmail: z.string().optional(),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type ChatProject = z.infer<typeof chatProjectSchema>;
+
+/** A user a project has been shared with (owner is `chat_projects.user_id`, never a member row). */
+export const projectMemberSchema = z.object({
+  userId: z.string(),
+  email: z.string(),
+  role: z.enum(['editor', 'viewer']),
+});
+export type ProjectMember = z.infer<typeof projectMemberSchema>;
 
 /** A document attached to a project; its text is injected into the model context at chat time. */
 export const chatProjectDocumentSchema = z.object({
@@ -278,6 +293,12 @@ export const chatMessageSchema = z.object({
   conversationId: z.string(),
   role: chatRoleSchema,
   content: z.string().default(''),
+  /**
+   * What the LLM actually received for this message, when the `onChatInput` DLP pipeline transformed it
+   * (e.g. a CUIT/PII value tokenized). Absent → the model saw `content` verbatim. `content` is always the
+   * user's original text (what they see); `modelContent` is the redacted copy that reached the model.
+   */
+  modelContent: z.string().optional(),
   createdAt: z.string(),
 });
 export type ChatMessage = z.infer<typeof chatMessageSchema>;

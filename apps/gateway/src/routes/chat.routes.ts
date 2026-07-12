@@ -3,6 +3,7 @@ import {
   createChatProjectSchema,
   updateChatProjectSchema,
   addProjectDocumentSchema,
+  shareProjectSchema,
   createConversationSchema,
   postChatMessageSchema,
   type McpEndpoint,
@@ -44,41 +45,77 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/chat/projects/:id', auth, async (req, reply) => {
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
-    const project = await s.repos.chat.getProject(u.id, id);
+    const project = await s.repos.chat.getProjectForUser(u.id, id);
     if (!project) return sendError(reply, 404, 'not_found', 'Project not found.');
     const documents = (await s.repos.chat.listDocuments(id)).map((d) => ({
       id: d.id, projectId: d.projectId, name: d.name, size: d.content.length, createdAt: d.createdAt,
     }));
     const conversations = (await s.repos.chat.listConversations(u.id)).filter((c) => c.projectId === id);
-    return { project, documents, conversations };
+    // Only the owner manages sharing, so only the owner sees the member list.
+    const members = project.access === 'owner' ? await s.repos.chat.listProjectMembers(id) : [];
+    return { project, documents, conversations, members };
   });
   app.put('/api/chat/projects/:id', auth, async (req, reply) => {
     const dto = parse(reply, updateChatProjectSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
-    if (!(await s.repos.chat.getProject(u.id, id))) return sendError(reply, 404, 'not_found', 'Project not found.');
-    await s.repos.chat.updateProject(u.id, id, dto);
-    return { project: await s.repos.chat.getProject(u.id, id) };
+    const access = await s.repos.chat.getProjectAccess(u.id, id);
+    if (!access) return sendError(reply, 404, 'not_found', 'Project not found.');
+    if (access === 'viewer') return sendError(reply, 403, 'forbidden', 'You have read-only access to this project.');
+    await s.repos.chat.updateProject(id, dto);
+    return { project: await s.repos.chat.getProjectForUser(u.id, id) };
   });
   app.delete('/api/chat/projects/:id', auth, async (req, reply) => {
+    // deleteProject is owner-gated internally (a non-owner call is a no-op).
     await s.repos.chat.deleteProject(currentUser(req).id, (req.params as { id: string }).id);
     return reply.code(204).send();
   });
 
-  // Project documents
+  // Sharing — owner-only: grant/revoke another Kravn user editor/viewer access to the project.
+  app.post('/api/chat/projects/:id/share', auth, async (req, reply) => {
+    const dto = parse(reply, shareProjectSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    if ((await s.repos.chat.getProjectAccess(u.id, id)) !== 'owner') {
+      return sendError(reply, 403, 'forbidden', 'Only the project owner can share it.');
+    }
+    const target = await s.repos.users.getByEmail(dto.email);
+    if (!target) return sendError(reply, 404, 'not_found', 'No Kravn user with that email.');
+    if (target.id === u.id) return sendError(reply, 400, 'bad_request', 'You already own this project.');
+    await s.repos.chat.shareProject(id, target.id, dto.role);
+    return reply.code(201).send({ members: await s.repos.chat.listProjectMembers(id) });
+  });
+  app.delete('/api/chat/projects/:id/share/:userId', auth, async (req, reply) => {
+    const u = currentUser(req);
+    const { id, userId } = req.params as { id: string; userId: string };
+    if ((await s.repos.chat.getProjectAccess(u.id, id)) !== 'owner') {
+      return sendError(reply, 403, 'forbidden', 'Only the project owner can manage sharing.');
+    }
+    await s.repos.chat.unshareProject(id, userId);
+    return reply.code(204).send();
+  });
+
+  // Project documents (owner + editors may add/remove; viewers are read-only).
   app.post('/api/chat/projects/:id/documents', auth, async (req, reply) => {
     const dto = parse(reply, addProjectDocumentSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
-    if (!(await s.repos.chat.getProject(u.id, id))) return sendError(reply, 404, 'not_found', 'Project not found.');
+    const access = await s.repos.chat.getProjectAccess(u.id, id);
+    if (!access) return sendError(reply, 404, 'not_found', 'Project not found.');
+    if (access === 'viewer') return sendError(reply, 403, 'forbidden', 'You have read-only access to this project.');
     const doc = await s.repos.chat.addDocument(newId(), id, u.id, dto.name, dto.content);
     return reply.code(201).send({ document: { id: doc.id, projectId: doc.projectId, name: doc.name, size: doc.content.length, createdAt: doc.createdAt } });
   });
   app.delete('/api/chat/projects/:id/documents/:docId', auth, async (req, reply) => {
+    const u = currentUser(req);
     const { id, docId } = req.params as { id: string; docId: string };
-    await s.repos.chat.deleteDocument(currentUser(req).id, id, docId);
+    const access = await s.repos.chat.getProjectAccess(u.id, id);
+    if (!access) return sendError(reply, 404, 'not_found', 'Project not found.');
+    if (access === 'viewer') return sendError(reply, 403, 'forbidden', 'You have read-only access to this project.');
+    await s.repos.chat.deleteDocument(id, docId);
     return reply.code(204).send();
   });
 
@@ -88,8 +125,9 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const dto = parse(reply, createConversationSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
-    // A conversation may only be bound to a project the caller owns (prevents cross-tenant context leak).
-    if (dto.projectId && !(await s.repos.chat.getProject(u.id, dto.projectId))) {
+    // A conversation may only be bound to a project the caller can access — owner OR a shared member
+    // (getProjectForUser is fail-closed), which prevents binding to a project they were never granted.
+    if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
     }
     const conversation = await s.repos.chat.createConversation(u.id, {

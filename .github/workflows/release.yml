@@ -72,6 +72,25 @@ jobs:
           sbom: true
           provenance: mode=max
 
+      # The end-user client SPA is a SEPARATE image (nginx serving apps/client + /api reverse-proxy). The
+      # Helm chart deploys it as its own pod when `client.enabled=true`.
+      - name: Build + push client image
+        id: build-client
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/client/Dockerfile
+          push: true
+          build-args: |
+            VERSION=${{ steps.vars.outputs.version }}
+          tags: |
+            ghcr.io/${{ steps.vars.outputs.owner }}/kravn-client:${{ steps.vars.outputs.version }}
+            ghcr.io/${{ steps.vars.outputs.owner }}/kravn-client:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          sbom: true
+          provenance: mode=max
+
       - name: Install cosign
         uses: sigstore/cosign-installer@v3
 
@@ -107,6 +126,19 @@ jobs:
             sleep $((i*5))
           done
           echo "::error::cosign sign (image) failed after 5 attempts"; exit 1
+
+      - name: Sign the client image (keyless)
+        env:
+          IMAGE: ghcr.io/${{ steps.vars.outputs.owner }}/kravn-client
+          DIGEST: ${{ steps.build-client.outputs.digest }}
+          OIDC_TOKEN: ${{ steps.oidc.outputs.token }}
+        run: |
+          for i in 1 2 3 4 5; do
+            cosign sign --yes --identity-token "${OIDC_TOKEN}" "${IMAGE}@${DIGEST}" && exit 0
+            echo "::warning::cosign sign (client image) attempt $i failed — retrying in $((i*5))s"
+            sleep $((i*5))
+          done
+          echo "::error::cosign sign (client image) failed after 5 attempts"; exit 1
 
       # Scan the released image and print the result to the build log as a per-version record. It does NOT
       # upload to the Security tab on purpose: a release runs on a TAG ref, and tag-scoped code-scanning

@@ -738,8 +738,46 @@ const pluginInstanceConfig: Migration = {
   },
 };
 
+// The `onChatInput` DLP pipeline (e.g. PII Tokenizer) can transform an end-user message before it reaches
+// the LLM. We persist BOTH: `content` (what the user typed + sees) and `model_content` (what the model
+// actually received — e.g. a CUIT tokenized). Additive/nullable — a null column means the model saw
+// `content` verbatim, so pre-existing messages are unchanged and nothing needs backfilling.
+const chatModelContent: Migration = {
+  name: '020_chat_model_content',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_messages'))) return;
+    if (!(await knex.schema.hasColumn('chat_messages', 'model_content'))) {
+      await knex.schema.alterTable('chat_messages', (t) => t.text('model_content').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_messages')) && (await knex.schema.hasColumn('chat_messages', 'model_content'))) {
+      await knex.schema.alterTable('chat_messages', (t) => t.dropColumn('model_content'));
+    }
+  },
+};
+
+// Shared projects: a project (owned by chat_projects.user_id) can be shared with other Kravn users, each as
+// an 'editor' (edit instructions/docs) or 'viewer' (read + use). The owner is never a member row.
+const chatProjectMembers: Migration = {
+  name: '021_chat_project_members',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_project_members', (t) => {
+      t.string('project_id').notNullable();
+      t.string('user_id').notNullable();
+      t.string('role').notNullable(); // 'editor' | 'viewer'
+      t.string('created_at').notNullable();
+      t.primary(['project_id', 'user_id']);
+      t.index('user_id');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_project_members')) await knex.schema.dropTable('chat_project_members');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

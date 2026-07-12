@@ -12,6 +12,18 @@ No Ingress is enabled (the seamless default). Reach the admin UI with a port-for
 
 then open http://localhost:8080 and complete the one-time setup wizard.
 {{- end }}
+{{- if .Values.client.enabled }}
+
+End-user chat client (its own pod, proxies /api to the gateway):
+{{- if .Values.client.ingress.enabled }}
+{{- range .Values.client.ingress.hosts }}
+  http{{ if $.Values.client.ingress.tls }}s{{ end }}://{{ .host }}
+{{- end }}
+{{- else }}
+  kubectl port-forward svc/{{ include "kravn.client.fullname" . }} 8081:{{ .Values.client.service.port }}
+  then open http://localhost:8081
+{{- end }}
+{{- end }}
 
 Data:
 {{- if .Values.postgres.enabled }}

@@ -33,6 +33,48 @@ app.kubernetes.io/instance: {{ .Release.Name }}
 {{- printf "%s:%s" .Values.image.repository $tag -}}
 {{- end -}}
 
+{{/* ── End-user client SPA (apps/client) — a separate pod (nginx) with its own name so the gateway
+     Service selector never picks it up. ── */}}
+{{- define "kravn.client.fullname" -}}
+{{- printf "%s-client" (include "kravn.fullname" .) -}}
+{{- end -}}
+
+{{- define "kravn.client.image" -}}
+{{- $tag := .Values.client.image.tag | default .Chart.AppVersion -}}
+{{- printf "%s:%s" .Values.client.image.repository $tag -}}
+{{- end -}}
+
+{{- define "kravn.client.selectorLabels" -}}
+app.kubernetes.io/name: {{ include "kravn.name" . }}-client
+app.kubernetes.io/instance: {{ .Release.Name }}
+{{- end -}}
+
+{{- define "kravn.client.labels" -}}
+{{ include "kravn.client.selectorLabels" . }}
+app.kubernetes.io/version: {{ .Chart.AppVersion | quote }}
+app.kubernetes.io/managed-by: {{ .Release.Service }}
+app.kubernetes.io/component: client
+helm.sh/chart: {{ printf "%s-%s" .Chart.Name .Chart.Version | replace "+" "_" | trunc 63 | trimSuffix "-" }}
+{{- end -}}
+
+{{/*
+Resolve KRAVN_CLIENT_URL for the gateway (SSO redirects the token back here + CORS reflects it):
+explicit `.Values.clientUrl` wins; otherwise, when the bundled client is enabled, its `publicUrl` or the
+first ingress host. Empty when nothing is deployed/configured.
+*/}}
+{{- define "kravn.clientUrl" -}}
+{{- if .Values.clientUrl -}}
+{{- .Values.clientUrl -}}
+{{- else if and .Values.client .Values.client.enabled -}}
+{{- if .Values.client.publicUrl -}}
+{{- .Values.client.publicUrl -}}
+{{- else if and .Values.client.ingress.enabled (gt (len .Values.client.ingress.hosts) 0) -}}
+{{- $host := (first .Values.client.ingress.hosts).host -}}
+{{- if .Values.client.ingress.tls -}}{{- printf "https://%s" $host -}}{{- else -}}{{- printf "http://%s" $host -}}{{- end -}}
+{{- end -}}
+{{- end -}}
+{{- end -}}
+
 {{/*
 Database env shared by the app Deployment and the migration Job: KRAVN_DB_SCHEMA + DATABASE_URL.
 Keeps both in sync so the Job migrates the exact database the pods connect to.

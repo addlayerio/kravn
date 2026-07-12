@@ -732,14 +732,14 @@ const PII = {
 function piiTokenizer(): HookPlugin {
   const token = (salt: string, type: string, value: string): string =>
     '⟦' + type + '_' + createHash('sha256').update(salt + '|' + type + '|' + value).digest('hex').slice(0, 10) + '⟧';
-  const apply = (ctx: any) => {
-    const config = ctx.config || {};
-    // Salt keeps tokens stable AND unguessable (an attacker who sees a token can't brute-force low-entropy
-    // PII without it). Prefer an explicit salt; else the deployment secret (stable + shared across replicas);
-    // else a per-process random (single-replica). Never the old public 'kravn' default.
+  // Per-string tokenizer bound to a config. Salt keeps tokens stable AND unguessable (an attacker who sees a
+  // token can't brute-force low-entropy PII without it). Prefer an explicit salt; else the deployment secret
+  // (stable + shared across replicas); else a per-process random (single-replica). Never the old public
+  // 'kravn' default.
+  const redactor = (config: Record<string, unknown>): ((s: string) => string) => {
     const salt = str(config, 'salt', '') || process.env.KRAVN_SECRET || RANDOM_SALT;
     const on = (t: string): boolean => config[t] !== false; // default all on
-    ctx.result = mapStrings(ctx.result, (s) => {
+    return (s: string) => {
       let out = s;
       if (on('email')) out = out.replace(PII.EMAIL, (m) => token(salt, 'EMAIL', m));
       if (on('ip')) out = out.replace(PII.IP, (m) => token(salt, 'IP', m));
@@ -749,7 +749,16 @@ function piiTokenizer(): HookPlugin {
       if (on('cuit')) out = out.replace(PII.CUIT, (m) => (cuitOk(m) ? token(salt, 'TAX_ID', m) : m));
       if (on('phone')) out = out.replace(PII.PHONE, (m) => (m.replace(/\D/g, '').length >= 8 ? token(salt, 'PHONE', m) : m));
       return out;
-    });
+    };
+  };
+  // Post (tool/resource results): walk every string leaf of the result.
+  const apply = (ctx: any) => {
+    ctx.result = mapStrings(ctx.result, redactor(ctx.config || {}));
+  };
+  // Pre (chat input): the end-user's message text on its way to the LLM — tokenize so the raw PII (a CUIT,
+  // an email, a bank account) never reaches the model. The user still sees their original text.
+  const applyInput = (ctx: any) => {
+    if (typeof ctx.content === 'string') ctx.content = redactor(ctx.config || {})(ctx.content);
   };
   return {
     manifest: {
@@ -758,7 +767,7 @@ function piiTokenizer(): HookPlugin {
       version: '0.1.0',
       type: 'hook',
       description:
-        'Detects PII in results (emails, IPs, IBANs [mod-97], credit cards [Luhn], Argentina CBU + CUIT/CUIL [check-digit], phone numbers) and replaces each with a stable deterministic token (⟦EMAIL_ab12⟧) so the model reasons consistently without seeing the real value. Bank/tax-id detectors are checksum-validated to limit false positives. Reversible restore-to-user (never to the model) is a follow-up.',
+        'Detects PII (emails, IPs, IBANs [mod-97], credit cards [Luhn], Argentina CBU + CUIT/CUIL [check-digit], phone numbers) and replaces each with a stable deterministic token (⟦EMAIL_ab12⟧) so the model reasons consistently without seeing the real value. Bank/tax-id detectors are checksum-validated to limit false positives. Add it to Tool/Resource Post-Invoke to scrub tool RESULTS, and/or to the Chat Input junction to scrub what an end-user TYPES before it reaches the LLM (the user still sees their original text). Reversible restore-to-user (never to the model) is a follow-up.',
       author: 'Kravn',
       priority: 12,
       configSchema: {
@@ -775,7 +784,7 @@ function piiTokenizer(): HookPlugin {
         },
       },
     },
-    hooks: { onToolResult: apply, onResourceResult: apply },
+    hooks: { onToolResult: apply, onResourceResult: apply, onChatInput: applyInput },
   };
 }
 

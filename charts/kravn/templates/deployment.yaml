@@ -46,9 +46,10 @@ spec:
             - name: KRAVN_PUBLIC_URL
               value: {{ .Values.publicUrl | quote }}
             {{- end }}
-            {{- if .Values.clientUrl }}
+            {{- $clientUrl := include "kravn.clientUrl" . }}
+            {{- if $clientUrl }}
             - name: KRAVN_CLIENT_URL
-              value: {{ .Values.clientUrl | quote }}
+              value: {{ $clientUrl | quote }}
             {{- end }}
             {{- include "kravn.dbEnv" . | nindent 12 }}
             {{- include "kravn.redisEnv" . | nindent 12 }}

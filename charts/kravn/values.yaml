@@ -168,6 +168,43 @@ ingress:
           pathType: Prefix
   tls: []
 
+# ── End-user client SPA (apps/client) ──────────────────────────────────────────────────────────────
+# Deploy the ChatGPT-style chat client as ITS OWN pod (nginx serving the SPA + reverse-proxying /api to the
+# gateway Service). Disabled by default. Requires the gateway to serve the chat API (role: all or chat).
+# The client image is published by CI to ghcr.io/<owner>/kravn-client. When you enable an ingress here (or
+# set publicUrl), that origin is wired to the gateway as KRAVN_CLIENT_URL so SSO redirects the token back.
+client:
+  enabled: false
+  replicaCount: 1
+  image:
+    repository: ghcr.io/OWNER/kravn-client
+    tag: ""        # defaults to .Chart.AppVersion
+    pullPolicy: IfNotPresent
+  service:
+    type: ClusterIP
+    port: 80
+  # Max upload size nginx accepts before proxying to the gateway (chat attachments).
+  maxBodySize: "50m"
+  # Public origin the client is reached at (e.g. https://chat.example.com). If empty, it is derived from the
+  # first ingress host below. Used to set the gateway's KRAVN_CLIENT_URL (SSO token redirect + CORS).
+  publicUrl: ""
+  ingress:
+    enabled: false
+    className: ""
+    annotations: {}
+    hosts:
+      - host: chat.kravn.local
+        paths:
+          - path: /
+            pathType: Prefix
+    tls: []
+  resources:
+    requests:
+      cpu: 10m
+      memory: 32Mi
+    limits:
+      memory: 128Mi
+
 metrics:
   serviceMonitor:
     enabled: false        # requires the Prometheus Operator CRD

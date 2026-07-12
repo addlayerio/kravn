@@ -1,0 +1,146 @@
+name: dev-image
+
+# Build UNOFFICIAL beta / test images — to try a change on a server WITHOUT cutting a release.
+#
+# It publishes THREE unofficial artifacts, all keyed to the commit sha:
+#   • ghcr.io/<owner>/kravn:dev-<sha>          (+ a moving :dev)
+#   • ghcr.io/<owner>/kravn-client:dev-<sha>   (+ a moving :dev)
+#   • a Helm chart oci://ghcr.io/<owner>/charts/kravn  version <next>-dev-<sha>
+# The dev chart is packaged with appVersion=dev-<sha>, so its image.tag (and client.image.tag) default
+# straight to the dev images above — no overrides needed. It is NOT official: no :latest, no cosign, no
+# GitHub Release, no CHANGELOG, no version bump; it's a `-dev-` pre-release, so it never matches semver
+# ranges (0.1.*) and can't be picked up as an official update. The release.yml flow (vX.Y.Z tags) is untouched.
+#
+# Trigger it two ways:
+#   • Actions → dev-image → "Run workflow"  (optionally pass an extra image tag like "myfeature")
+#   • push to the `beta` branch
+#
+# Deploy via ArgoCD — just point the Application's chart version at the dev chart (nothing else changes):
+#   source: { repoURL: ghcr.io/<owner>/charts, chart: kravn, targetRevision: <next>-dev-<sha> }
+# Or locally: helm upgrade --install kravn oci://ghcr.io/<owner>/charts/kravn --version <next>-dev-<sha>
+#
+# When a batch of dev builds proves out, cut a real release the normal way (tag vX.Y.Z).
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Optional extra image tag (e.g. myfeature). Blank = dev-<sha> + :dev only.'
+        required: false
+  push:
+    branches: ['beta']
+
+permissions:
+  contents: read
+  packages: write # push images to GHCR (no id-token: dev images are not cosign-signed)
+
+jobs:
+  dev-image:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Resolve tags + lowercase owner
+        id: vars
+        run: |
+          set -euo pipefail
+          SHA="${GITHUB_SHA::7}"
+          OWNER="${GITHUB_REPOSITORY_OWNER,,}"
+          EXTRA=""
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            EXTRA=$(printf '%s' "${{ github.event.inputs.tag }}" | tr '[:upper:]' '[:lower:]' | tr -c 'a-z0-9._-' '-')
+          fi
+          echo "sha=${SHA}" >> "$GITHUB_OUTPUT"
+          echo "owner=${OWNER}" >> "$GITHUB_OUTPUT"
+          # Full tag lists (no empty lines) for each image.
+          {
+            echo "tags_gateway<<EOF"
+            echo "ghcr.io/${OWNER}/kravn:dev-${SHA}"
+            echo "ghcr.io/${OWNER}/kravn:dev"
+            [ -n "$EXTRA" ] && echo "ghcr.io/${OWNER}/kravn:${EXTRA}"
+            echo "EOF"
+            echo "tags_client<<EOF"
+            echo "ghcr.io/${OWNER}/kravn-client:dev-${SHA}"
+            echo "ghcr.io/${OWNER}/kravn-client:dev"
+            [ -n "$EXTRA" ] && echo "ghcr.io/${OWNER}/kravn-client:${EXTRA}"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build + push gateway dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./Dockerfile
+          push: true
+          build-args: |
+            VERSION=dev-${{ steps.vars.outputs.sha }}
+          tags: ${{ steps.vars.outputs.tags_gateway }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Build + push client dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: ./apps/client/Dockerfile
+          push: true
+          build-args: |
+            VERSION=dev-${{ steps.vars.outputs.sha }}
+          tags: ${{ steps.vars.outputs.tags_client }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - uses: azure/setup-helm@v4
+        with:
+          version: v3.16.3
+
+      - name: Package + push dev Helm chart (OCI)
+        id: chart
+        run: |
+          set -euo pipefail
+          OWNER="${{ steps.vars.outputs.owner }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          # Dev chart version = a pre-release of the NEXT patch (so it sorts as "heading to the next release"
+          # and never collides with an official version). appVersion = dev-<sha> so the chart's image.tag AND
+          # client.image.tag default straight to the dev images we just pushed — zero ArgoCD overrides needed.
+          BASE=$(awk '/^version:/{print $2; exit}' charts/kravn/Chart.yaml)
+          IFS=. read -r MA MI PA <<< "$BASE"
+          CHART_VERSION="${MA}.${MI}.$((PA + 1))-dev-${SHA}"
+          # Point the chart's default images at THIS owner's GHCR (same rewrite the official release does).
+          sed -i "s|ghcr.io/OWNER/kravn|ghcr.io/${OWNER}/kravn|" charts/kravn/values.yaml
+          helm registry login ghcr.io -u "${{ github.actor }}" -p "${{ secrets.GITHUB_TOKEN }}"
+          helm package charts/kravn --version "${CHART_VERSION}" --app-version "dev-${SHA}"
+          helm push "kravn-${CHART_VERSION}.tgz" "oci://ghcr.io/${OWNER}/charts"
+          echo "chart_version=${CHART_VERSION}" >> "$GITHUB_OUTPUT"
+
+      - name: Summary
+        run: |
+          OWNER="${{ steps.vars.outputs.owner }}"
+          SHA="${{ steps.vars.outputs.sha }}"
+          CV="${{ steps.chart.outputs.chart_version }}"
+          {
+            echo "### Dev build published 🧪 — NOT an official release"
+            echo ""
+            echo "**Images:** \`ghcr.io/${OWNER}/kravn:dev-${SHA}\` + \`ghcr.io/${OWNER}/kravn-client:dev-${SHA}\` (+ \`:dev\`)"
+            echo "**Dev chart:** \`oci://ghcr.io/${OWNER}/charts/kravn\` version \`${CV}\` — references the dev images by default."
+            echo ""
+            echo "**ArgoCD** — point the Application's chart version at the dev chart (no image overrides needed):"
+            echo '```yaml'
+            echo "  source:"
+            echo "    repoURL: ghcr.io/${OWNER}/charts"
+            echo "    chart: kravn"
+            echo "    targetRevision: ${CV}"
+            echo "    # add client.enabled=true under helm.parameters if you want the chat client pod"
+            echo '```'
+            echo ""
+            echo "No \`:latest\`, no cosign, no CHANGELOG, no official version. It's a \`-dev-\` pre-release."
+          } >> "$GITHUB_STEP_SUMMARY"

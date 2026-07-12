@@ -6,6 +6,7 @@ import { withSpan } from '../otel.js';
 import type { Repos } from '../db/repos.js';
 import type { RegistryService } from '../mcp/registry.service.js';
 import type { PluginManager } from '../plugins/manager.js';
+import { PluginDenied } from '../plugins/manager.js';
 import type { SettingsService } from '../settings/settings.service.js';
 import type { UsageService } from '../usage/usage.service.js';
 import { CODE_INTERPRETER_ID, INTERPRETER_TOOL_NAME } from '../plugins/native.js';
@@ -79,7 +80,17 @@ export class ChatService {
     await this.usage.assertTokenBudget(); // cost/quota governance — org-wide daily token budget
     const key = this.encryptor.decrypt(await this.repos.llmProviders.getApiKeyEncrypted(conv.providerId));
 
-    const userMsg = await this.repos.chat.addMessage(newId(), conversationId, 'user', content);
+    // Tool-calling is wired for OpenAI-family and Anthropic. Gemini still runs plain for now.
+    const supportsTools = provider.type !== 'gemini';
+    // Resolve the endpoint first: it's the scope for both tool entitlements AND the chat-input DLP overlay.
+    const { tools, toolIndex, mcpEndpointId } = await this.resolveTools(actor, conv);
+
+    // DLP on the way IN — run the `onChatInput` pipeline (e.g. PII Tokenizer) so raw PII the user typed (a
+    // CUIT, an email, a bank account) is tokenized BEFORE it reaches the model. We persist BOTH the original
+    // (what the user sees) and the model-bound copy (what the LLM received), so the redaction is auditable.
+    const modelContent = await this.dlpChatInput(content, actor, mcpEndpointId);
+
+    const userMsg = await this.repos.chat.addMessage(newId(), conversationId, 'user', content, modelContent);
     // Attach any uploaded files to this turn's user message (so they show in the thread + feed context).
     if (attachmentIds.length) {
       await this.repos.chat.linkAttachmentsToMessage(actor.id, conversationId, userMsg.id, attachmentIds);
@@ -90,10 +101,6 @@ export class ChatService {
       await this.repos.chat.touchConversation(conversationId, content.slice(0, 60));
     }
 
-    // Tool-calling is wired for OpenAI-family and Anthropic. Gemini still runs plain for now.
-    const supportsTools = provider.type !== 'gemini';
-
-    const { tools, toolIndex, mcpEndpointId } = await this.resolveTools(actor, conv);
     // The code interpreter is a native PLUGIN; when enabled, auto-offer its registry tools (it's also
     // composable into virtual servers like any mcp-server plugin). No special-casing of execution.
     const interpreterOn = supportsTools && this.plugins.isEnabled(CODE_INTERPRETER_ID);
@@ -105,7 +112,18 @@ export class ChatService {
     const messages: LlmMessage[] = [
       // Only advertise the run_python guidance when the interpreter is actually offered this turn.
       { role: 'system', content: await this.buildSystemPrompt(actor, conv, interpreterOn) },
-      ...history.map((m) => ({ role: m.role, content: m.content })),
+      // The model sees the DLP-transformed copy of each user message — the stored `modelContent`, or a
+      // fresh transform for messages persisted before DLP was enabled — never the raw PII. Assistant/tool
+      // turns are model-generated (already token-only) and pass through unchanged.
+      ...(await Promise.all(
+        history.map(async (m) => ({
+          role: m.role,
+          content:
+            m.role === 'user'
+              ? m.modelContent ?? (await this.plugins.applyChatInput(m.content, actor, mcpEndpointId).catch(() => m.content))
+              : m.content,
+        })),
+      )),
     ];
 
     // The per-turn file workspace handed to file-aware tools (e.g. the interpreter), and the output
@@ -230,13 +248,28 @@ export class ChatService {
   private static readonly DOC_CONTEXT_BUDGET = 60_000;
   private static readonly ATTACH_CONTEXT_BUDGET = 120_000;
 
+  /**
+   * Run the `onChatInput` DLP pipeline on an end-user message (global chain + this endpoint's overlay).
+   * A redaction/tokenization hook (e.g. PII Tokenizer) rewrites the text; a `deny` becomes a clear,
+   * user-visible block. No hook enabled → returns the content unchanged (zero cost).
+   */
+  private async dlpChatInput(content: string, actor: AuthUser, vsId?: string): Promise<string> {
+    try {
+      return await this.plugins.applyChatInput(content, actor, vsId);
+    } catch (err) {
+      if (err instanceof PluginDenied) throw new Error(`Message blocked by policy: ${err.message}`);
+      throw err;
+    }
+  }
+
   private async buildSystemPrompt(actor: AuthUser, conv: ChatConversation, canRunCode = false): Promise<string> {
     const parts = ['You are Kravn, a helpful corporate AI assistant. Use the available tools when relevant.'];
 
-    // Project context (only if the project belongs to this user — loading a foreign project's
-    // documents would leak another tenant's data into the prompt).
+    // Project context — injected only if the caller can access the project (owner OR a shared member).
+    // getProjectForUser is fail-closed, so a project the user was never granted (or was un-shared from)
+    // leaks nothing into the prompt.
     if (conv.projectId) {
-      const project = await this.repos.chat.getProject(actor.id, conv.projectId);
+      const project = await this.repos.chat.getProjectForUser(actor.id, conv.projectId);
       if (project) {
         if (project.instructions?.trim()) parts.push(`Project instructions:\n${project.instructions.trim()}`);
         const docs = await this.repos.chat.listDocuments(conv.projectId);

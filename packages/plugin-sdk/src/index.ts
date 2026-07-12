@@ -160,6 +160,17 @@ export interface ResolveUserContext extends PluginBaseContext {
   deny: (reason: string) => void;
 }
 
+// ─── Chat hook ─────────────────────────────────────────────────────────────────────────────────
+export interface ChatInputContext extends PluginBaseContext {
+  /**
+   * The end-user's chat message text on its way to the LLM — MUTABLE (redact/tokenize PII before it
+   * reaches the model), or call deny() to block the message entirely. The user still sees what they
+   * typed; only this model-bound copy is transformed. Runs BEFORE the message reaches the provider.
+   */
+  content: string;
+  deny: (reason: string) => void;
+}
+
 export interface HookPlugin {
   manifest: PluginManifest & { type: 'hook' };
   hooks: {
@@ -186,6 +197,9 @@ export interface HookPlugin {
 
     /** After authentication — remap/augment the user, or deny access. (http auth resolve user) */
     onResolveUser?: (ctx: ResolveUserContext) => void | Promise<void>;
+
+    /** Before an end-user chat message reaches the LLM — redact/tokenize its text or deny. (chat input) */
+    onChatInput?: (ctx: ChatInputContext) => void | Promise<void>;
   };
 }
 
@@ -201,6 +215,7 @@ export const HOOK_POINTS: Record<string, string> = {
   onPromptGet: 'Prompt Pre-Fetch',
   onPromptResult: 'Prompt Post-Fetch',
   onResolveUser: 'Auth Resolve User',
+  onChatInput: 'Chat Input',
 };
 
 // ─── MCP-server plugin ───────────────────────────────────────────────────────────────────────────
