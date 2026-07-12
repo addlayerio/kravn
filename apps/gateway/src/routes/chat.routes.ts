@@ -5,6 +5,7 @@ import {
   addProjectDocumentSchema,
   shareProjectSchema,
   createConversationSchema,
+  renameConversationSchema,
   postChatMessageSchema,
   type McpEndpoint,
 } from '@kravn/contracts';
@@ -147,6 +148,17 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const messages = await s.repos.chat.listMessages(conversation.id);
     const attachments = await s.repos.chat.listAttachmentsByMessage(conversation.id);
     return { conversation, messages, attachments };
+  });
+  app.put('/api/chat/conversations/:id', auth, async (req, reply) => {
+    const dto = parse(reply, renameConversationSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    const conv = await s.repos.chat.getConversation(u.id, id);
+    if (!conv) return sendError(reply, 404, 'not_found', 'Conversation not found.');
+    const title = dto.title.trim();
+    await s.repos.chat.renameConversation(u.id, id, title);
+    return { conversation: { ...conv, title } };
   });
   app.delete('/api/chat/conversations/:id', auth, async (req, reply) => {
     await s.repos.chat.deleteConversation(currentUser(req).id, (req.params as { id: string }).id);

@@ -88,11 +88,15 @@ function openEdit(p: LlmProvider) {
   showModal.value = true;
 }
 
+// Native cloud providers have a built-in default base URL (see the gateway's DEFAULT_BASE); only
+// custom/self-hosted types (Azure, Ollama/vLLM, OpenAI-compatible) need an endpoint entered.
+const NATIVE_TYPES: LlmProviderType[] = ['openai', 'anthropic', 'gemini'];
 function onTypeChange() {
   candidates.value = uniqSort([...(LLM_MODEL_CATALOG[form.type] ?? [])]);
   form.selected = [];
   form.defaultModel = '';
   discoverNote.value = '';
+  if (NATIVE_TYPES.includes(form.type)) form.baseUrl = ''; // use the built-in default; the field is hidden
 }
 
 function toggleModel(m: string) {
@@ -234,10 +238,10 @@ async function remove(p: LlmProvider) {
           <option v-for="t in TYPES" :key="t.value" :value="t.value">{{ t.label }}</option>
         </select>
       </div>
-      <div class="field">
+      <div class="field" v-if="!NATIVE_TYPES.includes(form.type)">
         <label>Base URL</label>
         <input v-model="form.baseUrl" :placeholder="baseHint(form.type)" />
-        <small class="muted">Leave blank to use the default for the type.</small>
+        <small class="muted">The provider's API endpoint (e.g. an Ollama/vLLM host, your Azure resource, or an OpenAI-compatible URL such as https://api.x.ai/v1 for Grok).</small>
       </div>
       <div class="field">
         <label>API key {{ editingId ? '(leave blank to keep current)' : '' }}</label>

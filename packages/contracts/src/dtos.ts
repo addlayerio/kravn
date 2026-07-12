@@ -112,6 +112,12 @@ export const shareProjectSchema = z.object({
 });
 export type ShareProjectRequest = z.infer<typeof shareProjectSchema>;
 
+/** Rename a conversation (inline title edit). */
+export const renameConversationSchema = z.object({
+  title: z.string().min(1).max(200),
+});
+export type RenameConversationRequest = z.infer<typeof renameConversationSchema>;
+
 export const createConversationSchema = z.object({
   projectId: z.string().optional(),
   title: z.string().max(200).default('New chat'),

@@ -1175,6 +1175,10 @@ export class ChatRepo {
     );
     return (await this.getConversation(userId, c.id))!;
   }
+  /** User-scoped rename (inline title edit) — only the owner can rename their conversation. */
+  async renameConversation(userId: string, id: string, title: string): Promise<void> {
+    await this.store.run('UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?', [title, now(), id, userId]);
+  }
   async touchConversation(id: string, title?: string): Promise<void> {
     if (title !== undefined) await this.store.run('UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?', [title, now(), id]);
     else await this.store.run('UPDATE chat_conversations SET updated_at = ? WHERE id = ?', [now(), id]);

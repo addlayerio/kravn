@@ -4,6 +4,7 @@ import { useRouter } from 'vue-router';
 import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember } from '@kravn/contracts';
 import { api, ApiError } from '../api';
 import { useAuthStore } from '../stores/auth';
+import { renderMarkdown } from '../lib/markdown';
 import RavenLogo from '../RavenLogo.vue';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
@@ -118,12 +119,44 @@ async function scrollDown() {
 
 async function open(c: ChatConversation) {
   project.value = null;
+  editingTitle.value = false;
   pending.value = [];
   const res = await api.get<{ conversation: ChatConversation; messages: ChatMessage[]; attachments: ChatAttachment[] }>(`/api/chat/conversations/${c.id}`);
   current.value = res.conversation;
   messages.value = res.messages;
   attachments.value = res.attachments ?? [];
   scrollDown();
+}
+
+// ── Inline rename of the conversation title (click title → input; Enter/blur saves, Esc cancels) ──
+const editingTitle = ref(false);
+const titleDraft = ref('');
+const titleInput = ref<HTMLInputElement | null>(null);
+async function startRenameTitle() {
+  if (!current.value) return;
+  titleDraft.value = current.value.title || '';
+  editingTitle.value = true;
+  await nextTick();
+  titleInput.value?.focus();
+  titleInput.value?.select();
+}
+async function saveTitle() {
+  if (!editingTitle.value || !current.value) return;
+  editingTitle.value = false; // guard: Enter fires this AND then blur fires it again — only save once
+  const title = titleDraft.value.trim();
+  if (!title || title === current.value.title) return; // no-op on empty / unchanged
+  const id = current.value.id;
+  try {
+    await api.put<{ conversation: ChatConversation }>(`/api/chat/conversations/${id}`, { title });
+    current.value.title = title;
+    const c = conversations.value.find((x) => x.id === id);
+    if (c) c.title = title;
+  } catch {
+    /* keep the previous title on failure */
+  }
+}
+function cancelRenameTitle() {
+  editingTitle.value = false; // the ensuing blur won't save — the guard in saveTitle sees false
 }
 
 // ── Projects ──────────────────────────────────────────────────────────────
@@ -345,13 +378,26 @@ async function logout() {
       <!-- Conversation thread -->
       <template v-if="current">
         <div class="chat-head">
-          <span>{{ current.title }}</span>
+          <input
+            v-if="editingTitle"
+            ref="titleInput"
+            v-model="titleDraft"
+            class="title-input"
+            maxlength="200"
+            @keydown.enter.prevent="saveTitle"
+            @keydown.esc.prevent="cancelRenameTitle"
+            @blur="saveTitle"
+          />
+          <span v-else class="chat-title" title="Click to rename" @click="startRenameTitle">{{ current.title || 'New chat' }}</span>
           <small class="muted">{{ current.model }}<span v-if="current.vserverSlug"> · tools: {{ current.vserverSlug }}</span></small>
         </div>
         <div ref="thread" class="chat-thread">
           <div v-for="m in messages" :key="m.id" class="msg" :class="m.role">
             <div>
-              <div class="bubble">{{ m.content }}</div>
+              <!-- Assistant replies are markdown → rendered HTML (safe: markdown-it html:false escapes any
+                   raw markup). User messages stay plain text. -->
+              <div v-if="m.role === 'assistant'" class="bubble md" v-html="renderMarkdown(m.content)"></div>
+              <div v-else class="bubble">{{ m.content }}</div>
               <div v-if="attachmentsFor(m.id).length" class="msg-atts">
                 <button
                   v-for="a in attachmentsFor(m.id)"
