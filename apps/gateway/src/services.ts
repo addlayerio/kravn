@@ -29,6 +29,7 @@ import { LogStore } from './logstore.js';
 import { Metrics } from './metrics.js';
 import { PluginManager } from './plugins/manager.js';
 import { ChatService } from './chat/chat.service.js';
+import { SchedulerService } from './schedules/scheduler.service.js';
 import { PyodideExecutor, type CodeExecutor } from './interpreter/executor.js';
 import { nativePlugins } from './plugins/native.js';
 import { createSharedStore, type SharedStore } from './cluster/shared-store.js';
@@ -55,6 +56,8 @@ export interface Services {
   downstream: DownstreamMcp;
   plugins: PluginManager;
   chat: ChatService;
+  /** Runs scheduled tasks (cron/calendar) — a prompt fired on a schedule, result → a new conversation. */
+  scheduler: SchedulerService;
   interpreter: CodeExecutor;
   logstore: LogStore;
   metrics: Metrics;
@@ -152,7 +155,7 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   // Human-in-the-loop approvals: the approval-gate native hook holds a call and blocks in ApprovalService until
   // an admin decides (or it times out). Built before the plugin manager so it can be injected into the hook.
   const approvals = new ApprovalService({ repos, audit, events, log });
-  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter, approvals }), encryptor);
+  const plugins = new PluginManager(env.pluginsDir, repos, log, logstore, nativePlugins({ interpreter, approvals, ssrf }), encryptor);
   upstream.setPluginManager(plugins);
   const upstreamOAuth = new UpstreamOAuthService({ repos, encryptor, ssrf, log });
   // Cost/quota governance: meters tool calls + LLM tokens and enforces org-wide daily budgets.
@@ -177,18 +180,22 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const sso = new SsoService(repos, encryptor, jwt, settings, log, sharedStore);
   const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins, settings, usage);
+  const scheduler = new SchedulerService({ repos, sharedStore, chat, log });
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, scheduler, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */
 export function startBackground(services: Services): void {
   services.registry.syncAll().catch((err) => services.log.warn({ err }, 'initial upstream sync failed'));
+  // Scheduled tasks run only in the chat data plane (role: all / chat), never on a gateway-only pod.
+  if (services.env.role === 'all' || services.env.role === 'chat') services.scheduler.start();
 }
 
 export async function shutdownServices(services: Services): Promise<void> {
+  services.scheduler.stop();
   await services.upstream.disconnectAll().catch(() => {});
   await services.interpreter.dispose().catch(() => {});
   await services.sharedStore.close().catch(() => {});

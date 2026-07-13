@@ -283,10 +283,77 @@ export const chatConversationSchema = z.object({
   model: z.string().default(''),
   /** Optional: which virtual server's tools this chat may call. */
   vserverSlug: z.string().default(''),
+  /** Free-form labels used to organise / filter chats (folders & tags). */
+  tags: z.array(z.string()).default([]),
+  /** Optional: the assistant preset this chat was started from (its instructions are injected live). */
+  assistantId: z.string().nullable().default(null),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
 export type ChatConversation = z.infer<typeof chatConversationSchema>;
+
+/** A scheduled task: runs a prompt on a cron/calendar schedule and drops the result into a new conversation. */
+export const scheduleKindSchema = z.enum(['cron', 'once']);
+export type ScheduleKind = z.infer<typeof scheduleKindSchema>;
+export const chatScheduleSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  prompt: z.string().default(''),
+  providerId: z.string().default(''),
+  model: z.string().default(''),
+  vserverSlug: z.string().default(''),
+  projectId: z.string().nullable().default(null),
+  kind: scheduleKindSchema,
+  /** Cron expression (5-field), for kind='cron'. */
+  cron: z.string().default(''),
+  /** ISO datetime, for kind='once'. */
+  runAt: z.string().default(''),
+  timezone: z.string().default('UTC'),
+  enabled: z.boolean().default(true),
+  /** Next fire time (ISO); null = will never run again (bad cron, or a past one-shot). */
+  nextRunAt: z.string().nullable().default(null),
+  lastRunAt: z.string().nullable().default(null),
+  lastStatus: z.string().nullable().default(null),
+  lastError: z.string().nullable().default(null),
+  lastConversationId: z.string().nullable().default(null),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ChatSchedule = z.infer<typeof chatScheduleSchema>;
+
+/** A user's personal, reusable prompt template (their own library — beyond any admin/MCP-provided prompts). */
+export const chatUserPromptSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  content: z.string().default(''),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ChatUserPrompt = z.infer<typeof chatUserPromptSchema>;
+
+/** A durable per-user fact the assistant is told at the start of every chat. */
+export const chatMemorySchema = z.object({
+  id: z.string(),
+  content: z.string().default(''),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ChatMemory = z.infer<typeof chatMemorySchema>;
+
+/** A reusable assistant preset: a named persona + default model + tools a chat can be started from. */
+export const chatAssistantSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  /** System instructions injected (live) into every chat started from this assistant. */
+  instructions: z.string().default(''),
+  providerId: z.string().default(''),
+  model: z.string().default(''),
+  /** Which virtual server's tools chats from this assistant default to. */
+  vserverSlug: z.string().default(''),
+  createdAt: z.string(),
+  updatedAt: z.string(),
+});
+export type ChatAssistant = z.infer<typeof chatAssistantSchema>;
 
 export const chatMessageSchema = z.object({
   id: z.string(),

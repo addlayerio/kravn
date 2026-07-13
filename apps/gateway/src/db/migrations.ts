@@ -776,8 +776,132 @@ const chatProjectMembers: Migration = {
   },
 };
 
+// Scheduled tasks: run a prompt on a cron/calendar schedule; the result lands in a new conversation.
+const chatSchedules: Migration = {
+  name: '022_chat_schedules',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_schedules', (t) => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      t.string('name').notNullable();
+      t.text('prompt').notNullable();
+      t.string('provider_id').notNullable();
+      t.string('model').notNullable();
+      t.string('vserver_slug').notNullable().defaultTo('');
+      t.string('project_id').nullable();
+      t.string('kind').notNullable(); // 'cron' | 'once'
+      t.string('cron').notNullable().defaultTo('');
+      t.string('run_at').notNullable().defaultTo('');
+      t.string('timezone').notNullable().defaultTo('UTC');
+      t.boolean('enabled').notNullable().defaultTo(true);
+      t.string('next_run_at').nullable();
+      t.string('last_run_at').nullable();
+      t.string('last_status').nullable();
+      t.text('last_error').nullable();
+      t.string('last_conversation_id').nullable();
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+      t.index('user_id');
+      t.index('next_run_at');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_schedules')) await knex.schema.dropTable('chat_schedules');
+  },
+};
+
+// Personal prompt library — each user's own reusable prompt templates (beyond admin/MCP prompts).
+const chatUserPrompts: Migration = {
+  name: '023_chat_user_prompts',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_user_prompts', (t) => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      t.string('name').notNullable();
+      t.text('content').notNullable();
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+      t.index('user_id');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_user_prompts')) await knex.schema.dropTable('chat_user_prompts');
+  },
+};
+
+const chatConversationTags: Migration = {
+  name: '024_chat_conversation_tags',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'tags'))) {
+      // Comma-separated tag list (a chat may carry several tags / act as folders).
+      await knex.schema.alterTable('chat_conversations', (t) => t.text('tags').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'tags'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('tags'));
+    }
+  },
+};
+
+const chatMemory: Migration = {
+  name: '025_chat_memory',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_memory', (t) => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      // A single durable fact the assistant should remember across every chat for this user.
+      t.text('content').notNullable();
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+      t.index('user_id');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_memory')) await knex.schema.dropTable('chat_memory');
+  },
+};
+
+const chatAssistants: Migration = {
+  name: '026_chat_assistants',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_assistants', (t) => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      t.string('name').notNullable();
+      // No DB default on the TEXT column (MySQL < 8.0.13 rejects DEFAULT on TEXT); the repo always writes it.
+      t.text('instructions').notNullable();
+      t.string('provider_id').notNullable().defaultTo('');
+      t.string('model').notNullable().defaultTo('');
+      t.string('vserver_slug').notNullable().defaultTo('');
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+      t.index('user_id');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_assistants')) await knex.schema.dropTable('chat_assistants');
+  },
+};
+
+const chatConversationAssistant: Migration = {
+  name: '027_chat_conversation_assistant',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'assistant_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.string('assistant_id').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'assistant_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('assistant_id'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

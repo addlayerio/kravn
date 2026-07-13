@@ -118,14 +118,72 @@ export const renameConversationSchema = z.object({
 });
 export type RenameConversationRequest = z.infer<typeof renameConversationSchema>;
 
+/** Partial update of a conversation: rename and/or re-tag. */
+export const updateConversationSchema = z
+  .object({
+    title: z.string().min(1).max(200).optional(),
+    tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+  })
+  .refine((v) => v.title !== undefined || v.tags !== undefined, { message: 'Nothing to update' });
+export type UpdateConversationRequest = z.infer<typeof updateConversationSchema>;
+
+/** Create/update a scheduled task. */
+export const createScheduleSchema = z.object({
+  name: z.string().min(1).max(120),
+  prompt: z.string().min(1).max(20_000),
+  providerId: z.string().min(1),
+  model: z.string().min(1),
+  vserverSlug: z.string().optional(),
+  projectId: z.string().optional(),
+  kind: z.enum(['cron', 'once']),
+  cron: z.string().max(120).optional(),
+  runAt: z.string().max(40).optional(),
+  timezone: z.string().max(64).optional(),
+  enabled: z.boolean().optional(),
+});
+export type CreateScheduleRequest = z.infer<typeof createScheduleSchema>;
+export const updateScheduleSchema = createScheduleSchema.partial();
+export type UpdateScheduleRequest = z.infer<typeof updateScheduleSchema>;
+
+/** Create/update a personal prompt template. */
+export const createUserPromptSchema = z.object({
+  name: z.string().min(1).max(120),
+  content: z.string().min(1).max(20_000),
+});
+export type CreateUserPromptRequest = z.infer<typeof createUserPromptSchema>;
+export const updateUserPromptSchema = createUserPromptSchema.partial();
+export type UpdateUserPromptRequest = z.infer<typeof updateUserPromptSchema>;
+
+/** Create/update a durable memory fact for the current user. */
+export const createMemorySchema = z.object({
+  content: z.string().min(1).max(2_000),
+});
+export type CreateMemoryRequest = z.infer<typeof createMemorySchema>;
+export const updateMemorySchema = createMemorySchema;
+export type UpdateMemoryRequest = z.infer<typeof updateMemorySchema>;
+
 export const createConversationSchema = z.object({
   projectId: z.string().optional(),
   title: z.string().max(200).default('New chat'),
   providerId: z.string().min(1),
   model: z.string().min(1),
   vserverSlug: z.string().default(''),
+  /** Optional: start this chat from a saved assistant preset (its instructions apply live). */
+  assistantId: z.string().optional(),
 });
 export type CreateConversationRequest = z.infer<typeof createConversationSchema>;
+
+/** Create/update an assistant preset. */
+export const createAssistantSchema = z.object({
+  name: z.string().min(1).max(120),
+  instructions: z.string().max(20_000).default(''),
+  providerId: z.string().default(''),
+  model: z.string().default(''),
+  vserverSlug: z.string().default(''),
+});
+export type CreateAssistantRequest = z.infer<typeof createAssistantSchema>;
+export const updateAssistantSchema = createAssistantSchema.partial();
+export type UpdateAssistantRequest = z.infer<typeof updateAssistantSchema>;
 
 export const postChatMessageSchema = z.object({
   content: z.string().min(1).max(100_000),

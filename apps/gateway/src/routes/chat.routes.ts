@@ -5,7 +5,15 @@ import {
   addProjectDocumentSchema,
   shareProjectSchema,
   createConversationSchema,
-  renameConversationSchema,
+  updateConversationSchema,
+  createScheduleSchema,
+  updateScheduleSchema,
+  createUserPromptSchema,
+  updateUserPromptSchema,
+  createMemorySchema,
+  updateMemorySchema,
+  createAssistantSchema,
+  updateAssistantSchema,
   postChatMessageSchema,
   type McpEndpoint,
 } from '@kravn/contracts';
@@ -14,6 +22,7 @@ import { currentUser } from '../auth/plugin.js';
 import { extractText } from '../chat/extract.js';
 import type { Services } from '../services.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
+import { computeNextRun } from '../schedules/scheduler.service.js';
 import { parse, sendError } from './_helpers.js';
 
 // Same data-plane rule as the MCP endpoint (endpoint-access.ts): consumption is by team membership; platform
@@ -131,6 +140,10 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
     }
+    // An assistant preset may only be one the caller owns (getAssistant is owner-scoped, fail-closed).
+    if (dto.assistantId && !(await s.repos.chat.getAssistant(u.id, dto.assistantId))) {
+      return sendError(reply, 404, 'not_found', 'Assistant not found.');
+    }
     const conversation = await s.repos.chat.createConversation(u.id, {
       id: newId(),
       projectId: dto.projectId ?? null,
@@ -138,6 +151,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       providerId: dto.providerId,
       model: dto.model,
       vserverSlug: dto.vserverSlug,
+      assistantId: dto.assistantId ?? null,
     });
     return reply.code(201).send({ conversation });
   });
@@ -150,18 +164,130 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return { conversation, messages, attachments };
   });
   app.put('/api/chat/conversations/:id', auth, async (req, reply) => {
-    const dto = parse(reply, renameConversationSchema, req.body);
+    const dto = parse(reply, updateConversationSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
     const conv = await s.repos.chat.getConversation(u.id, id);
     if (!conv) return sendError(reply, 404, 'not_found', 'Conversation not found.');
-    const title = dto.title.trim();
-    await s.repos.chat.renameConversation(u.id, id, title);
-    return { conversation: { ...conv, title } };
+    const patch = { title: dto.title?.trim(), tags: dto.tags };
+    await s.repos.chat.updateConversation(u.id, id, patch);
+    return { conversation: (await s.repos.chat.getConversation(u.id, id)) ?? conv };
   });
   app.delete('/api/chat/conversations/:id', auth, async (req, reply) => {
     await s.repos.chat.deleteConversation(currentUser(req).id, (req.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
+  // Scheduled tasks — run a prompt on a cron/calendar schedule; the result lands in a new conversation.
+  app.get('/api/chat/schedules', auth, async (req) => ({ schedules: await s.repos.schedules.listByUser(currentUser(req).id) }));
+  app.post('/api/chat/schedules', auth, async (req, reply) => {
+    const dto = parse(reply, createScheduleSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
+      return sendError(reply, 404, 'not_found', 'Project not found.');
+    }
+    const cron = dto.cron ?? '';
+    const runAt = dto.runAt ?? '';
+    const timezone = dto.timezone || 'UTC';
+    if (dto.kind === 'cron' && !cron.trim()) return sendError(reply, 400, 'bad_request', 'A cron expression is required.');
+    if (dto.kind === 'once' && !runAt.trim()) return sendError(reply, 400, 'bad_request', 'A date/time is required.');
+    const enabled = dto.enabled ?? true;
+    const nextRunAt = enabled ? computeNextRun(dto.kind, cron, runAt, timezone, new Date()) : null;
+    if (enabled && dto.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
+    const schedule = await s.repos.schedules.create(u.id, newId(), {
+      name: dto.name, prompt: dto.prompt, providerId: dto.providerId, model: dto.model,
+      vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId ?? null,
+      kind: dto.kind, cron, runAt, timezone, enabled, nextRunAt,
+    });
+    return reply.code(201).send({ schedule });
+  });
+  app.put('/api/chat/schedules/:id', auth, async (req, reply) => {
+    const dto = parse(reply, updateScheduleSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    const existing = await s.repos.schedules.get(u.id, id);
+    if (!existing) return sendError(reply, 404, 'not_found', 'Schedule not found.');
+    if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
+      return sendError(reply, 404, 'not_found', 'Project not found.');
+    }
+    const m = { ...existing, ...dto };
+    const enabled = dto.enabled ?? existing.enabled;
+    const nextRunAt = enabled ? computeNextRun(m.kind, m.cron ?? '', m.runAt ?? '', m.timezone || 'UTC', new Date()) : null;
+    if (enabled && m.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
+    await s.repos.schedules.update(u.id, id, { ...dto, nextRunAt });
+    return { schedule: await s.repos.schedules.get(u.id, id) };
+  });
+  app.delete('/api/chat/schedules/:id', auth, async (req, reply) => {
+    await s.repos.schedules.delete(currentUser(req).id, (req.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
+  // Personal prompt library — a user's own reusable prompt templates.
+  app.get('/api/chat/prompts', auth, async (req) => ({ prompts: await s.repos.chat.listPrompts(currentUser(req).id) }));
+  app.post('/api/chat/prompts', auth, async (req, reply) => {
+    const dto = parse(reply, createUserPromptSchema, req.body);
+    if (!dto) return;
+    const prompt = await s.repos.chat.createPrompt(currentUser(req).id, newId(), dto.name.trim(), dto.content);
+    return reply.code(201).send({ prompt });
+  });
+  app.put('/api/chat/prompts/:id', auth, async (req, reply) => {
+    const dto = parse(reply, updateUserPromptSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    await s.repos.chat.updatePrompt(u.id, id, dto);
+    return { prompt: (await s.repos.chat.listPrompts(u.id)).find((p) => p.id === id) };
+  });
+  app.delete('/api/chat/prompts/:id', auth, async (req, reply) => {
+    await s.repos.chat.deletePrompt(currentUser(req).id, (req.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
+  // Persistent memory — durable facts the user wants the assistant to know in every chat.
+  app.get('/api/chat/memory', auth, async (req) => ({ memory: await s.repos.chat.listMemory(currentUser(req).id) }));
+  app.post('/api/chat/memory', auth, async (req, reply) => {
+    const dto = parse(reply, createMemorySchema, req.body);
+    if (!dto) return;
+    const item = await s.repos.chat.createMemory(currentUser(req).id, newId(), dto.content.trim());
+    return reply.code(201).send({ item });
+  });
+  app.put('/api/chat/memory/:id', auth, async (req, reply) => {
+    const dto = parse(reply, updateMemorySchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    await s.repos.chat.updateMemory(u.id, id, dto.content.trim());
+    return { item: (await s.repos.chat.listMemory(u.id)).find((m) => m.id === id) };
+  });
+  app.delete('/api/chat/memory/:id', auth, async (req, reply) => {
+    await s.repos.chat.deleteMemory(currentUser(req).id, (req.params as { id: string }).id);
+    return reply.code(204).send();
+  });
+
+  // Assistant presets — reusable persona + default model + tools a chat can be started from.
+  app.get('/api/chat/assistants', auth, async (req) => ({ assistants: await s.repos.chat.listAssistants(currentUser(req).id) }));
+  app.post('/api/chat/assistants', auth, async (req, reply) => {
+    const dto = parse(reply, createAssistantSchema, req.body);
+    if (!dto) return;
+    const assistant = await s.repos.chat.createAssistant(currentUser(req).id, newId(), {
+      name: dto.name.trim(), instructions: dto.instructions, providerId: dto.providerId, model: dto.model, vserverSlug: dto.vserverSlug,
+    });
+    return reply.code(201).send({ assistant });
+  });
+  app.put('/api/chat/assistants/:id', auth, async (req, reply) => {
+    const dto = parse(reply, updateAssistantSchema, req.body);
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    if (!(await s.repos.chat.getAssistant(u.id, id))) return sendError(reply, 404, 'not_found', 'Assistant not found.');
+    await s.repos.chat.updateAssistant(u.id, id, dto);
+    return { assistant: await s.repos.chat.getAssistant(u.id, id) };
+  });
+  app.delete('/api/chat/assistants/:id', auth, async (req, reply) => {
+    await s.repos.chat.deleteAssistant(currentUser(req).id, (req.params as { id: string }).id);
     return reply.code(204).send();
   });
 

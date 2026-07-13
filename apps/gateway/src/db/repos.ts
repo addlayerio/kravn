@@ -18,6 +18,11 @@ import type {
   TeamRole,
   ChatProject,
   ProjectRole,
+  ChatSchedule,
+  ScheduleKind,
+  ChatUserPrompt,
+  ChatMemory,
+  ChatAssistant,
   ChatConversation,
   ChatMessage,
   ChatRole,
@@ -1165,19 +1170,35 @@ export class ChatRepo {
     return r ? mapConversation(r) : undefined;
   }
   async createConversation(userId: string, c: {
-    id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string;
+    id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string; assistantId?: string | null;
   }): Promise<ChatConversation> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?)`,
-      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, ts, ts],
+      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, assistant_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?)`,
+      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.assistantId ?? null, ts, ts],
     );
     return (await this.getConversation(userId, c.id))!;
   }
   /** User-scoped rename (inline title edit) — only the owner can rename their conversation. */
   async renameConversation(userId: string, id: string, title: string): Promise<void> {
     await this.store.run('UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?', [title, now(), id, userId]);
+  }
+  /** User-scoped partial update: rename and/or replace the tag set. Only the owner is affected. */
+  async updateConversation(userId: string, id: string, patch: { title?: string; tags?: string[] }): Promise<void> {
+    const sets: string[] = [];
+    const args: any[] = [];
+    if (patch.title !== undefined) { sets.push('title = ?'); args.push(patch.title); }
+    if (patch.tags !== undefined) {
+      // De-dupe (case-insensitive) while preserving the first-seen casing.
+      const seen = new Set<string>();
+      const tags = patch.tags.map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()));
+      sets.push('tags = ?'); args.push(JSON.stringify(tags));
+    }
+    if (!sets.length) return;
+    sets.push('updated_at = ?'); args.push(now());
+    args.push(id, userId);
+    await this.store.run(`UPDATE chat_conversations SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, args);
   }
   async touchConversation(id: string, title?: string): Promise<void> {
     if (title !== undefined) await this.store.run('UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ?', [title, now(), id]);
@@ -1257,6 +1278,90 @@ export class ChatRepo {
     );
     return rows.map((r) => ({ name: r.name, b64: r.data_b64 ?? '' }));
   }
+  /** Attachment blobs WITH their message id — used to attach images to the right turn as vision blocks. */
+  async listAttachmentBlobs(userId: string, conversationId: string): Promise<{ messageId: string; name: string; b64: string }[]> {
+    const rows = await this.store.all<any>(
+      `SELECT message_id, name, data_b64 FROM chat_attachments
+       WHERE user_id = ? AND conversation_id = ? AND message_id IS NOT NULL ORDER BY created_at ASC, id ASC`,
+      [userId, conversationId],
+    );
+    return rows.map((r) => ({ messageId: r.message_id, name: r.name, b64: r.data_b64 ?? '' }));
+  }
+
+  // Personal prompt library (per-user, owner-scoped).
+  async listPrompts(userId: string): Promise<ChatUserPrompt[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_user_prompts WHERE user_id = ? ORDER BY name ASC, id ASC', [userId]);
+    return rows.map((r) => ({ id: r.id, name: r.name, content: r.content ?? '', createdAt: r.created_at, updatedAt: r.updated_at }));
+  }
+  async createPrompt(userId: string, id: string, name: string, content: string): Promise<ChatUserPrompt> {
+    const ts = now();
+    await this.store.run('INSERT INTO chat_user_prompts (id, user_id, name, content, created_at, updated_at) VALUES (?,?,?,?,?,?)', [id, userId, name, content, ts, ts]);
+    return { id, name, content, createdAt: ts, updatedAt: ts };
+  }
+  async updatePrompt(userId: string, id: string, patch: { name?: string; content?: string }): Promise<void> {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (patch.name !== undefined) { sets.push('name = ?'); vals.push(patch.name); }
+    if (patch.content !== undefined) { sets.push('content = ?'); vals.push(patch.content); }
+    if (!sets.length) return;
+    sets.push('updated_at = ?');
+    vals.push(now(), id, userId);
+    await this.store.run(`UPDATE chat_user_prompts SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+  }
+  async deletePrompt(userId: string, id: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_user_prompts WHERE id = ? AND user_id = ?', [id, userId]);
+  }
+
+  // Persistent memory (per-user durable facts, owner-scoped, injected into every chat's system prompt).
+  async listMemory(userId: string): Promise<ChatMemory[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_memory WHERE user_id = ? ORDER BY created_at ASC, id ASC', [userId]);
+    return rows.map((r) => ({ id: r.id, content: r.content ?? '', createdAt: r.created_at, updatedAt: r.updated_at }));
+  }
+  async createMemory(userId: string, id: string, content: string): Promise<ChatMemory> {
+    const ts = now();
+    await this.store.run('INSERT INTO chat_memory (id, user_id, content, created_at, updated_at) VALUES (?,?,?,?,?)', [id, userId, content, ts, ts]);
+    return { id, content, createdAt: ts, updatedAt: ts };
+  }
+  async updateMemory(userId: string, id: string, content: string): Promise<void> {
+    await this.store.run('UPDATE chat_memory SET content = ?, updated_at = ? WHERE id = ? AND user_id = ?', [content, now(), id, userId]);
+  }
+  async deleteMemory(userId: string, id: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_memory WHERE id = ? AND user_id = ?', [id, userId]);
+  }
+
+  // Assistant presets (per-user, owner-scoped). A chat can be started from one; its instructions inject live.
+  async listAssistants(userId: string): Promise<ChatAssistant[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_assistants WHERE user_id = ? ORDER BY name ASC, id ASC', [userId]);
+    return rows.map(mapAssistant);
+  }
+  async getAssistant(userId: string, id: string): Promise<ChatAssistant | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM chat_assistants WHERE id = ? AND user_id = ?', [id, userId]);
+    return r ? mapAssistant(r) : undefined;
+  }
+  async createAssistant(userId: string, id: string, a: { name: string; instructions: string; providerId: string; model: string; vserverSlug: string }): Promise<ChatAssistant> {
+    const ts = now();
+    await this.store.run(
+      'INSERT INTO chat_assistants (id, user_id, name, instructions, provider_id, model, vserver_slug, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      [id, userId, a.name, a.instructions, a.providerId, a.model, a.vserverSlug, ts, ts],
+    );
+    return { id, name: a.name, instructions: a.instructions, providerId: a.providerId, model: a.model, vserverSlug: a.vserverSlug, createdAt: ts, updatedAt: ts };
+  }
+  async updateAssistant(userId: string, id: string, patch: { name?: string; instructions?: string; providerId?: string; model?: string; vserverSlug?: string }): Promise<void> {
+    const cols: Record<string, string> = { name: 'name', instructions: 'instructions', providerId: 'provider_id', model: 'model', vserverSlug: 'vserver_slug' };
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, col] of Object.entries(cols)) {
+      const v = (patch as Record<string, unknown>)[k];
+      if (v !== undefined) { sets.push(`${col} = ?`); vals.push(v); }
+    }
+    if (!sets.length) return;
+    sets.push('updated_at = ?');
+    vals.push(now(), id, userId);
+    await this.store.run(`UPDATE chat_assistants SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+  }
+  async deleteAssistant(userId: string, id: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_assistants WHERE id = ? AND user_id = ?', [id, userId]);
+  }
 
   /** Bytes of a single attachment for download, owner-scoped. */
   async getAttachmentBytes(userId: string, id: string): Promise<{ name: string; mime: string; b64: string } | undefined> {
@@ -1328,6 +1433,30 @@ function mapProject(r: any): ChatProject {
   return { id: r.id, name: r.name, instructions: r.instructions ?? '', createdAt: r.created_at, updatedAt: r.updated_at };
 }
 
+/** Tags are stored as a JSON array of strings; tolerate legacy/blank values. */
+function parseTags(v: any): string[] {
+  if (!v) return [];
+  try {
+    const arr = JSON.parse(String(v));
+    return Array.isArray(arr) ? arr.filter((t): t is string => typeof t === 'string') : [];
+  } catch {
+    return String(v).split(',').map((t) => t.trim()).filter(Boolean);
+  }
+}
+
+function mapAssistant(r: any): ChatAssistant {
+  return {
+    id: r.id,
+    name: r.name,
+    instructions: r.instructions ?? '',
+    providerId: r.provider_id ?? '',
+    model: r.model ?? '',
+    vserverSlug: r.vserver_slug ?? '',
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
 function mapConversation(r: any): ChatConversation {
   return {
     id: r.id,
@@ -1336,6 +1465,8 @@ function mapConversation(r: any): ChatConversation {
     providerId: r.provider_id ?? '',
     model: r.model ?? '',
     vserverSlug: r.vserver_slug ?? '',
+    tags: parseTags(r.tags),
+    assistantId: r.assistant_id ?? null,
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -1564,6 +1695,7 @@ export interface Repos {
   pipeline: PipelineRepo;
   teams: TeamsRepo;
   chat: ChatRepo;
+  schedules: SchedulesRepo;
   tokens: TokensRepo;
   sessions: SessionsRepo;
   oauth: OAuthRepo;
@@ -1932,6 +2064,85 @@ export class AuditLogRepo {
   }
 }
 
+function mapSchedule(r: any): ChatSchedule {
+  return {
+    id: r.id, name: r.name, prompt: r.prompt ?? '', providerId: r.provider_id, model: r.model,
+    vserverSlug: r.vserver_slug ?? '', projectId: r.project_id ?? null, kind: r.kind as ScheduleKind,
+    cron: r.cron ?? '', runAt: r.run_at ?? '', timezone: r.timezone ?? 'UTC', enabled: bool(r.enabled),
+    nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
+    lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export class SchedulesRepo {
+  constructor(private store: Store) {}
+  async listByUser(userId: string): Promise<ChatSchedule[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_schedules WHERE user_id = ? ORDER BY created_at DESC, id DESC', [userId]);
+    return rows.map(mapSchedule);
+  }
+  async get(userId: string, id: string): Promise<ChatSchedule | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM chat_schedules WHERE id = ? AND user_id = ?', [id, userId]);
+    return r ? mapSchedule(r) : undefined;
+  }
+  async create(userId: string, id: string, s: {
+    name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
+    kind: ScheduleKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
+  }): Promise<ChatSchedule> {
+    const ts = now();
+    await this.store.run(
+      `INSERT INTO chat_schedules (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, kind, cron, run_at, timezone, enabled, next_run_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt, ts, ts],
+    );
+    return (await this.get(userId, id))!;
+  }
+  /** Update by user (owner-scoped). `enabled` is intified; `nextRunAt` recomputed by the caller. */
+  async update(userId: string, id: string, patch: Record<string, unknown>): Promise<void> {
+    const cols: Record<string, string> = {
+      name: 'name', prompt: 'prompt', providerId: 'provider_id', model: 'model', vserverSlug: 'vserver_slug',
+      projectId: 'project_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone', enabled: 'enabled', nextRunAt: 'next_run_at',
+    };
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    for (const [k, col] of Object.entries(cols)) {
+      if (patch[k] === undefined) continue;
+      sets.push(`${col} = ?`);
+      vals.push(k === 'enabled' ? intify(patch[k] as boolean) : (patch[k] as unknown));
+    }
+    if (!sets.length) return;
+    sets.push('updated_at = ?');
+    vals.push(now(), id, userId);
+    await this.store.run(`UPDATE chat_schedules SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+  }
+  async delete(userId: string, id: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_schedules WHERE id = ? AND user_id = ?', [id, userId]);
+  }
+  /** Enabled schedules that are due (next_run_at set + <= now) across ALL users — for the scheduler.
+   *  Includes `userId` (needed to run as the owner). */
+  async due(nowIso: string): Promise<(ChatSchedule & { userId: string })[]> {
+    const rows = await this.store.all<any>(
+      'SELECT * FROM chat_schedules WHERE next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC',
+      [nowIso],
+    );
+    return rows.map((r) => ({ ...mapSchedule(r), userId: r.user_id as string })).filter((s) => s.enabled);
+  }
+  /** After claiming a run: advance the next fire time + mark it running. */
+  async advance(id: string, nextRunAt: string | null, lastRunAt: string): Promise<void> {
+    await this.store.run(
+      'UPDATE chat_schedules SET next_run_at = ?, last_run_at = ?, last_status = ?, last_error = ?, updated_at = ? WHERE id = ?',
+      [nextRunAt, lastRunAt, 'running', null, now(), id],
+    );
+  }
+  /** After a run completes: record outcome (never touches next_run_at). */
+  async finish(id: string, status: string, error: string | null, conversationId: string | null): Promise<void> {
+    await this.store.run(
+      'UPDATE chat_schedules SET last_status = ?, last_error = ?, last_conversation_id = ?, updated_at = ? WHERE id = ?',
+      [status, error, conversationId, now(), id],
+    );
+  }
+}
+
 export function createRepos(store: Store): Repos {
   return {
     users: new UsersRepo(store),
@@ -1946,6 +2157,7 @@ export function createRepos(store: Store): Repos {
     pipeline: new PipelineRepo(store),
     teams: new TeamsRepo(store),
     chat: new ChatRepo(store),
+    schedules: new SchedulesRepo(store),
     tokens: new TokensRepo(store),
     sessions: new SessionsRepo(store),
     oauth: new OAuthRepo(store),

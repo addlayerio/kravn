@@ -14,6 +14,52 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔒 **SSRF guard hardening.** The outbound SSRF guard now classifies IPv6 correctly by parsing the address
+  to bytes: IPv4-mapped (`::ffff:a.b.c.d` in dotted **or** hex-compressed form), NAT64 and IPv4-compatible
+  addresses are resolved to their embedded IPv4 and blocked when private/reserved, and the AWS IPv6 metadata
+  endpoint (`fd00:ec2::254`) is always blocked — closing bypasses that string-prefix checks missed. Untrusted,
+  call-time URLs (the new `web_fetch`) go through a **strict** dispatcher that blocks private/loopback/
+  link-local/reserved/metadata targets **regardless** of the `ssrfAllowPrivateNetworks` operator toggle (that
+  setting only ever loosens the gateway's own egress to operator-configured upstreams), plus an explicit
+  pre-flight that also covers IP-literal URLs (which undici does not run the dispatcher lookup for).
+- 🌐 **Web access for agents — new native `Web` plugin (`kravn-web`).** A built-in mcp-server plugin exposing
+  two read-only tools: **`web_fetch(url)`** fetches a page (or JSON/plain text) and returns it as clean
+  Markdown, and **`web_search(query)`** returns web results via a configured provider. All egress goes through
+  Kravn's **global SSRF guard** — internal/loopback/link-local/cloud-metadata hosts are blocked at the socket
+  level, so `web_fetch` can't be turned into an internal-network probe. **`web_fetch` needs no configuration**
+  (the plugin seeds enabled and works immediately); `web_search` needs one provider — a **Brave Search API
+  key** or a self-hosted **SearXNG** URL (set on the plugin instance; the Brave key is encrypted at rest).
+  Compose it into an endpoint like any other tool. (Appears in the operator catalog + the built-in
+  integrations list.)
+- 🤖 **Assistants (chat client).** Reusable presets — a **persona (system instructions) + default model +
+  default tools** — that a user can start a chat from. Picking an assistant in "New chat" pre-fills the model
+  and tool endpoint and injects its instructions into every chat started from it; instructions are loaded
+  **live and owner-scoped**, so editing an assistant updates its chats and no user ever sees another's preset.
+  Managed from the "New chat" dialog ("Manage…"). (`chat_assistants`, migration 026; `chat_conversations.
+  assistant_id`, migration 027.)
+- 🗂️ **Folders & tags for chats + persistent memory (chat client).** Two ways to keep the chat client usable
+  at scale, both **user-governed**:
+  - **Tags (folders).** A chat carries free-form tags; the sidebar shows a tag-filter bar and a per-chat tag
+    editor, and tags combine with the title search to narrow the list. Tags are owner-scoped and de-duped
+    case-insensitively. (`chat_conversations.tags`, migration 024; the conversation `PUT` now accepts
+    `title` and/or `tags`.)
+  - **Persistent memory.** A per-user set of durable facts ("I lead the AML team", "answer in Spanish") that
+    is injected into the system prompt of **every** chat (and scheduled run). It is **curated by the user, not
+    extracted by the model** — a governed, inspectable set the operator can reason about, in keeping with
+    Kravn's controlled-interface stance. Managed from a 🧠 panel in the composer. (`chat_memory`,
+    migration 025.)
+- ⏱️ **Scheduled tasks (chat client).** Users can schedule a prompt to run on a **cron** or one-off
+  **calendar** basis (with timezone); each run opens a fresh conversation with the result. The scheduler is
+  multi-replica-safe — it claims each due run through the shared store's atomic counter, so exactly one
+  replica executes it. (`chat_schedules`, migration 022.)
+- 🖼️ **Vision + drag-and-drop attachments (chat client).** Images attached to a message are now sent to the
+  model as vision input (Anthropic + OpenAI multimodal; Gemini falls back to text), and files can be dropped
+  straight onto the composer to attach them.
+- 📋🧠🗑️ **Prompt library, inline rename, delete chats, markdown & LaTeX (chat client).** A personal
+  **prompt library** (per-user reusable prompts — answers "what if the user wants a custom prompt not in the
+  MCP", `chat_user_prompts`, migration 023); **inline chat rename**; **delete chats** (hover trash + in-chat,
+  with confirmation); assistant replies render as **markdown** with **KaTeX** math (`$…$` / `$$…$$`); and a
+  **chat search** box in the sidebar.
 - 🧩 **Deploy the chat client from Helm (`client.enabled`).** The chart can now stand up the end-user chat
   client (apps/client) as its **own pod + Service** — an nginx image (`ghcr.io/<owner>/kravn-client`, built +
   cosign-signed by CI) that serves the SPA and **reverse-proxies `/api` to the gateway Service** (the client

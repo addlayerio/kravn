@@ -935,4 +935,8 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-outlook', name: 'Outlook', category: 'Email',
     description: 'Read and send email over Microsoft 365 / Exchange Online (Microsoft Graph) — search/read messages, send, and reply/reply-all. App-only Graph auth (Mail.Read + Mail.Send). Includes a send action.',
   },
+  {
+    id: 'kravn-web', name: 'Web', category: 'Search',
+    description: 'Read-only web access for agents — web_fetch reads any page as clean Markdown, and web_search returns results via a configured provider (Brave API key or a self-hosted SearXNG). All egress is SSRF-guarded; web_fetch needs no configuration.',
+  },
 ];

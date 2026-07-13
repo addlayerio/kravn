@@ -107,6 +107,7 @@ const ICONIFY = {
   'kravn-teams': ['logos:microsoft-teams'],
   'kravn-outlook': ['mdi:microsoft-outlook', '#0078D4'],
   'kravn-sharepoint': ['mdi:microsoft-sharepoint', '#038387'],
+  'kravn-web': ['mdi:web', '#4b5563'],
   // catalog entries with no simple-icons logo but a real brand mark on Iconify
   monday: ['logos:monday-icon'],
   canva: ['cib:canva', '#00C4CC'],

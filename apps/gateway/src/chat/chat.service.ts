@@ -36,12 +36,30 @@ const DEFAULT_BASE: Record<string, string> = {
 
 const MAX_TOOL_ROUNDS = 6;
 
+/** A message's content is usually a plain string; a user turn with image attachments is a block array. */
+type LlmContentBlock = { type: 'text'; text: string } | { type: 'image'; mime: string; b64: string };
 interface LlmMessage {
   role: string;
-  content: string | null;
+  content: string | LlmContentBlock[] | null;
   tool_calls?: any[];
   tool_call_id?: string;
   name?: string;
+}
+
+/** Image MIME from a filename extension (only what the vision APIs accept). null = not an image. */
+function imageMime(name: string): string | null {
+  const ext = name.toLowerCase().split('.').pop() ?? '';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'webp') return 'image/webp';
+  if (ext === 'gif') return 'image/gif';
+  return null;
+}
+/** Coerce message content (string or block array) to plain text — for providers/paths that need a string. */
+function textFromContent(c: string | LlmContentBlock[] | null | undefined): string {
+  if (typeof c === 'string') return c;
+  if (Array.isArray(c)) return c.filter((b) => b.type === 'text').map((b) => (b as { text: string }).text).join('\n');
+  return '';
 }
 
 export class ChatService {
@@ -109,20 +127,22 @@ export class ChatService {
     }
 
     const history = await this.repos.chat.listMessages(conversationId);
+    // Image attachments per user turn → sent to the model as vision blocks (multimodal input).
+    const imagesByMsg = await this.imageBlocksByMessage(actor.id, conversationId);
     const messages: LlmMessage[] = [
       // Only advertise the run_python guidance when the interpreter is actually offered this turn.
       { role: 'system', content: await this.buildSystemPrompt(actor, conv, interpreterOn) },
-      // The model sees the DLP-transformed copy of each user message — the stored `modelContent`, or a
-      // fresh transform for messages persisted before DLP was enabled — never the raw PII. Assistant/tool
-      // turns are model-generated (already token-only) and pass through unchanged.
+      // Each user turn: the DLP-transformed text (stored `modelContent`, or a fresh transform for messages
+      // persisted before DLP was enabled) — never the raw PII — plus any image attachments as vision blocks.
+      // Assistant/tool turns are model-generated and pass through unchanged.
       ...(await Promise.all(
-        history.map(async (m) => ({
-          role: m.role,
-          content:
-            m.role === 'user'
-              ? m.modelContent ?? (await this.plugins.applyChatInput(m.content, actor, mcpEndpointId).catch(() => m.content))
-              : m.content,
-        })),
+        history.map(async (m): Promise<LlmMessage> => {
+          if (m.role !== 'user') return { role: m.role, content: m.content };
+          const text = m.modelContent ?? (await this.plugins.applyChatInput(m.content, actor, mcpEndpointId).catch(() => m.content));
+          const imgs = imagesByMsg.get(m.id);
+          if (imgs && imgs.length) return { role: 'user', content: [{ type: 'text', text }, ...imgs] };
+          return { role: 'user', content: text };
+        }),
       )),
     ];
 
@@ -262,8 +282,36 @@ export class ChatService {
     }
   }
 
+  /** Image attachments per message id, as vision blocks (base64 bytes + mime derived from the filename). */
+  private async imageBlocksByMessage(userId: string, convId: string): Promise<Map<string, LlmContentBlock[]>> {
+    const map = new Map<string, LlmContentBlock[]>();
+    for (const b of await this.repos.chat.listAttachmentBlobs(userId, convId)) {
+      const mime = imageMime(b.name);
+      if (!mime || !b.b64) continue;
+      const arr = map.get(b.messageId) ?? [];
+      arr.push({ type: 'image', mime, b64: b.b64 });
+      map.set(b.messageId, arr);
+    }
+    return map;
+  }
+
   private async buildSystemPrompt(actor: AuthUser, conv: ChatConversation, canRunCode = false): Promise<string> {
     const parts = ['You are Kravn, a helpful corporate AI assistant. Use the available tools when relevant.'];
+
+    // Assistant preset — the persona the chat was started from. Loaded live + owner-scoped, so editing
+    // the assistant updates its chats, and it never leaks another user's preset.
+    if (conv.assistantId) {
+      const assistant = await this.repos.chat.getAssistant(actor.id, conv.assistantId);
+      if (assistant?.instructions?.trim()) parts.push(`Assistant instructions:\n${assistant.instructions.trim()}`);
+    }
+
+    // Persistent memory — durable facts the user chose to keep. User-curated (not model-extracted),
+    // so it stays a governed, auditable set the operator can inspect.
+    const memory = await this.repos.chat.listMemory(actor.id);
+    if (memory.length) {
+      const facts = memory.map((m) => `- ${m.content.trim()}`).join('\n');
+      parts.push(`The user has asked you to remember the following about them:\n${facts}`);
+    }
 
     // Project context — injected only if the caller can access the project (owner OR a shared member).
     // getProjectForUser is fail-closed, so a project the user was never granted (or was un-shared from)
@@ -346,7 +394,7 @@ export class ChatService {
     if (!model) throw new Error('Conversation has no model.');
 
     if (p.type === 'anthropic') {
-      const systemText = messages.find((m) => m.role === 'system')?.content ?? '';
+      const systemText = textFromContent(messages.find((m) => m.role === 'system')?.content);
       const body: Record<string, unknown> = { model, max_tokens: 4096, messages: toAnthropicMessages(messages) };
       // Prompt caching: cache the STABLE prefix — the system prompt (which for a Project carries the injected
       // instructions + documents) and the tool schemas. Anthropic caching is NOT automatic (unlike OpenAI), so
@@ -388,10 +436,11 @@ export class ChatService {
 
     if (p.type === 'gemini') {
       // Google Generative Language API: system goes in systemInstruction; assistant role is 'model'.
-      const system = messages.find((m) => m.role === 'system')?.content ?? '';
+      // Gemini vision (inlineData) is a follow-up; images are dropped here and the model sees text only.
+      const system = textFromContent(messages.find((m) => m.role === 'system')?.content);
       const contents = messages
         .filter((m) => m.role === 'user' || m.role === 'assistant')
-        .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: m.content ?? '' }] }));
+        .map((m) => ({ role: m.role === 'assistant' ? 'model' : 'user', parts: [{ text: textFromContent(m.content) }] }));
       // Budget generously: Gemini 2.5 "thinking" models spend output tokens on reasoning before any
       // visible text, so a small cap can return MAX_TOKENS with no parts.
       const body: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: 8192 } };
@@ -423,7 +472,7 @@ export class ChatService {
     if (isAzure) headers['api-key'] = key;
     else if (key) headers.Authorization = `Bearer ${key}`;
 
-    const body: any = { model, messages };
+    const body: any = { model, messages: toOpenAiMessages(messages) };
     if (tools.length > 0) {
       body.tools = tools;
       body.tool_choice = 'auto';
@@ -451,6 +500,29 @@ function safeParseArgs(s: string | undefined): unknown {
   }
 }
 
+/** Anthropic user content: a plain string stays a string; a block array maps image blocks to base64 sources. */
+function toAnthropicUserContent(c: string | LlmContentBlock[] | null): unknown {
+  if (!Array.isArray(c)) return c ?? '';
+  return c.map((b) =>
+    b.type === 'image'
+      ? { type: 'image', source: { type: 'base64', media_type: b.mime, data: b.b64 } }
+      : { type: 'text', text: b.text },
+  );
+}
+
+/** OpenAI-family messages: convert any block-array content (image → an image_url data URI). */
+function toOpenAiMessages(messages: LlmMessage[]): unknown[] {
+  return messages.map((m) => {
+    if (!Array.isArray(m.content)) return m;
+    const content = m.content.map((b) =>
+      b.type === 'image'
+        ? { type: 'image_url', image_url: { url: `data:${b.mime};base64,${b.b64}` } }
+        : { type: 'text', text: b.text },
+    );
+    return { ...m, content };
+  });
+}
+
 /**
  * Translate the internal OpenAI-shaped message array into Anthropic's content-block format,
  * mapping assistant tool_calls → tool_use blocks and tool results → tool_result blocks (grouped
@@ -461,7 +533,7 @@ function toAnthropicMessages(messages: LlmMessage[]): { role: string; content: u
   for (const m of messages) {
     if (m.role === 'system') continue;
     if (m.role === 'user') {
-      out.push({ role: 'user', content: m.content ?? '' });
+      out.push({ role: 'user', content: toAnthropicUserContent(m.content) });
     } else if (m.role === 'assistant') {
       const content: any[] = [];
       if (m.content) content.push({ type: 'text', text: m.content });
