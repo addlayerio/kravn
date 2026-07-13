@@ -224,11 +224,31 @@ async function braveSearch(guard: SsrfGuard, cfg: WebConfig, query: string, coun
   }));
 }
 
+// A realistic browser User-Agent so SearXNG's built-in bot detection (which blocks non-browser UAs)
+// doesn't reject Kravn's request. The `format=json` param still drives the JSON response.
+const BROWSER_HEADERS: Record<string, string> = {
+  'user-agent': 'Mozilla/5.0 (X11; Linux x86_64; rv:128.0) Gecko/20100101 Firefox/128.0',
+  accept: 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+  'accept-language': 'en-US,en;q=0.9',
+};
+
 async function searxngSearch(guard: SsrfGuard, cfg: WebConfig, query: string, count: number): Promise<SearchHit[]> {
   const u = new URL(`${cfg.searxngUrl}/search`);
   u.searchParams.set('q', query);
   u.searchParams.set('format', 'json');
-  const data = (await fetchJson(guard, u.toString(), {})) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+  let data: { results?: Array<{ title?: string; url?: string; content?: string }> };
+  try {
+    data = (await fetchJson(guard, u.toString(), BROWSER_HEADERS)) as { results?: Array<{ title?: string; url?: string; content?: string }> };
+  } catch (err) {
+    // SearXNG returns HTML (bot-block page / 400) instead of JSON in two common cases: its bot detection
+    // rejected the request, or the JSON API is disabled. We already send browser-like headers to pass bot
+    // detection, so point the operator at the remaining cause.
+    throw new Error(
+      `${err instanceof Error ? err.message : 'SearXNG request failed.'} The instance answered with HTML, not JSON — ` +
+        'it likely blocks API access (bot detection / limiter) or has the JSON format disabled. Enable `json` in ' +
+        '`search.formats` and allow API access on the instance, or use a Brave Search API key instead.',
+    );
+  }
   return (data.results ?? []).slice(0, count).map((r) => ({
     title: r.title ?? r.url ?? '(untitled)',
     url: r.url ?? '',
@@ -316,7 +336,7 @@ export function webPlugin(guard: SsrfGuard): McpServerPlugin {
         type: 'object',
         properties: {
           braveApiKey: { type: 'string', title: 'Brave Search API key', description: 'Enables web_search via the Brave Search API.', secret: true },
-          searxngUrl: { type: 'string', title: 'SearXNG base URL', description: 'Alternative to Brave: a self-hosted SearXNG instance, e.g. https://searxng.example.com.' },
+          searxngUrl: { type: 'string', title: 'SearXNG base URL', description: 'Alternative to Brave: a SearXNG whose JSON API is reachable. Kravn sends browser-like headers to pass bot detection, but the instance must have json in search.formats and allow API access; many public instances block it. e.g. https://searxng.example.com.' },
         },
       },
     },
