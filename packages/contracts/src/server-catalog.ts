@@ -939,4 +939,8 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     id: 'kravn-web', name: 'Web', category: 'Search',
     description: 'Read-only web access for agents — web_fetch reads any page as clean Markdown, and web_search returns results via a configured provider (Brave API key or a self-hosted SearXNG). All egress is SSRF-guarded; web_fetch needs no configuration.',
   },
+  {
+    id: 'kravn-linkedin', name: 'LinkedIn', category: 'Social',
+    description: 'Read the authenticated member’s LinkedIn profile and publish posts/shares on their behalf, over LinkedIn’s official OAuth 2.0 API (OpenID Connect + Share on LinkedIn). Standard-app scope: profile search, messaging and jobs are not available (LinkedIn partner programs only). Includes a mutating action (posting).',
+  },
 ];

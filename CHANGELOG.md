@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔗 **LinkedIn integration (native `kravn-linkedin`).** A built-in mcp-server plugin over LinkedIn's
+  **official** OAuth 2.0 API: **`linkedin_me`** reads the authenticated member's profile (OpenID Connect
+  `userinfo`) and **`linkedin_create_post`** publishes a post/share on their behalf (optionally attaching a
+  link), via the Share on LinkedIn API. Auth is 3-legged OAuth — client id/secret + a member refresh token
+  (secrets encrypted at rest; Kravn refreshes access tokens itself). Honest scope: LinkedIn does **not** open
+  profile search, others' profiles, messaging, jobs or network stats to standard apps (those need partner
+  programs), so the plugin doesn't fake them. Posting is a mutating action — pair it with the approval gate.
+  Seeds disabled until configured; appears in the catalog with the LinkedIn logo.
 - 🌍 **Multi-language platform (i18n).** The client and operator now run fully in **English, Español
   (Argentina), Français (France)** and **Português (Portugal)** — every view, modal, menu, placeholder,
   toast and the Settings field labels are localized (~4,000 translated strings across the two apps, all four

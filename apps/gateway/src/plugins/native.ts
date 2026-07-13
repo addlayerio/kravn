@@ -12,6 +12,7 @@ import { awsPlugin } from './aws.js';
 import { gcpPlugin } from './gcp.js';
 import { gmailPlugin } from './gmail.js';
 import { outlookPlugin } from './outlook.js';
+import { linkedinPlugin } from './linkedin.js';
 import { nativeHookPlugins } from './native-hooks.js';
 import { approvalGate } from './approval-hook.js';
 import type { ApprovalService } from '../approvals/approval.service.js';
@@ -99,5 +100,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): KravnPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), azurePlugin(), awsPlugin(), gcpPlugin(), gmailPlugin(), outlookPlugin(), webPlugin(deps.ssrf), approvalGate({ approvals: deps.approvals }), ...nativeHookPlugins()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), azurePlugin(), awsPlugin(), gcpPlugin(), gmailPlugin(), outlookPlugin(), linkedinPlugin(), webPlugin(deps.ssrf), approvalGate({ approvals: deps.approvals }), ...nativeHookPlugins()];
 }

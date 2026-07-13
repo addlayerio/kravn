@@ -47,6 +47,7 @@ reaches the service:
 | **AWS** | Read-only cost & diagnostics — Cost Explorer (spend by service), CloudWatch Logs Insights, and resource inventory. Requests signed with SigV4. |
 | **Google Cloud** | Read-only diagnostics & cost — Cloud Asset (any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. |
 | **Web** | Read-only web access — `web_fetch` reads any page as clean Markdown, and `web_search` returns results via a configured provider (Brave API key or a self-hosted SearXNG). All egress is SSRF-guarded; `web_fetch` needs no configuration. |
+| **LinkedIn** | Read the authenticated member's profile and **publish posts/shares** on their behalf, over LinkedIn's official OAuth 2.0 API (OpenID Connect + Share on LinkedIn). Standard-app scope only — profile search, messaging and jobs need LinkedIn partner programs. Includes a mutating action (posting). |
 | **Code Interpreter** | Runs Python in a Pyodide/WASM sandbox (no host filesystem or network) to read and transform attached files — e.g. complete an Excel and return it as a download. |
 
 Both reach the target system over the network, so **whether data stays on-prem depends on the target**, not
