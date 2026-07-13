@@ -179,7 +179,8 @@ export default {
     "password": "Password",
     "signIn": "Sign in",
     "signingIn": "Signing in…",
-    "loginFailed": "Login failed."
+    "loginFailed": "Login failed.",
+    "noMethods": "No sign-in method is available. Contact your administrator."
   },
   "nav": {
     "newChat": "+ New chat",
@@ -198,5 +199,9 @@ export default {
     "signOut": "Sign out",
     "shared": "shared",
     "paused": "paused"
+  },
+  "settings": {
+    "title": "Settings",
+    "signedInAs": "Signed in as"
   }
 } as const;

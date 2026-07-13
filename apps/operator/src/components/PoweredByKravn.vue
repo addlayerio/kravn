@@ -5,7 +5,13 @@ import { PATH_HEAD, PATH_BODY, RAVEN_VIEWBOX, RAVEN_TRANSFORM } from '@kravn/ui/
 </script>
 
 <template>
-  <div class="powered-by" aria-label="Powered by Kravn">
+  <a
+    class="powered-by"
+    href="https://kravn.ai"
+    target="_blank"
+    rel="noopener noreferrer"
+    aria-label="Powered by Kravn"
+  >
     <svg :width="13" :height="13" :viewBox="RAVEN_VIEWBOX" fill="none" role="img" aria-hidden="true">
       <g :transform="RAVEN_TRANSFORM" fill="#c9892c">
         <path :d="PATH_HEAD" />
@@ -13,7 +19,7 @@ import { PATH_HEAD, PATH_BODY, RAVEN_VIEWBOX, RAVEN_TRANSFORM } from '@kravn/ui/
       </g>
     </svg>
     <span class="pbk-text">Powered by <strong>Kravn</strong></span>
-  </div>
+  </a>
 </template>
 
 <style scoped>
@@ -24,6 +30,10 @@ import { PATH_HEAD, PATH_BODY, RAVEN_VIEWBOX, RAVEN_TRANSFORM } from '@kravn/ui/
   font-size: 11px;
   line-height: 1;
   color: #9096a1;
+  text-decoration: none;
+}
+.powered-by:hover .pbk-text strong {
+  text-decoration: underline;
 }
 .pbk-text strong {
   color: #c9892c;

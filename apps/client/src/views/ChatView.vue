@@ -85,6 +85,7 @@ function fmtSize(n: number): string {
 
 // New-chat modal
 const showNew = ref(false);
+const showSettings = ref(false);
 const nc = reactive({ assistantId: '', providerId: '', model: '', vserverSlug: '', projectId: '' });
 const newError = ref('');
 
@@ -847,8 +848,10 @@ async function logout() {
       </div>
       <div v-if="menuFor" class="menu-backdrop" @click="closeMenu"></div>
       <div class="foot">
-        <LocaleSwitcher />
-        <small class="muted">{{ auth.user?.email }}</small>
+        <button class="foot-user" :title="t('settings.title')" @click="showSettings = true">
+          <span class="foot-email muted">{{ auth.user?.email }}</span>
+          <span class="foot-gear">⚙</span>
+        </button>
         <button class="btn" @click="logout">{{ t('nav.signOut') }}</button>
       </div>
     </aside>
@@ -1265,6 +1268,24 @@ async function logout() {
             <button class="btn primary" :disabled="!af.name.trim()" @click="saveAssistant">{{ t('chat.save') }}</button>
           </div>
         </template>
+      </div>
+    </div>
+
+    <!-- Settings (user profile) -->
+    <div v-if="showSettings" class="modal-backdrop" @click.self="showSettings = false">
+      <div class="modal">
+        <h2>{{ t('settings.title') }}</h2>
+        <div class="field">
+          <label>{{ t('settings.signedInAs') }}</label>
+          <div class="muted">{{ auth.user?.email }}</div>
+        </div>
+        <div class="field">
+          <label>{{ t('common.language') }}</label>
+          <LocaleSwitcher />
+        </div>
+        <div class="btn-row" style="justify-content: flex-end">
+          <button class="btn" @click="showSettings = false">{{ t('common.close') }}</button>
+        </div>
       </div>
     </div>
   </div>

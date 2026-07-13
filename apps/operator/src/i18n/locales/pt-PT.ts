@@ -35,7 +35,11 @@ export default {
     "invalidImage": "Escolha um ficheiro de imagem (PNG, SVG, JPG, WEBP).",
     "imageTooLarge": "Essa imagem é demasiado grande depois de codificada (máx. ~512 KB). Utilize um logótipo mais pequeno ou otimizado — um SVG ou um PNG comprimido funcionam melhor.",
     "savedSuccess": "Aparência guardada. O início de sessão do cliente, a barra lateral e a página de aprovação já a utilizam.",
-    "couldNotSave": "Não foi possível guardar a aparência."
+    "couldNotSave": "Não foi possível guardar a aparência.",
+    "approvalPageBadge": "Página de aprovação MCP",
+    "authorizeAccess": "Autorizar acesso",
+    "deny": "Recusar",
+    "allow": "Permitir"
   },
   "architectureFlow": {
     "loadError": "Falha ao carregar a visão geral.",

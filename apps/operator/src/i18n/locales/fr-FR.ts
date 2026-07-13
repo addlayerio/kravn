@@ -35,7 +35,11 @@ export default {
     "invalidImage": "Veuillez choisir un fichier image (PNG, SVG, JPG, WEBP).",
     "imageTooLarge": "Cette image est trop volumineuse une fois encodée (max. ~512 Ko). Utilisez un logo plus petit ou optimisé — un SVG ou un PNG compressé fonctionne le mieux.",
     "savedSuccess": "Apparence enregistrée. La connexion client, la barre latérale et la page d’approbation l’utilisent désormais.",
-    "couldNotSave": "Impossible d’enregistrer l’apparence."
+    "couldNotSave": "Impossible d’enregistrer l’apparence.",
+    "approvalPageBadge": "Page d’approbation MCP",
+    "authorizeAccess": "Autoriser l’accès",
+    "deny": "Refuser",
+    "allow": "Autoriser"
   },
   "architectureFlow": {
     "loadError": "Échec du chargement de l'aperçu.",

@@ -179,7 +179,8 @@ export default {
     "password": "Palavra-passe",
     "signIn": "Iniciar sessão",
     "signingIn": "A iniciar sessão…",
-    "loginFailed": "Falha ao iniciar sessão."
+    "loginFailed": "Falha ao iniciar sessão.",
+    "noMethods": "Não há nenhum método de início de sessão disponível. Contacte o seu administrador."
   },
   "nav": {
     "newChat": "+ Nova conversa",
@@ -198,5 +199,9 @@ export default {
     "signOut": "Terminar sessão",
     "shared": "partilhado",
     "paused": "em pausa"
+  },
+  "settings": {
+    "title": "Definições",
+    "signedInAs": "Sessão iniciada como"
   }
 } as const;

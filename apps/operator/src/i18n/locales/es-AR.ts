@@ -35,7 +35,11 @@ export default {
     "invalidImage": "Elegí un archivo de imagen (PNG, SVG, JPG, WEBP).",
     "imageTooLarge": "Esa imagen es demasiado grande una vez codificada (máx. ~512 KB). Usá un logo más chico u optimizado: un SVG o un PNG comprimido funcionan mejor.",
     "savedSuccess": "Apariencia guardada. El inicio de sesión del cliente, la barra lateral y la página de aprobación ya la usan.",
-    "couldNotSave": "No se pudo guardar la apariencia."
+    "couldNotSave": "No se pudo guardar la apariencia.",
+    "approvalPageBadge": "Página de aprobación MCP",
+    "authorizeAccess": "Autorizar acceso",
+    "deny": "Denegar",
+    "allow": "Permitir"
   },
   "architectureFlow": {
     "loadError": "No se pudo cargar el resumen.",

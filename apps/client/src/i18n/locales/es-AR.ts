@@ -179,7 +179,8 @@ export default {
     "password": "Contraseña",
     "signIn": "Ingresar",
     "signingIn": "Ingresando…",
-    "loginFailed": "No se pudo iniciar sesión."
+    "loginFailed": "No se pudo iniciar sesión.",
+    "noMethods": "No hay ningún método de inicio de sesión disponible. Contactá a tu administrador."
   },
   "nav": {
     "newChat": "+ Nuevo chat",
@@ -198,5 +199,9 @@ export default {
     "signOut": "Cerrar sesión",
     "shared": "compartido",
     "paused": "en pausa"
+  },
+  "settings": {
+    "title": "Configuración",
+    "signedInAs": "Sesión iniciada como"
   }
 } as const;

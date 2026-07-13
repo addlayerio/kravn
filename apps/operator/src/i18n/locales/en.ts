@@ -35,7 +35,11 @@ export default {
     "invalidImage": "Please choose an image file (PNG, SVG, JPG, WEBP).",
     "imageTooLarge": "That image is too large once encoded (max ~512 KB). Use a smaller or optimised logo — an SVG or a compressed PNG works best.",
     "savedSuccess": "Appearance saved. Client login, sidebar and the approval page now use it.",
-    "couldNotSave": "Could not save appearance."
+    "couldNotSave": "Could not save appearance.",
+    "approvalPageBadge": "MCP approval page",
+    "authorizeAccess": "Authorize access",
+    "deny": "Deny",
+    "allow": "Allow"
   },
   "architectureFlow": {
     "loadError": "Failed to load overview.",

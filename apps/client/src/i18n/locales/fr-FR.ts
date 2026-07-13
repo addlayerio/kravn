@@ -179,7 +179,8 @@ export default {
     "password": "Mot de passe",
     "signIn": "Se connecter",
     "signingIn": "Connexion…",
-    "loginFailed": "Échec de la connexion."
+    "loginFailed": "Échec de la connexion.",
+    "noMethods": "Aucune méthode de connexion n’est disponible. Contactez votre administrateur."
   },
   "nav": {
     "newChat": "+ Nouvelle discussion",
@@ -198,5 +199,9 @@ export default {
     "signOut": "Se déconnecter",
     "shared": "partagé",
     "paused": "en pause"
+  },
+  "settings": {
+    "title": "Paramètres",
+    "signedInAs": "Connecté en tant que"
   }
 } as const;

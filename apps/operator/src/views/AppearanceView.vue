@@ -188,6 +188,22 @@ async function save() {
           <div class="pv-side-brand"><BrandLogo :size="22" :logo="form.logoDataUri" /> <strong>{{ previewName }}</strong></div>
           <PoweredByKravn v-if="previewCustomized" style="padding-left: 2px" />
         </div>
+
+        <!-- MCP approval page (what a user sees when connecting a client, e.g. from Claude) -->
+        <div class="pv-card">
+          <div class="pv-badge">{{ t('appearanceView.approvalPageBadge') }}</div>
+          <div class="pv-brand">
+            <BrandLogo :size="40" :logo="form.logoDataUri" />
+            <div class="pv-name">{{ previewName }}</div>
+            <div v-if="form.tagline" class="pv-tag">{{ form.tagline }}</div>
+            <div class="pv-tag">{{ t('appearanceView.authorizeAccess') }}</div>
+            <PoweredByKravn v-if="previewCustomized" style="margin-top: 4px" />
+          </div>
+          <div class="row" style="gap: 6px; margin-top: 10px">
+            <div class="pv-btn-ghost">{{ t('appearanceView.deny') }}</div>
+            <div class="pv-btn" style="flex: 2">{{ t('appearanceView.allow') }}</div>
+          </div>
+        </div>
       </div>
       <p class="muted where" v-html="t('appearanceView.whereText')"></p>
     </div>
@@ -302,6 +318,17 @@ input[type='color'] {
   color: #fff;
   font-size: 13px;
   font-weight: 600;
+  flex: 1;
+}
+.pv-btn-ghost {
+  text-align: center;
+  padding: 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+  flex: 1;
 }
 .pv-side-brand {
   display: flex;
