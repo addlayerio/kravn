@@ -125,6 +125,33 @@ export const appSettingsSchema = z
         auditWebhookUrl: z.string().default(''),
       })
       .default({}),
+
+    /**
+     * White-label branding for the client-facing surfaces (chat client login + sidebar, OAuth approval page).
+     * All fields optional; empty = the Kravn defaults. Publicly readable (via GET /api/branding) because the
+     * login and approval screens must render it before authentication. See `isBrandingCustomized`.
+     */
+    branding: z
+      .object({
+        /** Replaces the "Kravn" wordmark on client-facing surfaces (falls back to general.instanceName, then "Kravn"). */
+        brandName: z.string().max(80).default(''),
+        /** Short phrase shown under the logo on the login / approval screens. */
+        tagline: z.string().max(160).default(''),
+        /** Logo image as a data URI (e.g. "data:image/png;base64,…"). Empty = the default raven mark. */
+        logoDataUri: z
+          .string()
+          .max(512_000) // ~512KB cap: this rides on every public /api/bootstrap response, so keep it small.
+          .refine((v) => v === '' || v.startsWith('data:image/'), 'Logo must be an image data URI.')
+          .default(''),
+        /** Accent/primary colour as a hex value (e.g. "#325ea8"); restricted to hex so it is safe to inject as a CSS var. */
+        primaryColor: z
+          .string()
+          .refine((v) => v === '' || /^#[0-9a-fA-F]{3,8}$/.test(v), 'Use a hex colour like #325ea8.')
+          .default(''),
+        /** Advanced: raw CSS injected into client-facing surfaces (for a technician). Sanitised of </style on render. */
+        cssOverride: z.string().max(20_000).default(''),
+      })
+      .default({}),
   })
   // Fail-closed cross-field guard, mirrored on backend writes and surfaced in the UI.
   .superRefine((val, ctx) => {
@@ -139,6 +166,22 @@ export const appSettingsSchema = z
   .default({});
 
 export type AppSettings = z.infer<typeof appSettingsSchema>;
+
+/** The branding subset (publicly readable — safe to serve pre-auth to login / approval screens). */
+export type Branding = AppSettings['branding'];
+
+/**
+ * True once the client has replaced Kravn's identity (a custom logo or brand name). When true, the
+ * "Powered by Kravn" attribution must render below the custom logo on every branded surface.
+ */
+export function isBrandingCustomized(b: Branding | undefined | null): boolean {
+  return !!(b && (b.logoDataUri || b.brandName));
+}
+
+/** Neutralise any `</style` in an operator-supplied CSS override before injecting it into a <style> tag. */
+export function sanitizeCssOverride(css: string): string {
+  return (css || '').replace(/<\/style/gi, '<\\/style');
+}
 
 /** Produce a fully-populated default settings object from the schema's own defaults. */
 export function defaultSettings(): AppSettings {

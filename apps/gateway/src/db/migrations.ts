@@ -900,8 +900,26 @@ const chatConversationAssistant: Migration = {
   },
 };
 
+const chatConversationFlags: Migration = {
+  name: '028_chat_conversation_flags',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'pinned'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.integer('pinned').notNullable().defaultTo(0));
+    }
+    if (!(await knex.schema.hasColumn('chat_conversations', 'archived'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.integer('archived').notNullable().defaultTo(0));
+    }
+  },
+  async down(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (await knex.schema.hasColumn('chat_conversations', 'pinned')) await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('pinned'));
+    if (await knex.schema.hasColumn('chat_conversations', 'archived')) await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('archived'));
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

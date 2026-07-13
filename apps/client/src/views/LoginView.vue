@@ -3,7 +3,9 @@ import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../stores/auth';
 import { api, ApiError, setToken } from '../api';
-import RavenLogo from '../RavenLogo.vue';
+import { isBrandingCustomized } from '@kravn/contracts';
+import BrandLogo from '../BrandLogo.vue';
+import PoweredByKravn from '../PoweredByKravn.vue';
 
 const auth = useAuthStore();
 const router = useRouter();
@@ -13,6 +15,9 @@ const error = ref('');
 const busy = ref(false);
 
 const ssoMethods = computed(() => auth.info?.ssoMethods ?? []);
+const brandName = computed(() => auth.info?.branding?.brandName || auth.info?.instanceName || 'Kravn');
+const tagline = computed(() => auth.info?.branding?.tagline || 'Sign in to your AI workspace.');
+const customized = computed(() => isBrandingCustomized(auth.info?.branding));
 
 // Every SSO start carries returnTo=client so the gateway redirects the token back to THIS app.
 function ssoUrl(m: { kind: string; id: string }): string {
@@ -63,9 +68,10 @@ async function submit() {
   <div class="auth-wrap">
     <div class="auth-card">
       <div class="auth-brand">
-        <RavenLogo :size="44" />
-        <h1 style="margin: 0">{{ auth.info?.instanceName || 'Kravn' }}</h1>
-        <p class="muted" style="margin: 0">Sign in to your AI workspace.</p>
+        <BrandLogo :size="44" />
+        <h1 style="margin: 0">{{ brandName }}</h1>
+        <p class="muted" style="margin: 0">{{ tagline }}</p>
+        <PoweredByKravn v-if="customized" style="margin-top: 2px" />
       </div>
 
       <div v-if="error" class="alert error">{{ error }}</div>

@@ -3,9 +3,11 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant } from '@kravn/contracts';
 import { api, ApiError } from '../api';
+import { isBrandingCustomized } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
 import { renderMarkdown } from '../lib/markdown';
-import RavenLogo from '../RavenLogo.vue';
+import BrandLogo from '../BrandLogo.vue';
+import PoweredByKravn from '../PoweredByKravn.vue';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
 interface VsOpt { slug: string; name: string }
@@ -13,6 +15,8 @@ interface ProjectDetail { project: ChatProject; documents: ChatProjectDocument[]
 
 const auth = useAuthStore();
 const router = useRouter();
+const brandName = computed(() => auth.info?.branding?.brandName || auth.info?.instanceName || 'Kravn');
+const brandCustomized = computed(() => isBrandingCustomized(auth.info?.branding));
 
 const providers = ref<ProviderOpt[]>([]);
 const vservers = ref<VsOpt[]>([]);
@@ -291,12 +295,101 @@ async function deleteConversation(c: ChatConversation) {
     return;
   }
   conversations.value = conversations.value.filter((x) => x.id !== c.id);
+  archived.value = archived.value.filter((x) => x.id !== c.id);
   if (project.value) project.value.conversations = project.value.conversations.filter((x) => x.id !== c.id);
   if (current.value?.id === c.id) {
     current.value = null;
     messages.value = [];
     editingTitle.value = false;
   }
+}
+
+// ── Chat actions menu (rename / move to project / pin / archive / delete) ──
+const menuFor = ref<string | null>(null);
+const menuPos = ref({ x: 0, y: 0 });
+const menuUp = ref(false);
+const moveSubmenu = ref(false);
+const archived = ref<ChatConversation[]>([]);
+const showArchived = ref(false);
+const archivedLoaded = ref(false);
+
+function toggleMenu(c: ChatConversation, ev: MouseEvent) {
+  moveSubmenu.value = false;
+  if (menuFor.value === c.id) {
+    menuFor.value = null;
+    return;
+  }
+  // Fixed positioning (computed from the button) so the menu escapes the sidebar's scroll clipping.
+  const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+  const width = 200;
+  const x = Math.min(r.right - width + 8, window.innerWidth - width - 8);
+  menuUp.value = r.bottom > window.innerHeight - 260;
+  menuPos.value = { x: Math.max(8, x), y: menuUp.value ? r.top - 8 : r.bottom + 4 };
+  menuFor.value = c.id;
+}
+function closeMenu() {
+  menuFor.value = null;
+  moveSubmenu.value = false;
+}
+async function reloadConversations() {
+  conversations.value = (await api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations')).conversations;
+}
+async function loadArchived() {
+  archived.value = (await api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations?archived=1')).conversations;
+  archivedLoaded.value = true;
+}
+async function toggleArchivedView() {
+  showArchived.value = !showArchived.value;
+  if (showArchived.value && !archivedLoaded.value) await loadArchived();
+}
+async function togglePin(c: ChatConversation) {
+  closeMenu();
+  const pinned = !c.pinned;
+  try {
+    await api.put(`/api/chat/conversations/${c.id}`, { pinned });
+    if (current.value?.id === c.id) current.value.pinned = pinned;
+    await reloadConversations(); // re-sort: pinned float to the top
+  } catch (e) {
+    alert(e instanceof ApiError ? e.message : 'Could not update the chat.');
+  }
+}
+async function toggleArchive(c: ChatConversation) {
+  closeMenu();
+  const next = !c.archived;
+  try {
+    await api.put(`/api/chat/conversations/${c.id}`, { archived: next });
+    await reloadConversations();
+    if (archivedLoaded.value) await loadArchived();
+    if (next && current.value?.id === c.id) {
+      current.value = null;
+      messages.value = [];
+    }
+  } catch (e) {
+    alert(e instanceof ApiError ? e.message : 'Could not update the chat.');
+  }
+}
+async function moveToProject(c: ChatConversation, projectId: string) {
+  closeMenu();
+  try {
+    await api.put(`/api/chat/conversations/${c.id}`, { projectId: projectId || null });
+    c.projectId = projectId || null;
+    if (current.value?.id === c.id) current.value.projectId = projectId || null;
+    // If the moved-into project is currently open, reflect the new chat under it.
+    if (project.value && projectId && project.value.project.id === projectId && !project.value.conversations.some((x) => x.id === c.id)) {
+      project.value.conversations.unshift(c);
+    }
+  } catch (e) {
+    alert(e instanceof ApiError ? e.message : 'Could not move the chat.');
+  }
+}
+async function renameFromMenu(c: ChatConversation) {
+  closeMenu();
+  if (current.value?.id !== c.id) await open(c);
+  await startRenameTitle();
+}
+function deleteFromMenu(c: ChatConversation) {
+  closeMenu();
+  deleteConversation(c);
 }
 async function deleteProject(p: ChatProject) {
   if (!confirm(`Delete project “${p.name}”? Its documents are removed; its chats are kept.`)) return;
@@ -648,7 +741,10 @@ async function logout() {
 <template>
   <div class="chat-shell">
     <aside class="chat-sidebar">
-      <div class="brand"><RavenLogo :size="24" /> {{ auth.info?.instanceName || 'Kravn' }}</div>
+      <div class="brand-wrap">
+        <div class="brand"><BrandLogo :size="24" /> {{ brandName }}</div>
+        <PoweredByKravn v-if="brandCustomized" class="brand-pbk" />
+      </div>
       <div style="padding: 10px">
         <button class="btn primary" style="width: 100%" @click="openNew()">+ New chat</button>
         <input v-model="chatSearch" class="chat-search" placeholder="Search chats…" />
@@ -689,8 +785,23 @@ async function logout() {
           :class="{ active: current?.id === c.id }"
           @click="open(c)"
         >
-          <span class="conv-item-title">{{ c.title || 'New chat' }}</span>
-          <button class="conv-del" title="Delete chat" @click.stop="deleteConversation(c)">🗑</button>
+          <span class="conv-item-title"><span v-if="c.pinned" class="pin-dot" title="Pinned">📌</span>{{ c.title || 'New chat' }}</span>
+          <button class="conv-menu-btn" title="Chat actions" @click.stop="toggleMenu(c, $event)">⋯</button>
+          <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
+            <button class="conv-menu-item" @click="renameFromMenu(c)"><span>✏️</span> Rename</button>
+            <div class="conv-menu-item has-sub" @click.stop="moveSubmenu = !moveSubmenu">
+              <span>📁</span> Move to project <span class="sub-caret">›</span>
+              <div v-if="moveSubmenu" class="conv-submenu">
+                <button class="conv-menu-item" @click="moveToProject(c, '')"><span>🚫</span> No project</button>
+                <button v-for="p in projects" :key="p.id" class="conv-menu-item" @click="moveToProject(c, p.id)">
+                  <span>📁</span> {{ p.name }}
+                </button>
+              </div>
+            </div>
+            <button class="conv-menu-item" @click="togglePin(c)"><span>📌</span> {{ c.pinned ? 'Unpin' : 'Pin' }}</button>
+            <button class="conv-menu-item" @click="toggleArchive(c)"><span>🗄</span> Archive</button>
+            <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> Delete</button>
+          </div>
         </div>
 
         <div class="side-section" style="margin-top: 6px">
@@ -708,7 +819,30 @@ async function logout() {
           <span class="conv-item-title">⏱ {{ s.name }}<span v-if="!s.enabled" class="muted"> · paused</span></span>
           <button class="conv-del" title="Delete task" @click.stop="deleteSchedule(s)">🗑</button>
         </div>
+
+        <div class="side-section archived-toggle" style="margin-top: 6px" @click="toggleArchivedView">
+          <span>🗄 Archived<span v-if="archived.length"> ({{ archived.length }})</span></span>
+          <span class="caret">{{ showArchived ? '▾' : '▸' }}</span>
+        </div>
+        <template v-if="showArchived">
+          <div v-if="archived.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No archived chats.</div>
+          <div
+            v-for="c in archived"
+            :key="c.id"
+            class="conv-item conv-row"
+            :class="{ active: current?.id === c.id }"
+            @click="open(c)"
+          >
+            <span class="conv-item-title">{{ c.title || 'New chat' }}</span>
+            <button class="conv-menu-btn" title="Chat actions" @click.stop="toggleMenu(c, $event)">⋯</button>
+            <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
+              <button class="conv-menu-item" @click="toggleArchive(c)"><span>↩️</span> Unarchive</button>
+              <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> Delete</button>
+            </div>
+          </div>
+        </template>
       </div>
+      <div v-if="menuFor" class="menu-backdrop" @click="closeMenu"></div>
       <div class="foot">
         <small class="muted">{{ auth.user?.email }}</small>
         <button class="btn" @click="logout">Sign out</button>
@@ -940,7 +1074,8 @@ async function logout() {
       </div>
 
       <div v-else class="chat-empty">
-        <RavenLogo :size="48" />
+        <BrandLogo :size="48" />
+        <PoweredByKravn v-if="brandCustomized" style="margin-top: -4px" />
         <p>Start a new chat, or open a project to give the assistant instructions and documents.</p>
         <div class="btn-row">
           <button class="btn primary" @click="openNew()">+ New chat</button>

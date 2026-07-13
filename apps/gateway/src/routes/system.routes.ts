@@ -22,6 +22,8 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
       publicRegistration: settings.auth.publicRegistrationEnabled,
       passwordLoginEnabled: settings.auth.passwordLoginEnabled,
       ssoMethods: await s.sso.methods(),
+      // White-label branding for the login + OAuth approval screens (public — only the branding subset).
+      branding: settings.branding,
     };
   });
 

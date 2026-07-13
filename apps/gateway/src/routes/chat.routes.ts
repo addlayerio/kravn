@@ -130,7 +130,10 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
   });
 
   // Conversations
-  app.get('/api/chat/conversations', auth, async (req) => ({ conversations: await s.repos.chat.listConversations(currentUser(req).id) }));
+  app.get('/api/chat/conversations', auth, async (req) => {
+    const archived = (req.query as { archived?: string }).archived === '1';
+    return { conversations: await s.repos.chat.listConversations(currentUser(req).id, { archived }) };
+  });
   app.post('/api/chat/conversations', auth, async (req, reply) => {
     const dto = parse(reply, createConversationSchema, req.body);
     if (!dto) return;
@@ -170,8 +173,17 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const id = (req.params as { id: string }).id;
     const conv = await s.repos.chat.getConversation(u.id, id);
     if (!conv) return sendError(reply, 404, 'not_found', 'Conversation not found.');
-    const patch = { title: dto.title?.trim(), tags: dto.tags };
-    await s.repos.chat.updateConversation(u.id, id, patch);
+    // Moving into a project requires access to that project (owner OR shared member); null clears it.
+    if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
+      return sendError(reply, 404, 'not_found', 'Project not found.');
+    }
+    await s.repos.chat.updateConversation(u.id, id, {
+      title: dto.title?.trim(),
+      tags: dto.tags,
+      projectId: dto.projectId,
+      pinned: dto.pinned,
+      archived: dto.archived,
+    });
     return { conversation: (await s.repos.chat.getConversation(u.id, id)) ?? conv };
   });
   app.delete('/api/chat/conversations/:id', auth, async (req, reply) => {

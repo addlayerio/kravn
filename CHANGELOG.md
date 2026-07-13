@@ -14,6 +14,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🎨 **White-label Appearance (per-client branding).** A new admin **Appearance** page (operator console) lets
+  each customer brand the client-facing surfaces to match their organisation — **logo** (image upload),
+  **brand name**, **tagline**, **primary colour**, and an advanced **raw CSS override** for a technician.
+  Stored in settings (no migration) and served publicly on `/api/bootstrap`, so it applies **before login**
+  to the **chat client** (login, sidebar, empty state, browser tab + favicon) and the **MCP OAuth approval
+  page**. The Appearance page has a **live preview** and annotates where each change lands. Safety: the raw
+  CSS override is applied only to the chat client, never the approval screen (where hiding the Approve/Deny
+  controls would be a risk); the primary colour is hex-validated and the logo must be an image data URI
+  (≤512 KB). A **“Powered by Kravn”** mark (small raven + wordmark, hard-coloured and guarded against CSS
+  hiding) always renders below a custom logo.
+- 🗂️ **Chat actions menu (chat client).** Each chat now has a `⋯` menu (like the reference apps): **rename**,
+  **move to a project** (submenu), **pin** (pinned chats float to the top, with a 📌 marker), **archive**
+  (hidden from the list, shown under a collapsible “Archived” section) and **delete**. (`chat_conversations.
+  pinned` + `archived`, migration 028; the conversation `PUT` accepts `pinned`/`archived`/`projectId`.)
 - 🔒 **SSRF guard hardening.** The outbound SSRF guard now classifies IPv6 correctly by parsing the address
   to bytes: IPv4-mapped (`::ffff:a.b.c.d` in dotted **or** hex-compressed form), NAT64 and IPv4-compatible
   addresses are resolved to their embedded IPv4 and blocked when private/reserved, and the AWS IPv6 metadata

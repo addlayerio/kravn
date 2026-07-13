@@ -287,6 +287,10 @@ export const chatConversationSchema = z.object({
   tags: z.array(z.string()).default([]),
   /** Optional: the assistant preset this chat was started from (its instructions are injected live). */
   assistantId: z.string().nullable().default(null),
+  /** Pinned chats sort to the top of the list. */
+  pinned: z.boolean().default(false),
+  /** Archived chats are hidden from the main list (shown under "Archived"). */
+  archived: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

@@ -1161,8 +1161,11 @@ export class ChatRepo {
     await this.store.run('DELETE FROM chat_project_documents WHERE id = ? AND project_id = ?', [docId, projectId]);
   }
 
-  async listConversations(userId: string): Promise<ChatConversation[]> {
-    const rows = await this.store.all<any>('SELECT * FROM chat_conversations WHERE user_id = ? ORDER BY updated_at DESC, id DESC', [userId]);
+  async listConversations(userId: string, opts: { archived?: boolean } = {}): Promise<ChatConversation[]> {
+    // Default view hides archived chats and pins pinned ones to the top; the "archived" scope lists only those.
+    const where = opts.archived ? 'archived = 1' : '(archived IS NULL OR archived = 0)';
+    const order = opts.archived ? 'updated_at DESC, id DESC' : 'pinned DESC, updated_at DESC, id DESC';
+    const rows = await this.store.all<any>(`SELECT * FROM chat_conversations WHERE user_id = ? AND ${where} ORDER BY ${order}`, [userId]);
     return rows.map(mapConversation);
   }
   async getConversation(userId: string, id: string): Promise<ChatConversation | undefined> {
@@ -1184,8 +1187,12 @@ export class ChatRepo {
   async renameConversation(userId: string, id: string, title: string): Promise<void> {
     await this.store.run('UPDATE chat_conversations SET title = ?, updated_at = ? WHERE id = ? AND user_id = ?', [title, now(), id, userId]);
   }
-  /** User-scoped partial update: rename and/or replace the tag set. Only the owner is affected. */
-  async updateConversation(userId: string, id: string, patch: { title?: string; tags?: string[] }): Promise<void> {
+  /** User-scoped partial update: rename, re-tag, move to a project, pin or archive. Only the owner is affected. */
+  async updateConversation(
+    userId: string,
+    id: string,
+    patch: { title?: string; tags?: string[]; projectId?: string | null; pinned?: boolean; archived?: boolean },
+  ): Promise<void> {
     const sets: string[] = [];
     const args: any[] = [];
     if (patch.title !== undefined) { sets.push('title = ?'); args.push(patch.title); }
@@ -1195,8 +1202,12 @@ export class ChatRepo {
       const tags = patch.tags.map((t) => t.trim()).filter((t) => t && !seen.has(t.toLowerCase()) && seen.add(t.toLowerCase()));
       sets.push('tags = ?'); args.push(JSON.stringify(tags));
     }
+    if (patch.projectId !== undefined) { sets.push('project_id = ?'); args.push(patch.projectId); }
+    if (patch.pinned !== undefined) { sets.push('pinned = ?'); args.push(intify(patch.pinned)); }
+    if (patch.archived !== undefined) { sets.push('archived = ?'); args.push(intify(patch.archived)); }
     if (!sets.length) return;
-    sets.push('updated_at = ?'); args.push(now());
+    // Bump updated_at only on content-ish changes, so a pin/archive toggle keeps the chat's place in the list.
+    if (patch.title !== undefined || patch.tags !== undefined || patch.projectId !== undefined) { sets.push('updated_at = ?'); args.push(now()); }
     args.push(id, userId);
     await this.store.run(`UPDATE chat_conversations SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, args);
   }
@@ -1467,6 +1478,8 @@ function mapConversation(r: any): ChatConversation {
     vserverSlug: r.vserver_slug ?? '',
     tags: parseTags(r.tags),
     assistantId: r.assistant_id ?? null,
+    pinned: bool(r.pinned),
+    archived: bool(r.archived),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };

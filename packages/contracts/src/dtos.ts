@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { roleSchema } from './permissions.js';
+import type { Branding } from './settings.js';
 import {
   transportSchema,
   authTypeSchema,
@@ -118,13 +119,16 @@ export const renameConversationSchema = z.object({
 });
 export type RenameConversationRequest = z.infer<typeof renameConversationSchema>;
 
-/** Partial update of a conversation: rename and/or re-tag. */
+/** Partial update of a conversation: rename, re-tag, move to a project, pin or archive. */
 export const updateConversationSchema = z
   .object({
     title: z.string().min(1).max(200).optional(),
     tags: z.array(z.string().trim().min(1).max(40)).max(20).optional(),
+    projectId: z.string().nullable().optional(), // null = remove from its project
+    pinned: z.boolean().optional(),
+    archived: z.boolean().optional(),
   })
-  .refine((v) => v.title !== undefined || v.tags !== undefined, { message: 'Nothing to update' });
+  .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to update' });
 export type UpdateConversationRequest = z.infer<typeof updateConversationSchema>;
 
 /** Create/update a scheduled task. */
@@ -207,6 +211,8 @@ export interface BootstrapInfo {
   publicRegistration: boolean;
   passwordLoginEnabled: boolean;
   ssoMethods: SsoMethod[];
+  /** White-label branding for client-facing surfaces (public — rendered before authentication). */
+  branding: Branding;
 }
 
 /** Aggregated platform state for the dashboard "Architecture Flow" panel. */

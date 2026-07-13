@@ -1,14 +1,24 @@
 <script setup lang="ts">
-import { onMounted, ref } from 'vue';
+import { onMounted, ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
+import { isBrandingCustomized } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
-import RavenLogo from '../components/RavenLogo.vue';
+import BrandLogo from '../components/BrandLogo.vue';
+import PoweredByKravn from '../components/PoweredByKravn.vue';
 
 const route = useRoute();
 const auth = useAuthStore();
 const bootstrap = useBootstrapStore();
+
+// Branding is applied here as SAFE structured data only — logo, name, tagline, accent colour. The raw CSS
+// override is deliberately NOT applied on this security-sensitive approval screen.
+const brandName = computed(() => bootstrap.info?.branding?.brandName || bootstrap.info?.instanceName || 'Kravn');
+const brandCustomized = computed(() => isBrandingCustomized(bootstrap.info?.branding));
+const brandStyle = computed(() =>
+  bootstrap.info?.branding?.primaryColor ? { '--accent': bootstrap.info.branding.primaryColor } : {},
+);
 
 const reqId = String(route.query.req ?? '');
 const consent = ref<{ clientId: string; clientName: string; scope: string; redirectHost: string } | null>(null);
@@ -47,12 +57,14 @@ async function decide(approve: boolean): Promise<void> {
 </script>
 
 <template>
-  <div class="auth-wrap">
+  <div class="auth-wrap" :style="brandStyle">
     <div class="auth-card">
       <div class="auth-brand">
-        <RavenLogo :size="44" />
-        <h1 style="margin: 0">{{ bootstrap.info?.instanceName || 'Kravn' }}</h1>
+        <BrandLogo :size="44" />
+        <h1 style="margin: 0">{{ brandName }}</h1>
+        <p v-if="bootstrap.info?.branding?.tagline" class="muted" style="margin: 0">{{ bootstrap.info.branding.tagline }}</p>
         <p class="muted" style="margin: 0">Authorize access</p>
+        <PoweredByKravn v-if="brandCustomized" style="margin-top: 2px" />
       </div>
 
       <div v-if="error" class="alert error">{{ error }}</div>

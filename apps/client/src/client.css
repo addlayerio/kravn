@@ -13,14 +13,19 @@
   flex-direction: column;
   min-height: 0;
 }
+.brand-wrap {
+  border-bottom: 1px solid var(--border);
+}
 .chat-sidebar .brand {
   display: flex;
   align-items: center;
   gap: 10px;
   padding: 16px 18px;
-  height: 56px;
-  border-bottom: 1px solid var(--border);
+  min-height: 56px;
   font-weight: 700;
+}
+.brand-pbk {
+  padding: 0 18px 10px;
 }
 .chat-sidebar .convs {
   flex: 1;
@@ -76,6 +81,96 @@
 .conv-del:hover {
   opacity: 1;
   background: var(--hover);
+}
+.conv-menu-btn {
+  flex: none;
+  opacity: 0;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  line-height: 1;
+  padding: 2px 5px;
+  border-radius: 4px;
+  color: var(--text-muted);
+}
+.conv-row:hover .conv-menu-btn {
+  opacity: 0.65;
+}
+.conv-menu-btn:hover {
+  opacity: 1;
+  background: var(--hover);
+}
+.pin-dot {
+  margin-right: 3px;
+  font-size: 11px;
+}
+.menu-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.conv-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 190px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+}
+.conv-menu.up {
+  transform: translateY(-100%);
+}
+.conv-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  cursor: pointer;
+  color: var(--text);
+  font-size: 13px;
+  padding: 7px 9px;
+  border-radius: 6px;
+  white-space: nowrap;
+}
+.conv-menu-item:hover {
+  background: var(--hover);
+}
+.conv-menu-item.danger {
+  color: var(--danger, #e5534b);
+}
+.conv-menu-item.has-sub {
+  position: relative;
+  flex-direction: row;
+  flex-wrap: wrap;
+}
+.conv-menu-item .sub-caret {
+  margin-left: auto;
+}
+.conv-submenu {
+  flex-basis: 100%;
+  margin-top: 4px;
+  padding-left: 8px;
+  border-left: 2px solid var(--border);
+  max-height: 40vh;
+  overflow-y: auto;
+}
+.archived-toggle {
+  cursor: pointer;
+  user-select: none;
+}
+.archived-toggle:hover {
+  color: var(--text);
+}
+.archived-toggle .caret {
+  font-size: 11px;
 }
 .chat-head-right {
   display: flex;
