@@ -189,15 +189,25 @@ async function fetchJson(guard: SsrfGuard, url: string, headers: Record<string, 
     url,
     fetchInit({ redirect: 'follow', headers: { accept: 'application/json', ...headers }, signal: AbortSignal.timeout(FETCH_TIMEOUT_MS) }, guard.agent),
   );
+  const bodyText = await readCappedText(res, MAX_FETCH_BYTES);
+  // A misconfigured / down provider (wrong key, wrong SearXNG URL, an auth wall or an error page) typically
+  // answers with HTML instead of JSON — surface a clear, actionable message rather than a raw JSON.parse error.
+  const isHtml = /html/.test((res.headers.get('content-type') ?? '').toLowerCase()) || looksHtml(bodyText);
   if (!res.ok) {
-    try {
-      await res.body?.cancel();
-    } catch {
-      /* ignore */
-    }
-    throw new Error(`search request failed (${res.status} ${res.statusText}).`);
+    throw new Error(
+      `the search provider returned HTTP ${res.status} ${res.statusText}.` +
+        (isHtml ? ' It answered with an HTML page, not JSON — check the Brave API key / SearXNG URL in the Web server config.' : ''),
+    );
   }
-  return JSON.parse(await readCappedText(res, MAX_FETCH_BYTES));
+  try {
+    return JSON.parse(bodyText);
+  } catch {
+    throw new Error(
+      isHtml
+        ? 'the search provider returned an HTML page instead of JSON — it is likely misconfigured or down (check the Brave API key or the SearXNG URL in the Web server config).'
+        : 'the search provider returned a non-JSON response — check the Brave API key or the SearXNG URL in the Web server config.',
+    );
+  }
 }
 
 async function braveSearch(guard: SsrfGuard, cfg: WebConfig, query: string, count: number): Promise<SearchHit[]> {

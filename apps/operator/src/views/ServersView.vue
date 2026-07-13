@@ -836,10 +836,18 @@ async function remove(srv: UpstreamServer) {
 }
 .cc-foot {
   display: flex;
+  flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 6px;
-  margin-top: 6px;
+  margin-top: 8px;
+}
+/* Compact buttons so up to three actions (Configure / Enable / Add) fit a narrow card, and wrap cleanly
+   when a locale's labels are longer (e.g. es/fr/pt) instead of overflowing. */
+.cc-foot .btn {
+  padding: 5px 9px;
+  font-size: 12.5px;
+  white-space: nowrap;
 }
 .cc-auth.native {
   color: #8b5cf6;
