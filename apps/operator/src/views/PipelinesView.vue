@@ -1,16 +1,15 @@
 <script setup lang="ts">
+import { useI18n } from 'vue-i18n';
 import PipelineEditor from '../components/PipelineEditor.vue';
+
+const { t } = useI18n();
 </script>
 
 <template>
   <div class="topbar">
     <div>
-      <h1>Pipelines · Global</h1>
-      <p class="muted">
-        The <strong>global</strong> pipeline runs for all traffic. Add hook plugins to each MCP lifecycle
-        junction, in the order you want — only the plugins you add here run. To add a plugin just for one
-        MCP endpoint, edit that MCP endpoint and use its own pipeline.
-      </p>
+      <h1>{{ t('pipelinesView.title') }}</h1>
+      <p class="muted" v-html="t('pipelinesView.description')"></p>
     </div>
   </div>
 

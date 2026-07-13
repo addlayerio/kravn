@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Tool, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
@@ -7,6 +8,7 @@ import { useToastStore } from '../stores/toast';
 import GroupedList, { type GroupListMeta } from '../components/GroupedList.vue';
 import { serverIconId } from '../lib/server-icon';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const toast = useToastStore();
 const tools = ref<Tool[]>([]);
@@ -39,9 +41,9 @@ async function load() {
 }
 onMounted(load);
 
-async function toggle(t: Tool) {
-  await api.patch(`/api/tools/${t.id}`, { enabled: !t.enabled });
-  toast.success(`Tool "${t.name}" ${t.enabled ? 'disabled' : 'enabled'}.`);
+async function toggle(tool: Tool) {
+  await api.patch(`/api/tools/${tool.id}`, { enabled: !tool.enabled });
+  toast.success(tool.enabled ? t('toolsView.toolDisabled', { name: tool.name }) : t('toolsView.toolEnabled', { name: tool.name }));
   await load();
 }
 
@@ -63,7 +65,7 @@ async function invoke() {
     const res = await api.post<{ result: unknown }>(`/api/tools/${playground.value.id}/invoke`, { arguments: args });
     result.value = JSON.stringify(res.result, null, 2);
   } catch (e) {
-    invokeError.value = e instanceof ApiError ? e.message : (e as Error).message || 'Invocation failed.';
+    invokeError.value = e instanceof ApiError ? e.message : (e as Error).message || t('toolsView.invocationFailed');
   } finally {
     invoking.value = false;
   }
@@ -71,23 +73,23 @@ async function invoke() {
 </script>
 
 <template>
-  <div class="topbar"><h1>Tools</h1></div>
+  <div class="topbar"><h1>{{ t('toolsView.title') }}</h1></div>
 
   <div class="card">
-    <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="tools.length === 0" class="empty">No tools discovered yet. Add and sync a server first.</div>
-    <GroupedList v-else :items="toolItems" :groups="serverMeta" noun="tool" :search-text="(t) => `${t.name} ${t.description}`">
-      <template #row="{ item: t }">
+    <p v-if="loading" class="muted">{{ t('toolsView.loading') }}</p>
+    <div v-else-if="tools.length === 0" class="empty">{{ t('toolsView.empty') }}</div>
+    <GroupedList v-else :items="toolItems" :groups="serverMeta" :noun="t('grouped.nounTools')" :search-text="(tool) => `${tool.name} ${tool.description}`">
+      <template #row="{ item: tool }">
         <div class="rl-row">
           <div class="rl-main">
-            <div class="rl-name">{{ t.name }}</div>
-            <small v-if="t.description" class="muted">{{ t.description }}</small>
+            <div class="rl-name">{{ tool.name }}</div>
+            <small v-if="tool.description" class="muted">{{ tool.description }}</small>
           </div>
-          <span class="badge" :class="t.enabled ? 'online' : 'disabled'">{{ t.enabled ? 'on' : 'off' }}</span>
+          <span class="badge" :class="tool.enabled ? 'online' : 'disabled'">{{ tool.enabled ? t('toolsView.badgeOn') : t('toolsView.badgeOff') }}</span>
           <div class="btn-row">
-            <button v-if="auth.user?.role === 'admin'" class="btn" @click="openPlayground(t)">Test</button>
-            <button v-if="auth.can('registry.write')" class="btn" @click="toggle(t)">
-              {{ t.enabled ? 'Disable' : 'Enable' }}
+            <button v-if="auth.user?.role === 'admin'" class="btn" @click="openPlayground(tool)">{{ t('toolsView.test') }}</button>
+            <button v-if="auth.can('registry.write')" class="btn" @click="toggle(tool)">
+              {{ tool.enabled ? t('toolsView.disable') : t('toolsView.enable') }}
             </button>
           </div>
         </div>
@@ -97,27 +99,27 @@ async function invoke() {
 
   <div v-if="playground" class="modal-backdrop" @click.self="playground = null">
     <div class="modal">
-      <h2>Test: {{ playground.name }}</h2>
+      <h2>{{ t('toolsView.testTitle', { name: playground.name }) }}</h2>
       <p class="muted">{{ playground.description }}</p>
 
       <div class="field">
-        <label>Input schema</label>
+        <label>{{ t('toolsView.inputSchema') }}</label>
         <pre class="code">{{ JSON.stringify(playground.inputSchema, null, 2) }}</pre>
       </div>
       <div class="field">
-        <label>Arguments (JSON)</label>
+        <label>{{ t('toolsView.argumentsJson') }}</label>
         <textarea v-model="argsText" rows="5"></textarea>
       </div>
 
       <div v-if="invokeError" class="alert error">{{ invokeError }}</div>
       <div v-if="result" class="field">
-        <label>Result</label>
+        <label>{{ t('toolsView.result') }}</label>
         <pre class="code">{{ result }}</pre>
       </div>
 
       <div class="btn-row" style="justify-content: flex-end">
-        <button class="btn" @click="playground = null">Close</button>
-        <button class="btn primary" :disabled="invoking" @click="invoke">{{ invoking ? 'Running…' : 'Run' }}</button>
+        <button class="btn" @click="playground = null">{{ t('toolsView.close') }}</button>
+        <button class="btn primary" :disabled="invoking" @click="invoke">{{ invoking ? t('toolsView.running') : t('toolsView.run') }}</button>
       </div>
     </div>
   </div>

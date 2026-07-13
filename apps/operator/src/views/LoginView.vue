@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import { api, ApiError, setToken } from '../api/client';
 import RavenLogo from '../components/RavenLogo.vue';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const bootstrap = useBootstrapStore();
 const router = useRouter();
@@ -49,7 +51,7 @@ onMounted(async () => {
 
   // Redirected here because the account is authenticated but not a Platform Administrator Team member.
   if (route.query.denied) {
-    error.value = 'This account cannot access the administration console. Only members of the Platform Administrator Team can sign in here.';
+    error.value = t('operatorLoginView.errorNotPlatformAdmin');
   }
 
   // Capture an SSO redirect (?token=) or surface an SSO error.
@@ -76,7 +78,7 @@ onMounted(async () => {
       setToken(null);
       auth.token = null;
     } catch (e) {
-      error.value = e instanceof ApiError ? e.message : 'Single sign-on failed. Please try again.';
+      error.value = e instanceof ApiError ? e.message : t('operatorLoginView.errorSsoFailed');
     }
   }
 });
@@ -90,7 +92,7 @@ async function submit() {
     // Non-admins may still complete a standalone OAuth consent (an MCP consumer authorizing an endpoint);
     // they just can't reach the admin console. Mirrors the router guard's oauth-consent exemption.
     if (!auth.isPlatformAdmin && !target.startsWith('/oauth/consent')) {
-      error.value = 'This account cannot access the administration console. Only members of the Platform Administrator Team can sign in here.';
+      error.value = t('operatorLoginView.errorNotPlatformAdmin');
       return;
     }
     try {
@@ -100,7 +102,7 @@ async function submit() {
     }
     router.push(target);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Login failed.';
+    error.value = e instanceof ApiError ? e.message : t('operatorLoginView.errorLoginFailed');
   } finally {
     busy.value = false;
   }
@@ -113,37 +115,37 @@ async function submit() {
       <div class="auth-brand">
         <RavenLogo :size="44" />
         <h1 style="margin: 0">{{ bootstrap.info?.instanceName || 'Kravn' }}</h1>
-        <p class="muted" style="margin: 0">Sign in to your MCP gateway.</p>
+        <p class="muted" style="margin: 0">{{ t('operatorLoginView.subtitle') }}</p>
       </div>
 
       <div v-if="error" class="alert error">{{ error }}</div>
 
       <div v-if="ssoMethods.length" class="btn-row" style="flex-direction: column; gap: 0.5rem; margin-bottom: 1rem">
         <a v-for="m in ssoMethods" :key="m.id" class="btn" style="justify-content: center" :href="ssoUrl(m)">
-          Sign in with {{ m.label }}
+          {{ t('operatorLoginView.signInWith', { label: m.label }) }}
         </a>
       </div>
 
       <div v-if="ssoMethods.length && passwordLoginEnabled" class="row" style="margin: 0.5rem 0">
-        <hr style="flex: 1; border-color: var(--border)" /><small class="muted">or</small><hr style="flex: 1; border-color: var(--border)" />
+        <hr style="flex: 1; border-color: var(--border)" /><small class="muted">{{ t('operatorLoginView.or') }}</small><hr style="flex: 1; border-color: var(--border)" />
       </div>
 
       <form v-if="passwordLoginEnabled" @submit.prevent="submit">
         <div class="field">
-          <label>Email</label>
+          <label>{{ t('operatorLoginView.emailLabel') }}</label>
           <input v-model="form.email" type="email" required />
         </div>
         <div class="field">
-          <label>Password</label>
+          <label>{{ t('operatorLoginView.passwordLabel') }}</label>
           <input v-model="form.password" type="password" required />
         </div>
         <button class="btn primary" style="width: 100%" :disabled="busy" type="submit">
-          {{ busy ? 'Signing in…' : 'Sign in' }}
+          {{ busy ? t('operatorLoginView.signingIn') : t('operatorLoginView.signIn') }}
         </button>
       </form>
 
       <p v-else-if="!ssoMethods.length" class="muted" style="text-align: center; margin: 0">
-        No sign-in method is available. Password login is disabled and no SSO provider is configured.
+        {{ t('operatorLoginView.noSignInMethod') }}
       </p>
     </div>
   </div>

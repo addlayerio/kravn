@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Resource, UpstreamServer } from '@kravn/contracts';
 import { api } from '../api/client';
 import GroupedList, { type GroupListMeta } from '../components/GroupedList.vue';
 import { serverIconId } from '../lib/server-icon';
 
+const { t } = useI18n();
 const resources = ref<Resource[]>([]);
 const servers = ref<Record<string, UpstreamServer>>({});
 const loading = ref(true);
@@ -29,15 +31,15 @@ onMounted(async () => {
 </script>
 
 <template>
-  <div class="topbar"><h1>Resources</h1></div>
+  <div class="topbar"><h1>{{ t('resourcesView.title') }}</h1></div>
   <div class="card">
-    <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="resources.length === 0" class="empty">No resources discovered yet.</div>
+    <p v-if="loading" class="muted">{{ t('resourcesView.loading') }}</p>
+    <div v-else-if="resources.length === 0" class="empty">{{ t('resourcesView.empty') }}</div>
     <GroupedList
       v-else
       :items="resourceItems"
       :groups="serverMeta"
-      noun="resource"
+      :noun="t('grouped.nounResources')"
       :search-text="(r) => `${r.uri} ${r.name} ${r.mimeType} ${r.description}`"
     >
       <template #row="{ item: r }">

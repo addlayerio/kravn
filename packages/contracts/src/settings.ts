@@ -1,4 +1,5 @@
 import { z } from 'zod';
+import { LOCALE_CODES, DEFAULT_LOCALE } from './i18n.js';
 
 /**
  * TIER-2 application settings.
@@ -42,6 +43,8 @@ export const appSettingsSchema = z
         instanceName: z.string().min(1).max(80).default('Kravn'),
         /** Absolute public URL; if empty, the server auto-derives it from the request. */
         publicUrl: z.string().url().or(z.literal('')).default(''),
+        /** Instance default locale (ISO code). Users may override it for their own session. */
+        locale: z.enum(LOCALE_CODES).default(DEFAULT_LOCALE),
       })
       .default({}),
 
@@ -170,12 +173,18 @@ export type AppSettings = z.infer<typeof appSettingsSchema>;
 /** The branding subset (publicly readable — safe to serve pre-auth to login / approval screens). */
 export type Branding = AppSettings['branding'];
 
-/**
- * True once the client has replaced Kravn's identity (a custom logo or brand name). When true, the
- * "Powered by Kravn" attribution must render below the custom logo on every branded surface.
- */
+/** True once ANY branding field customises the interface (logo, name, tagline, colour or CSS override). */
 export function isBrandingCustomized(b: Branding | undefined | null): boolean {
-  return !!(b && (b.logoDataUri || b.brandName));
+  return !!(b && (b.logoDataUri || b.brandName || b.tagline || b.primaryColor || b.cssOverride));
+}
+
+/**
+ * Whether the "Powered by Kravn" attribution must render. True when any branding field is set OR the
+ * instance was renamed away from the default — because the visible identity is `brandName || instanceName`,
+ * so renaming the instance (the standard path) also replaces the "Kravn" wordmark on every surface.
+ */
+export function shouldShowAttribution(b: Branding | undefined | null, instanceName?: string | null): boolean {
+  return isBrandingCustomized(b) || (!!instanceName && instanceName !== 'Kravn');
 }
 
 /** Neutralise any `</style` in an operator-supplied CSS override before injecting it into a <style> tag. */

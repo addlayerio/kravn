@@ -1,22 +1,25 @@
 <script setup lang="ts">
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant } from '@kravn/contracts';
 import { api, ApiError } from '../api';
-import { isBrandingCustomized } from '@kravn/contracts';
+import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
 import { renderMarkdown } from '../lib/markdown';
 import BrandLogo from '../BrandLogo.vue';
 import PoweredByKravn from '../PoweredByKravn.vue';
+import LocaleSwitcher from '../LocaleSwitcher.vue';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
 interface VsOpt { slug: string; name: string }
 interface ProjectDetail { project: ChatProject; documents: ChatProjectDocument[]; conversations: ChatConversation[]; members: ProjectMember[] }
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
 const brandName = computed(() => auth.info?.branding?.brandName || auth.info?.instanceName || 'Kravn');
-const brandCustomized = computed(() => isBrandingCustomized(auth.info?.branding));
+const brandCustomized = computed(() => shouldShowAttribution(auth.info?.branding, auth.info?.instanceName));
 
 const providers = ref<ProviderOpt[]>([]);
 const vservers = ref<VsOpt[]>([]);
@@ -35,7 +38,7 @@ const filteredConversations = computed(() => {
   const q = chatSearch.value.trim().toLowerCase();
   const tag = activeTag.value?.toLowerCase() ?? null;
   return conversations.value.filter((c) => {
-    if (q && !(c.title || 'New chat').toLowerCase().includes(q)) return false;
+    if (q && !(c.title || t('chat.newChat')).toLowerCase().includes(q)) return false;
     if (tag && !(c.tags ?? []).some((t) => t.toLowerCase() === tag)) return false;
     return true;
   });
@@ -113,7 +116,7 @@ async function shareProject() {
     project.value.members = res.members;
     share.email = '';
   } catch (e) {
-    shareError.value = e instanceof ApiError ? e.message : 'Could not share the project.';
+    shareError.value = e instanceof ApiError ? e.message : t('chat.couldNotShareProject');
   } finally {
     sharing.value = false;
   }
@@ -239,7 +242,7 @@ function openNewProject() {
 async function createProject() {
   projectError.value = '';
   if (!np.name.trim()) {
-    projectError.value = 'Give the project a name.';
+    projectError.value = t('chat.giveProjectName');
     return;
   }
   try {
@@ -248,7 +251,7 @@ async function createProject() {
     projects.value.push(res.project);
     await openProject(res.project);
   } catch (e) {
-    projectError.value = e instanceof ApiError ? e.message : 'Could not create project.';
+    projectError.value = e instanceof ApiError ? e.message : t('chat.couldNotCreateProject');
   }
 }
 async function saveInstructions() {
@@ -286,12 +289,12 @@ async function deleteDocument(doc: ChatProjectDocument) {
   project.value.documents = project.value.documents.filter((d) => d.id !== doc.id);
 }
 async function deleteConversation(c: ChatConversation) {
-  if (!confirm(`Delete chat “${c.title || 'New chat'}”? This can't be undone.`)) return;
+  if (!confirm(t('chat.confirmDeleteChat', { title: c.title || t('chat.newChat') }))) return;
   try {
     await api.del(`/api/chat/conversations/${c.id}`);
   } catch (e) {
     // Any error means the server never confirmed the delete — keep the chat in the list.
-    alert(e instanceof ApiError ? e.message : "Could not delete the chat — please try again.");
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotDeleteChat'));
     return;
   }
   conversations.value = conversations.value.filter((x) => x.id !== c.id);
@@ -350,7 +353,7 @@ async function togglePin(c: ChatConversation) {
     if (current.value?.id === c.id) current.value.pinned = pinned;
     await reloadConversations(); // re-sort: pinned float to the top
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Could not update the chat.');
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotUpdateChat'));
   }
 }
 async function toggleArchive(c: ChatConversation) {
@@ -365,7 +368,7 @@ async function toggleArchive(c: ChatConversation) {
       messages.value = [];
     }
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Could not update the chat.');
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotUpdateChat'));
   }
 }
 async function moveToProject(c: ChatConversation, projectId: string) {
@@ -379,7 +382,7 @@ async function moveToProject(c: ChatConversation, projectId: string) {
       project.value.conversations.unshift(c);
     }
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Could not move the chat.');
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotMoveChat'));
   }
 }
 async function renameFromMenu(c: ChatConversation) {
@@ -392,7 +395,7 @@ function deleteFromMenu(c: ChatConversation) {
   deleteConversation(c);
 }
 async function deleteProject(p: ChatProject) {
-  if (!confirm(`Delete project “${p.name}”? Its documents are removed; its chats are kept.`)) return;
+  if (!confirm(t('chat.confirmDeleteProject', { name: p.name }))) return;
   await api.del(`/api/chat/projects/${p.id}`);
   projects.value = projects.value.filter((x) => x.id !== p.id);
   if (project.value?.project.id === p.id) project.value = null;
@@ -443,7 +446,7 @@ function onScheduleProviderChange() {
 async function saveSchedule() {
   scheduleError.value = '';
   if (!sf.name.trim() || !sf.prompt.trim() || !sf.providerId || !sf.model) {
-    scheduleError.value = 'Name, prompt, provider and model are required.';
+    scheduleError.value = t('chat.scheduleFieldsRequired');
     return;
   }
   savingSchedule.value = true;
@@ -459,17 +462,17 @@ async function saveSchedule() {
     await loadSchedules();
     editingScheduleId.value = res.schedule.id;
   } catch (e) {
-    scheduleError.value = e instanceof ApiError ? e.message : 'Could not save the task.';
+    scheduleError.value = e instanceof ApiError ? e.message : t('chat.couldNotSaveTask');
   } finally {
     savingSchedule.value = false;
   }
 }
 async function deleteSchedule(s: ChatSchedule) {
-  if (!confirm(`Delete scheduled task “${s.name}”?`)) return;
+  if (!confirm(t('chat.confirmDeleteTask', { name: s.name }))) return;
   try {
     await api.del(`/api/chat/schedules/${s.id}`);
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : 'Could not delete the task — please try again.');
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotDeleteTask'));
     return;
   }
   schedules.value = schedules.value.filter((x) => x.id !== s.id);
@@ -525,7 +528,7 @@ async function savePrompt() {
   }
 }
 async function deletePrompt(p: ChatUserPrompt) {
-  if (!confirm(`Delete prompt “${p.name}”?`)) return;
+  if (!confirm(t('chat.confirmDeletePrompt', { name: p.name }))) return;
   await api.del(`/api/chat/prompts/${p.id}`);
   prompts.value = prompts.value.filter((x) => x.id !== p.id);
 }
@@ -609,7 +612,7 @@ async function saveAssistant() {
   assistantEditing.value = false;
 }
 async function deleteAssistant(a: ChatAssistant) {
-  if (!confirm(`Delete assistant “${a.name}”?`)) return;
+  if (!confirm(t('chat.confirmDeleteAssistant', { name: a.name }))) return;
   await api.del(`/api/chat/assistants/${a.id}`);
   assistants.value = assistants.value.filter((x) => x.id !== a.id);
 }
@@ -640,12 +643,12 @@ function onAssistantChange() {
 async function createConversation() {
   newError.value = '';
   if (!nc.providerId || !nc.model) {
-    newError.value = 'Pick a provider and model.';
+    newError.value = t('chat.pickProviderModel');
     return;
   }
   try {
     const res = await api.post<{ conversation: ChatConversation }>('/api/chat/conversations', {
-      title: 'New chat',
+      title: t('chat.newChat'),
       providerId: nc.providerId,
       model: nc.model,
       vserverSlug: nc.vserverSlug,
@@ -659,7 +662,7 @@ async function createConversation() {
     current.value = res.conversation;
     messages.value = [];
   } catch (e) {
-    newError.value = e instanceof ApiError ? e.message : 'Could not create chat.';
+    newError.value = e instanceof ApiError ? e.message : t('chat.couldNotCreateChat');
   }
 }
 
@@ -677,7 +680,7 @@ async function uploadFiles(files: File[]) {
         if (current.value?.id === conv.id) pending.value.push(res.attachment); // discard if the user navigated away
       } catch (err) {
         if (current.value?.id === conv.id) {
-          messages.value.push({ id: 'err-' + Date.now(), conversationId: conv.id, role: 'assistant', content: `⚠️ ${f.name}: ${err instanceof ApiError ? err.message : 'upload failed'}`, createdAt: new Date().toISOString() });
+          messages.value.push({ id: 'err-' + Date.now(), conversationId: conv.id, role: 'assistant', content: `⚠️ ${f.name}: ${err instanceof ApiError ? err.message : t('chat.uploadFailed')}`, createdAt: new Date().toISOString() });
         }
       }
     }
@@ -704,7 +707,7 @@ function removePending(a: ChatAttachment) {
 
 async function send() {
   if (!current.value || sending.value || uploading.value) return;
-  const text = input.value.trim() || (pending.value.length ? 'Please review the attached file(s).' : '');
+  const text = input.value.trim() || (pending.value.length ? t('chat.reviewAttached') : '');
   if (!text) return;
   const conv = current.value; // capture: guard against a mid-send conversation switch
   input.value = '';
@@ -724,7 +727,7 @@ async function send() {
     }
   } catch (e) {
     if (current.value?.id === conv.id) {
-      messages.value.push({ id: 'err-' + Date.now(), conversationId: conv.id, role: 'assistant', content: `⚠️ ${e instanceof ApiError ? e.message : 'Failed to get a reply.'}`, createdAt: new Date().toISOString() });
+      messages.value.push({ id: 'err-' + Date.now(), conversationId: conv.id, role: 'assistant', content: `⚠️ ${e instanceof ApiError ? e.message : t('chat.failedReply')}`, createdAt: new Date().toISOString() });
     }
   } finally {
     sending.value = false;
@@ -746,15 +749,15 @@ async function logout() {
         <PoweredByKravn v-if="brandCustomized" class="brand-pbk" />
       </div>
       <div style="padding: 10px">
-        <button class="btn primary" style="width: 100%" @click="openNew()">+ New chat</button>
-        <input v-model="chatSearch" class="chat-search" placeholder="Search chats…" />
+        <button class="btn primary" style="width: 100%" @click="openNew()">{{ t('nav.newChat') }}</button>
+        <input v-model="chatSearch" class="chat-search" :placeholder="t('nav.searchChats')" />
       </div>
       <div class="convs">
         <div class="side-section">
-          <span>Projects</span>
-          <button class="add" title="New project" @click="openNewProject">+</button>
+          <span>{{ t('nav.projects') }}</span>
+          <button class="add" :title="t('nav.newProject')" @click="openNewProject">+</button>
         </div>
-        <div v-if="projects.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No projects yet.</div>
+        <div v-if="projects.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noProjects') }}</div>
         <div
           v-for="p in projects"
           :key="p.id"
@@ -763,21 +766,21 @@ async function logout() {
           @click="openProject(p)"
         >
           📁 {{ p.name }}
-          <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">shared · {{ p.ownerEmail }}</small>
+          <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">{{ t('nav.shared') }} · {{ p.ownerEmail }}</small>
         </div>
 
-        <div class="side-section" style="margin-top: 6px"><span>Chats</span></div>
+        <div class="side-section" style="margin-top: 6px"><span>{{ t('nav.chats') }}</span></div>
         <div v-if="allTags.length" class="tag-bar">
           <button
-            v-for="t in allTags"
-            :key="t"
+            v-for="tag in allTags"
+            :key="tag"
             class="tag-chip"
-            :class="{ active: activeTag?.toLowerCase() === t.toLowerCase() }"
-            @click="toggleTagFilter(t)"
-          >{{ t }}</button>
+            :class="{ active: activeTag?.toLowerCase() === tag.toLowerCase() }"
+            @click="toggleTagFilter(tag)"
+          >{{ tag }}</button>
         </div>
-        <div v-if="conversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No chats yet.</div>
-        <div v-else-if="filteredConversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No chats match your filter.</div>
+        <div v-if="conversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noChatsYet') }}</div>
+        <div v-else-if="filteredConversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noChatsMatch') }}</div>
         <div
           v-for="c in filteredConversations"
           :key="c.id"
@@ -785,30 +788,30 @@ async function logout() {
           :class="{ active: current?.id === c.id }"
           @click="open(c)"
         >
-          <span class="conv-item-title"><span v-if="c.pinned" class="pin-dot" title="Pinned">📌</span>{{ c.title || 'New chat' }}</span>
-          <button class="conv-menu-btn" title="Chat actions" @click.stop="toggleMenu(c, $event)">⋯</button>
+          <span class="conv-item-title"><span v-if="c.pinned" class="pin-dot" :title="t('chat.pinned')">📌</span>{{ c.title || t('chat.newChat') }}</span>
+          <button class="conv-menu-btn" :title="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)">⋯</button>
           <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
-            <button class="conv-menu-item" @click="renameFromMenu(c)"><span>✏️</span> Rename</button>
+            <button class="conv-menu-item" @click="renameFromMenu(c)"><span>✏️</span> {{ t('chatMenu.rename') }}</button>
             <div class="conv-menu-item has-sub" @click.stop="moveSubmenu = !moveSubmenu">
-              <span>📁</span> Move to project <span class="sub-caret">›</span>
+              <span>📁</span> {{ t('chatMenu.moveToProject') }} <span class="sub-caret">›</span>
               <div v-if="moveSubmenu" class="conv-submenu">
-                <button class="conv-menu-item" @click="moveToProject(c, '')"><span>🚫</span> No project</button>
+                <button class="conv-menu-item" @click="moveToProject(c, '')"><span>🚫</span> {{ t('chatMenu.noProject') }}</button>
                 <button v-for="p in projects" :key="p.id" class="conv-menu-item" @click="moveToProject(c, p.id)">
                   <span>📁</span> {{ p.name }}
                 </button>
               </div>
             </div>
-            <button class="conv-menu-item" @click="togglePin(c)"><span>📌</span> {{ c.pinned ? 'Unpin' : 'Pin' }}</button>
-            <button class="conv-menu-item" @click="toggleArchive(c)"><span>🗄</span> Archive</button>
-            <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> Delete</button>
+            <button class="conv-menu-item" @click="togglePin(c)"><span>📌</span> {{ c.pinned ? t('chatMenu.unpin') : t('chatMenu.pin') }}</button>
+            <button class="conv-menu-item" @click="toggleArchive(c)"><span>🗄</span> {{ t('chatMenu.archive') }}</button>
+            <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> {{ t('chatMenu.delete') }}</button>
           </div>
         </div>
 
         <div class="side-section" style="margin-top: 6px">
-          <span>Scheduled</span>
-          <button class="add" title="New scheduled task" @click="openScheduleNew">+</button>
+          <span>{{ t('nav.scheduled') }}</span>
+          <button class="add" :title="t('nav.newScheduledTask')" @click="openScheduleNew">+</button>
         </div>
-        <div v-if="schedules.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No scheduled tasks.</div>
+        <div v-if="schedules.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noScheduledTasks') }}</div>
         <div
           v-for="s in schedules"
           :key="s.id"
@@ -816,16 +819,16 @@ async function logout() {
           :class="{ active: scheduleView && editingScheduleId === s.id }"
           @click="openSchedule(s)"
         >
-          <span class="conv-item-title">⏱ {{ s.name }}<span v-if="!s.enabled" class="muted"> · paused</span></span>
-          <button class="conv-del" title="Delete task" @click.stop="deleteSchedule(s)">🗑</button>
+          <span class="conv-item-title">⏱ {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></span>
+          <button class="conv-del" :title="t('chatMenu.deleteTask')" @click.stop="deleteSchedule(s)">🗑</button>
         </div>
 
         <div class="side-section archived-toggle" style="margin-top: 6px" @click="toggleArchivedView">
-          <span>🗄 Archived<span v-if="archived.length"> ({{ archived.length }})</span></span>
+          <span>🗄 {{ t('nav.archived') }}<span v-if="archived.length"> ({{ archived.length }})</span></span>
           <span class="caret">{{ showArchived ? '▾' : '▸' }}</span>
         </div>
         <template v-if="showArchived">
-          <div v-if="archived.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">No archived chats.</div>
+          <div v-if="archived.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noArchived') }}</div>
           <div
             v-for="c in archived"
             :key="c.id"
@@ -833,19 +836,20 @@ async function logout() {
             :class="{ active: current?.id === c.id }"
             @click="open(c)"
           >
-            <span class="conv-item-title">{{ c.title || 'New chat' }}</span>
-            <button class="conv-menu-btn" title="Chat actions" @click.stop="toggleMenu(c, $event)">⋯</button>
+            <span class="conv-item-title">{{ c.title || t('chat.newChat') }}</span>
+            <button class="conv-menu-btn" :title="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)">⋯</button>
             <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
-              <button class="conv-menu-item" @click="toggleArchive(c)"><span>↩️</span> Unarchive</button>
-              <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> Delete</button>
+              <button class="conv-menu-item" @click="toggleArchive(c)"><span>↩️</span> {{ t('chatMenu.unarchive') }}</button>
+              <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> {{ t('chatMenu.delete') }}</button>
             </div>
           </div>
         </template>
       </div>
       <div v-if="menuFor" class="menu-backdrop" @click="closeMenu"></div>
       <div class="foot">
+        <LocaleSwitcher />
         <small class="muted">{{ auth.user?.email }}</small>
-        <button class="btn" @click="logout">Sign out</button>
+        <button class="btn" @click="logout">{{ t('nav.signOut') }}</button>
       </div>
     </aside>
 
@@ -863,22 +867,22 @@ async function logout() {
             @keydown.esc.prevent="cancelRenameTitle"
             @blur="saveTitle"
           />
-          <span v-else class="chat-title" title="Click to rename" @click="startRenameTitle">{{ current.title || 'New chat' }}</span>
+          <span v-else class="chat-title" :title="t('chat.clickToRename')" @click="startRenameTitle">{{ current.title || t('chat.newChat') }}</span>
           <span class="chat-head-right">
             <small v-if="currentAssistant" class="muted">🤖 {{ currentAssistant.name }} · </small>
-            <small class="muted">{{ current.model }}<span v-if="current.vserverSlug"> · tools: {{ current.vserverSlug }}</span></small>
-            <button class="conv-del head-del" title="Delete chat" @click="deleteConversation(current)">🗑</button>
+            <small class="muted">{{ current.model }}<span v-if="current.vserverSlug"> · {{ t('chat.toolsInline', { slug: current.vserverSlug }) }}</span></small>
+            <button class="conv-del head-del" :title="t('chat.deleteChat')" @click="deleteConversation(current)">🗑</button>
           </span>
         </div>
         <div class="chat-tags">
-          <span v-for="t in (current.tags ?? [])" :key="t" class="tag-chip static">
-            {{ t }}<button class="tag-x" title="Remove tag" @click="removeTag(t)">×</button>
+          <span v-for="tag in (current.tags ?? [])" :key="tag" class="tag-chip static">
+            {{ tag }}<button class="tag-x" :title="t('chat.removeTag')" @click="removeTag(tag)">×</button>
           </span>
           <input
             v-model="tagDraft"
             class="tag-input"
             maxlength="40"
-            placeholder="+ tag"
+            :placeholder="t('chat.tagPlaceholder')"
             @keydown.enter.prevent="addTag"
             @blur="addTag"
           />
@@ -895,7 +899,7 @@ async function logout() {
                   v-for="a in attachmentsFor(m.id)"
                   :key="a.id"
                   class="att-chip att-dl"
-                  :title="`Download ${a.name}`"
+                  :title="t('chat.downloadFile', { name: a.name })"
                   @click="downloadAttachment(a)"
                 >
                   📎 {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}</small> <span class="dl-icon">⬇</span>
@@ -903,7 +907,7 @@ async function logout() {
               </div>
             </div>
           </div>
-          <div v-if="sending" class="msg assistant"><div class="bubble muted">Thinking…</div></div>
+          <div v-if="sending" class="msg assistant"><div class="bubble muted">{{ t('chat.thinking') }}</div></div>
         </div>
         <div
           class="composer-wrap"
@@ -912,23 +916,23 @@ async function logout() {
           @dragleave.prevent="dragOver = false"
           @drop.prevent="onDrop"
         >
-          <div v-if="dragOver" class="drop-hint">Drop files to attach</div>
+          <div v-if="dragOver" class="drop-hint">{{ t('chat.dropFiles') }}</div>
           <div v-if="pending.length || uploading" class="att-tray">
             <span v-for="a in pending" :key="a.id" class="att-chip">
-              📎 {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}{{ a.textChars ? '' : ' · no text' }}</small>
-              <button class="att-x" title="Remove" @click="removePending(a)">×</button>
+              📎 {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}{{ a.textChars ? '' : t('chat.noTextSuffix') }}</small>
+              <button class="att-x" :title="t('chat.remove')" @click="removePending(a)">×</button>
             </span>
-            <span v-if="uploading" class="muted" style="font-size: 12px">Uploading…</span>
+            <span v-if="uploading" class="muted" style="font-size: 12px">{{ t('chat.uploading') }}</span>
           </div>
           <div class="composer">
             <input ref="fileInput" type="file" multiple style="display: none"
               accept=".pdf,.doc,.docx,.txt,.md,.csv,.tsv,.xlsx,.xls,.json,.log,.yaml,.yml,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
               @change="onFilesSelected" />
-            <button class="btn" title="Attach files" :disabled="uploading" @click="triggerPick">📎</button>
-            <button class="btn" title="Prompt library" @click="openPrompts">📋</button>
-            <button class="btn" title="Memory — what the assistant always remembers" @click="openMemory">🧠</button>
-            <textarea v-model="input" rows="2" placeholder="Message…  (attach or drag files — PDF, Word, Excel/CSV, text, images)" @keydown.enter.exact.prevent="send"></textarea>
-            <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">Send</button>
+            <button class="btn" :title="t('chat.attachFiles')" :disabled="uploading" @click="triggerPick">📎</button>
+            <button class="btn" :title="t('chat.promptLibrary')" @click="openPrompts">📋</button>
+            <button class="btn" :title="t('chat.memoryTooltip')" @click="openMemory">🧠</button>
+            <textarea v-model="input" rows="2" :placeholder="t('chat.messagePlaceholder')" @keydown.enter.exact.prevent="send"></textarea>
+            <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">{{ t('chat.send') }}</button>
           </div>
         </div>
       </template>
@@ -937,70 +941,70 @@ async function logout() {
       <div v-else-if="project" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
           <span>📁 {{ project.project.name }}
-            <small v-if="project.project.access !== 'owner'" class="muted" style="font-size: 12px">· {{ project.project.access }} · shared by {{ project.project.ownerEmail }}</small>
+            <small v-if="project.project.access !== 'owner'" class="muted" style="font-size: 12px">· {{ project.project.access }} · {{ t('chat.sharedBy', { email: project.project.ownerEmail }) }}</small>
           </span>
           <div class="btn-row">
-            <button class="btn primary" @click="openNew(project.project.id)">+ New chat in project</button>
-            <button v-if="isOwner" class="btn" @click="deleteProject(project.project)">Delete</button>
+            <button class="btn primary" @click="openNew(project.project.id)">{{ t('chat.newChatInProject') }}</button>
+            <button v-if="isOwner" class="btn" @click="deleteProject(project.project)">{{ t('chat.delete') }}</button>
           </div>
         </div>
 
         <div class="panel-card">
-          <h3>Project instructions</h3>
-          <p class="muted" style="margin: 0; font-size: 12px">Prepended to every chat started in this project.</p>
-          <textarea v-model="project.project.instructions" rows="5" :readonly="!canEdit" placeholder="e.g. You are a compliance assistant. Always cite the source document."></textarea>
+          <h3>{{ t('chat.projectInstructions') }}</h3>
+          <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.projectInstructionsHint') }}</p>
+          <textarea v-model="project.project.instructions" rows="5" :readonly="!canEdit" :placeholder="t('chat.instructionsPlaceholder')"></textarea>
           <div v-if="canEdit" class="btn-row" style="justify-content: flex-end">
-            <button class="btn primary" :disabled="savingInstr" @click="saveInstructions">{{ savingInstr ? 'Saving…' : 'Save instructions' }}</button>
+            <button class="btn primary" :disabled="savingInstr" @click="saveInstructions">{{ savingInstr ? t('chat.saving') : t('chat.saveInstructions') }}</button>
           </div>
         </div>
 
         <div class="panel-card">
-          <h3>Documents <span class="muted" style="font-weight: 400">({{ project.documents.length }})</span></h3>
-          <p class="muted" style="margin: 0; font-size: 12px">Their text is injected as reference context when the assistant answers.</p>
-          <div v-if="project.documents.length === 0" class="muted" style="font-size: 13px">No documents yet.</div>
+          <h3>{{ t('chat.documents') }} <span class="muted" style="font-weight: 400">({{ project.documents.length }})</span></h3>
+          <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.documentsHint') }}</p>
+          <div v-if="project.documents.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noDocuments') }}</div>
           <div v-for="d in project.documents" :key="d.id" class="doc-item">
             <span>📄 {{ d.name }}</span>
             <span class="row" style="gap: 0.6rem; align-items: center">
               <span class="doc-meta">{{ Math.ceil(d.size / 1024) }} KB</span>
-              <button v-if="canEdit" class="btn" @click="deleteDocument(d)">Remove</button>
+              <button v-if="canEdit" class="btn" @click="deleteDocument(d)">{{ t('chat.remove') }}</button>
             </span>
           </div>
           <template v-if="canEdit">
             <hr style="border: none; border-top: 1px solid var(--border); margin: 0.4rem 0" />
-            <div class="field"><label>Add document</label><input v-model="newDoc.name" placeholder="Document name (e.g. policy.md)" /></div>
-            <textarea v-model="newDoc.content" rows="4" placeholder="Paste the document text…"></textarea>
+            <div class="field"><label>{{ t('chat.addDocument') }}</label><input v-model="newDoc.name" :placeholder="t('chat.docNamePlaceholder')" /></div>
+            <textarea v-model="newDoc.content" rows="4" :placeholder="t('chat.docContentPlaceholder')"></textarea>
             <div class="btn-row" style="justify-content: flex-end">
-              <button class="btn primary" :disabled="docBusy || !newDoc.name.trim() || !newDoc.content.trim()" @click="addDocument">{{ docBusy ? 'Adding…' : 'Add document' }}</button>
+              <button class="btn primary" :disabled="docBusy || !newDoc.name.trim() || !newDoc.content.trim()" @click="addDocument">{{ docBusy ? t('chat.adding') : t('chat.addDocument') }}</button>
             </div>
           </template>
         </div>
 
         <!-- Sharing (owner only) -->
         <div v-if="isOwner" class="panel-card">
-          <h3>Sharing <span class="muted" style="font-weight: 400">({{ project.members.length }})</span></h3>
-          <p class="muted" style="margin: 0; font-size: 12px">Give another Kravn user access to this project's instructions and documents.</p>
-          <div v-if="project.members.length === 0" class="muted" style="font-size: 13px">Not shared with anyone yet.</div>
+          <h3>{{ t('chat.sharing') }} <span class="muted" style="font-weight: 400">({{ project.members.length }})</span></h3>
+          <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.sharingHint') }}</p>
+          <div v-if="project.members.length === 0" class="muted" style="font-size: 13px">{{ t('chat.notSharedYet') }}</div>
           <div v-for="m in project.members" :key="m.userId" class="doc-item">
             <span>👤 {{ m.email }}</span>
             <span class="row" style="gap: 0.6rem; align-items: center">
               <span class="doc-meta">{{ m.role }}</span>
-              <button class="btn" @click="unshareMember(m)">Remove</button>
+              <button class="btn" @click="unshareMember(m)">{{ t('chat.remove') }}</button>
             </span>
           </div>
           <hr style="border: none; border-top: 1px solid var(--border); margin: 0.4rem 0" />
           <div class="row" style="gap: 0.5rem; align-items: flex-end; flex-wrap: wrap">
-            <div class="field" style="flex: 1; min-width: 180px"><label>Share with (email)</label><input v-model="share.email" placeholder="user@company.com" @keydown.enter.prevent="shareProject" /></div>
-            <div class="field"><label>Role</label>
-              <select v-model="share.role"><option value="viewer">Viewer</option><option value="editor">Editor</option></select>
+            <div class="field" style="flex: 1; min-width: 180px"><label>{{ t('chat.shareWithEmail') }}</label><input v-model="share.email" :placeholder="t('chat.emailPlaceholder')" @keydown.enter.prevent="shareProject" /></div>
+            <div class="field"><label>{{ t('chat.role') }}</label>
+              <select v-model="share.role"><option value="viewer">{{ t('chat.viewer') }}</option><option value="editor">{{ t('chat.editor') }}</option></select>
             </div>
-            <button class="btn primary" :disabled="sharing || !share.email.trim()" @click="shareProject">{{ sharing ? 'Sharing…' : 'Share' }}</button>
+            <button class="btn primary" :disabled="sharing || !share.email.trim()" @click="shareProject">{{ sharing ? t('chat.sharingBtn') : t('chat.share') }}</button>
           </div>
           <p v-if="shareError" class="muted" style="color: #e5484d; font-size: 12px; margin: 0.3rem 0 0">{{ shareError }}</p>
         </div>
 
         <div class="panel-card" v-if="project.conversations.length">
-          <h3>Chats in this project</h3>
-          <div v-for="c in project.conversations" :key="c.id" class="conv-item" @click="open(c)">{{ c.title || 'New chat' }}</div>
+          <h3>{{ t('chat.chatsInProject') }}</h3>
+          <div v-for="c in project.conversations" :key="c.id" class="conv-item" @click="open(c)">{{ c.title || t('chat.newChat') }}</div>
         </div>
       </div>
 
@@ -1008,33 +1012,33 @@ async function logout() {
       <!-- Scheduled task editor -->
       <div v-else-if="scheduleView" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
-          <span>⏱ {{ editingScheduleId ? 'Edit scheduled task' : 'New scheduled task' }}</span>
+          <span>⏱ {{ editingScheduleId ? t('chat.editScheduledTask') : t('chat.newScheduledTask') }}</span>
         </div>
 
         <div class="panel-card">
-          <div class="field"><label>Name</label><input v-model="sf.name" placeholder="e.g. Daily incident summary" /></div>
-          <div class="field"><label>Prompt (what to run)</label><textarea v-model="sf.prompt" rows="4" placeholder="e.g. Summarize yesterday's incidents and list the top 3 risks."></textarea></div>
+          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="sf.name" :placeholder="t('chat.taskNamePlaceholder')" /></div>
+          <div class="field"><label>{{ t('chat.promptWhatToRun') }}</label><textarea v-model="sf.prompt" rows="4" :placeholder="t('chat.taskPromptPlaceholder')"></textarea></div>
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
-            <div class="field" style="flex: 1; min-width: 150px"><label>Provider</label>
+            <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.provider') }}</label>
               <select v-model="sf.providerId" @change="onScheduleProviderChange">
                 <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
-            <div class="field" style="flex: 1; min-width: 150px"><label>Model</label>
-              <input v-model="sf.model" list="sched-models" placeholder="model" />
+            <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.model') }}</label>
+              <input v-model="sf.model" list="sched-models" :placeholder="t('chat.modelPlaceholder')" />
               <datalist id="sched-models"><option v-for="m in (providers.find((p) => p.id === sf.providerId)?.models ?? [])" :key="m" :value="m" /></datalist>
             </div>
           </div>
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
-            <div class="field" style="flex: 1; min-width: 150px"><label>Tools (MCP endpoint)</label>
+            <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.toolsMcpEndpoint') }}</label>
               <select v-model="sf.vserverSlug">
-                <option value="">None</option>
+                <option value="">{{ t('chat.none') }}</option>
                 <option v-for="v in vservers" :key="v.slug" :value="v.slug">{{ v.name }}</option>
               </select>
             </div>
-            <div class="field" style="flex: 1; min-width: 150px"><label>Project (context)</label>
+            <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.projectContext') }}</label>
               <select v-model="sf.projectId">
-                <option value="">None</option>
+                <option value="">{{ t('chat.none') }}</option>
                 <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
@@ -1042,32 +1046,32 @@ async function logout() {
         </div>
 
         <div class="panel-card">
-          <h3>When</h3>
+          <h3>{{ t('chat.when') }}</h3>
           <div class="row" style="gap: 1rem">
-            <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="cron" v-model="sf.kind" /> Recurring (cron)</label>
-            <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="once" v-model="sf.kind" /> Once</label>
+            <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="cron" v-model="sf.kind" /> {{ t('chat.recurringCron') }}</label>
+            <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="once" v-model="sf.kind" /> {{ t('chat.once') }}</label>
           </div>
-          <div v-if="sf.kind === 'cron'" class="field"><label>Cron expression</label>
+          <div v-if="sf.kind === 'cron'" class="field"><label>{{ t('chat.cronExpression') }}</label>
             <input v-model="sf.cron" placeholder="0 9 * * 1" />
-            <small class="muted">5 fields: min hour day-of-month month day-of-week. E.g. <code>*/30 * * * *</code> = every 30 min · <code>0 9 * * 1</code> = 9am Mondays.</small>
+            <small class="muted">{{ t('chat.cronHelp1') }} <code>*/30 * * * *</code> {{ t('chat.cronHelp2') }} <code>0 9 * * 1</code> {{ t('chat.cronHelp3') }}</small>
           </div>
-          <div v-else class="field"><label>Run at</label><input v-model="sf.runAt" type="datetime-local" /></div>
-          <div class="field"><label>Timezone</label><input v-model="sf.timezone" placeholder="UTC" /></div>
-          <label class="row" style="gap: 0.4rem; align-items: center; margin-top: 0.3rem"><input type="checkbox" v-model="sf.enabled" /> Enabled</label>
+          <div v-else class="field"><label>{{ t('chat.runAt') }}</label><input v-model="sf.runAt" type="datetime-local" /></div>
+          <div class="field"><label>{{ t('chat.timezone') }}</label><input v-model="sf.timezone" placeholder="UTC" /></div>
+          <label class="row" style="gap: 0.4rem; align-items: center; margin-top: 0.3rem"><input type="checkbox" v-model="sf.enabled" /> {{ t('chat.enabled') }}</label>
         </div>
 
         <p v-if="scheduleError" class="muted" style="color: #e5484d; font-size: 12px">{{ scheduleError }}</p>
         <div class="btn-row" style="justify-content: space-between">
-          <button v-if="scheduleById(editingScheduleId)" class="btn" @click="deleteSchedule(scheduleById(editingScheduleId)!)">Delete</button>
+          <button v-if="scheduleById(editingScheduleId)" class="btn" @click="deleteSchedule(scheduleById(editingScheduleId)!)">{{ t('chat.delete') }}</button>
           <span></span>
-          <button class="btn primary" :disabled="savingSchedule" @click="saveSchedule">{{ savingSchedule ? 'Saving…' : 'Save task' }}</button>
+          <button class="btn primary" :disabled="savingSchedule" @click="saveSchedule">{{ savingSchedule ? t('chat.saving') : t('chat.saveTask') }}</button>
         </div>
 
         <div v-if="scheduleById(editingScheduleId)" class="panel-card">
-          <h3>Status</h3>
+          <h3>{{ t('chat.status') }}</h3>
           <div class="muted" style="font-size: 13px; display: flex; flex-direction: column; gap: 2px">
-            <span>Next run: {{ scheduleById(editingScheduleId)?.nextRunAt || (scheduleById(editingScheduleId)?.enabled ? '—' : 'paused') }}</span>
-            <span v-if="scheduleById(editingScheduleId)?.lastRunAt">Last run: {{ scheduleById(editingScheduleId)?.lastRunAt }} · {{ scheduleById(editingScheduleId)?.lastStatus }}</span>
+            <span>{{ t('chat.nextRun') }} {{ scheduleById(editingScheduleId)?.nextRunAt || (scheduleById(editingScheduleId)?.enabled ? '—' : t('chat.paused')) }}</span>
+            <span v-if="scheduleById(editingScheduleId)?.lastRunAt">{{ t('chat.lastRun') }} {{ scheduleById(editingScheduleId)?.lastRunAt }} · {{ scheduleById(editingScheduleId)?.lastStatus }}</span>
             <span v-if="scheduleById(editingScheduleId)?.lastError" style="color: #e5484d">{{ scheduleById(editingScheduleId)?.lastError }}</span>
           </div>
         </div>
@@ -1076,10 +1080,10 @@ async function logout() {
       <div v-else class="chat-empty">
         <BrandLogo :size="48" />
         <PoweredByKravn v-if="brandCustomized" style="margin-top: -4px" />
-        <p>Start a new chat, or open a project to give the assistant instructions and documents.</p>
+        <p>{{ t('chat.emptyPrompt') }}</p>
         <div class="btn-row">
-          <button class="btn primary" @click="openNew()">+ New chat</button>
-          <button class="btn" @click="openNewProject">+ New project</button>
+          <button class="btn primary" @click="openNew()">{{ t('chat.newChatBtn') }}</button>
+          <button class="btn" @click="openNewProject">{{ t('chat.newProjectBtn') }}</button>
         </div>
       </div>
     </main>
@@ -1087,53 +1091,53 @@ async function logout() {
     <!-- New chat modal -->
     <div v-if="showNew" class="modal-backdrop" @click.self="showNew = false">
       <div class="modal">
-        <h2>New chat</h2>
+        <h2>{{ t('chat.newChat') }}</h2>
         <div v-if="newError" class="alert error">{{ newError }}</div>
         <div v-if="providers.length === 0" class="alert error">
-          No LLM providers are configured. Ask an admin to add one in the operator console.
+          {{ t('chat.noProvidersConfigured') }}
         </div>
         <div class="field">
           <label style="display: flex; justify-content: space-between; align-items: center">
-            <span>Assistant (optional)</span>
-            <a href="#" style="font-size: 12px" @click.prevent="openAssistants">Manage…</a>
+            <span>{{ t('chat.assistantOptional') }}</span>
+            <a href="#" style="font-size: 12px" @click.prevent="openAssistants">{{ t('chat.manage') }}</a>
           </label>
           <select v-model="nc.assistantId" @change="onAssistantChange">
-            <option value="">No assistant</option>
+            <option value="">{{ t('chat.noAssistant') }}</option>
             <option v-for="a in assistants" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
-          <small class="muted">An assistant pre-fills the model + tools and adds its instructions to the chat.</small>
+          <small class="muted">{{ t('chat.assistantHint') }}</small>
         </div>
         <div class="field">
-          <label>Model provider</label>
+          <label>{{ t('chat.modelProvider') }}</label>
           <select v-model="nc.providerId" @change="onProviderChange">
             <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
         </div>
         <div class="field">
-          <label>Model</label>
+          <label>{{ t('chat.model') }}</label>
           <input v-model="nc.model" list="model-list" placeholder="gpt-4o-mini" />
           <datalist id="model-list">
             <option v-for="m in providers.find((p) => p.id === nc.providerId)?.models ?? []" :key="m" :value="m" />
           </datalist>
         </div>
         <div class="field">
-          <label>Tools (optional)</label>
+          <label>{{ t('chat.toolsOptional') }}</label>
           <select v-model="nc.vserverSlug">
-            <option value="">No tools</option>
+            <option value="">{{ t('chat.noTools') }}</option>
             <option v-for="v in vservers" :key="v.slug" :value="v.slug">{{ v.name }}</option>
           </select>
         </div>
         <div class="field">
-          <label>Project (optional)</label>
+          <label>{{ t('chat.projectOptional') }}</label>
           <select v-model="nc.projectId">
-            <option value="">No project</option>
+            <option value="">{{ t('chat.noProject') }}</option>
             <option v-for="p in projects" :key="p.id" :value="p.id">{{ p.name }}</option>
           </select>
-          <small class="muted">A project adds its instructions and documents as context.</small>
+          <small class="muted">{{ t('chat.projectHint') }}</small>
         </div>
         <div class="btn-row" style="justify-content: flex-end">
-          <button class="btn" @click="showNew = false">Cancel</button>
-          <button class="btn primary" :disabled="providers.length === 0" @click="createConversation">Create</button>
+          <button class="btn" @click="showNew = false">{{ t('chat.cancel') }}</button>
+          <button class="btn primary" :disabled="providers.length === 0" @click="createConversation">{{ t('chat.create') }}</button>
         </div>
       </div>
     </div>
@@ -1141,16 +1145,16 @@ async function logout() {
     <!-- New project modal -->
     <div v-if="showNewProject" class="modal-backdrop" @click.self="showNewProject = false">
       <div class="modal">
-        <h2>New project</h2>
+        <h2>{{ t('chat.newProject') }}</h2>
         <div v-if="projectError" class="alert error">{{ projectError }}</div>
-        <div class="field"><label>Name</label><input v-model="np.name" placeholder="e.g. Q3 Compliance" autofocus /></div>
+        <div class="field"><label>{{ t('chat.name') }}</label><input v-model="np.name" :placeholder="t('chat.newProjectNamePlaceholder')" autofocus /></div>
         <div class="field">
-          <label>Instructions (optional)</label>
-          <textarea v-model="np.instructions" rows="4" placeholder="System instructions for every chat in this project…"></textarea>
+          <label>{{ t('chat.instructionsOptional') }}</label>
+          <textarea v-model="np.instructions" rows="4" :placeholder="t('chat.projectInstructionsPlaceholder')"></textarea>
         </div>
         <div class="btn-row" style="justify-content: flex-end">
-          <button class="btn" @click="showNewProject = false">Cancel</button>
-          <button class="btn primary" @click="createProject">Create</button>
+          <button class="btn" @click="showNewProject = false">{{ t('chat.cancel') }}</button>
+          <button class="btn primary" @click="createProject">{{ t('chat.create') }}</button>
         </div>
       </div>
     </div>
@@ -1159,30 +1163,30 @@ async function logout() {
     <div v-if="showPrompts" class="modal-backdrop" @click.self="showPrompts = false">
       <div class="modal">
         <div class="btn-row" style="justify-content: space-between; align-items: center">
-          <h2 style="margin: 0">{{ promptEditing ? (editingPromptId ? 'Edit prompt' : 'New prompt') : 'Prompt library' }}</h2>
-          <button v-if="!promptEditing" class="btn primary" @click="newPrompt">+ New</button>
+          <h2 style="margin: 0">{{ promptEditing ? (editingPromptId ? t('chat.editPrompt') : t('chat.newPrompt')) : t('chat.promptLibrary') }}</h2>
+          <button v-if="!promptEditing" class="btn primary" @click="newPrompt">{{ t('chat.addNew') }}</button>
         </div>
         <template v-if="!promptEditing">
-          <p class="muted" style="font-size: 12px; margin: 0.2rem 0">Your saved prompts. Click Use to drop one into the message box; you can also create a custom prompt any time.</p>
-          <div v-if="prompts.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">No saved prompts yet — create one with “+ New”.</div>
+          <p class="muted" style="font-size: 12px; margin: 0.2rem 0">{{ t('chat.promptsHint') }}</p>
+          <div v-if="prompts.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noPromptsYet') }}</div>
           <div v-for="p in prompts" :key="p.id" class="doc-item">
             <span class="conv-item-title">📋 {{ p.name }}</span>
             <span class="row" style="gap: 0.4rem; align-items: center">
-              <button class="btn" @click="usePrompt(p)">Use</button>
-              <button class="btn" @click="editPrompt(p)">Edit</button>
-              <button class="btn" title="Delete" @click="deletePrompt(p)">🗑</button>
+              <button class="btn" @click="usePrompt(p)">{{ t('chat.use') }}</button>
+              <button class="btn" @click="editPrompt(p)">{{ t('chat.edit') }}</button>
+              <button class="btn" :title="t('chat.delete')" @click="deletePrompt(p)">🗑</button>
             </span>
           </div>
           <div class="btn-row" style="justify-content: flex-end; margin-top: 0.5rem">
-            <button class="btn" @click="showPrompts = false">Close</button>
+            <button class="btn" @click="showPrompts = false">{{ t('chat.close') }}</button>
           </div>
         </template>
         <template v-else>
-          <div class="field"><label>Name</label><input v-model="pform.name" placeholder="e.g. Weekly report" autofocus /></div>
-          <div class="field"><label>Prompt</label><textarea v-model="pform.content" rows="6" placeholder="The prompt text…"></textarea></div>
+          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="pform.name" :placeholder="t('chat.promptNamePlaceholder')" autofocus /></div>
+          <div class="field"><label>{{ t('chat.prompt') }}</label><textarea v-model="pform.content" rows="6" :placeholder="t('chat.promptTextPlaceholder')"></textarea></div>
           <div class="btn-row" style="justify-content: flex-end">
-            <button class="btn" @click="promptEditing = false">Back</button>
-            <button class="btn primary" :disabled="!pform.name.trim() || !pform.content.trim()" @click="savePrompt">Save</button>
+            <button class="btn" @click="promptEditing = false">{{ t('chat.back') }}</button>
+            <button class="btn primary" :disabled="!pform.name.trim() || !pform.content.trim()" @click="savePrompt">{{ t('chat.save') }}</button>
           </div>
         </template>
       </div>
@@ -1191,23 +1195,22 @@ async function logout() {
     <!-- Persistent memory -->
     <div v-if="showMemory" class="modal-backdrop" @click.self="showMemory = false">
       <div class="modal">
-        <h2 style="margin: 0 0 0.2rem">Memory</h2>
+        <h2 style="margin: 0 0 0.2rem">{{ t('chat.memory') }}</h2>
         <p class="muted" style="font-size: 12px; margin: 0.2rem 0">
-          Facts you add here are given to the assistant at the start of every chat. You control exactly what is
-          remembered — nothing is captured automatically.
+          {{ t('chat.memoryHint') }}
         </p>
-        <div v-if="memory.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">No memories yet.</div>
+        <div v-if="memory.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noMemories') }}</div>
         <div v-for="m in memory" :key="m.id" class="doc-item">
           <span class="conv-item-title" style="white-space: normal">🧠 {{ m.content }}</span>
-          <button class="btn" title="Forget" @click="deleteMemory(m)">🗑</button>
+          <button class="btn" :title="t('chat.forget')" @click="deleteMemory(m)">🗑</button>
         </div>
         <div class="field" style="margin-top: 0.5rem">
-          <label>Add a memory</label>
-          <textarea v-model="memoryDraft" rows="2" maxlength="2000" placeholder="e.g. I manage the AML compliance team; always answer in Spanish." @keydown.enter.exact.prevent="addMemory"></textarea>
+          <label>{{ t('chat.addMemory') }}</label>
+          <textarea v-model="memoryDraft" rows="2" maxlength="2000" :placeholder="t('chat.memoryPlaceholder')" @keydown.enter.exact.prevent="addMemory"></textarea>
         </div>
         <div class="btn-row" style="justify-content: flex-end">
-          <button class="btn" @click="showMemory = false">Close</button>
-          <button class="btn primary" :disabled="!memoryDraft.trim() || savingMemory" @click="addMemory">Add</button>
+          <button class="btn" @click="showMemory = false">{{ t('chat.close') }}</button>
+          <button class="btn primary" :disabled="!memoryDraft.trim() || savingMemory" @click="addMemory">{{ t('chat.add') }}</button>
         </div>
       </div>
     </div>
@@ -1216,50 +1219,50 @@ async function logout() {
     <div v-if="showAssistants" class="modal-backdrop" @click.self="showAssistants = false">
       <div class="modal">
         <div class="btn-row" style="justify-content: space-between; align-items: center">
-          <h2 style="margin: 0">{{ assistantEditing ? (editingAssistantId ? 'Edit assistant' : 'New assistant') : 'Assistants' }}</h2>
-          <button v-if="!assistantEditing" class="btn primary" @click="newAssistant">+ New</button>
+          <h2 style="margin: 0">{{ assistantEditing ? (editingAssistantId ? t('chat.editAssistant') : t('chat.newAssistant')) : t('chat.assistants') }}</h2>
+          <button v-if="!assistantEditing" class="btn primary" @click="newAssistant">{{ t('chat.addNew') }}</button>
         </div>
         <template v-if="!assistantEditing">
-          <p class="muted" style="font-size: 12px; margin: 0.2rem 0">Reusable presets — a persona (instructions) plus a default model and tools. Pick one when you start a chat.</p>
-          <div v-if="assistants.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">No assistants yet — create one with “+ New”.</div>
+          <p class="muted" style="font-size: 12px; margin: 0.2rem 0">{{ t('chat.assistantsHint') }}</p>
+          <div v-if="assistants.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noAssistantsYet') }}</div>
           <div v-for="a in assistants" :key="a.id" class="doc-item">
             <span class="conv-item-title">🤖 {{ a.name }}</span>
             <span class="row" style="gap: 0.4rem; align-items: center">
-              <button class="btn" @click="editAssistant(a)">Edit</button>
-              <button class="btn" title="Delete" @click="deleteAssistant(a)">🗑</button>
+              <button class="btn" @click="editAssistant(a)">{{ t('chat.edit') }}</button>
+              <button class="btn" :title="t('chat.delete')" @click="deleteAssistant(a)">🗑</button>
             </span>
           </div>
           <div class="btn-row" style="justify-content: flex-end; margin-top: 0.5rem">
-            <button class="btn" @click="showAssistants = false">Close</button>
+            <button class="btn" @click="showAssistants = false">{{ t('chat.close') }}</button>
           </div>
         </template>
         <template v-else>
-          <div class="field"><label>Name</label><input v-model="af.name" placeholder="e.g. Compliance analyst" autofocus /></div>
-          <div class="field"><label>Instructions</label><textarea v-model="af.instructions" rows="5" placeholder="How this assistant should behave — persona, tone, rules…"></textarea></div>
+          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="af.name" :placeholder="t('chat.assistantNamePlaceholder')" autofocus /></div>
+          <div class="field"><label>{{ t('chat.instructions') }}</label><textarea v-model="af.instructions" rows="5" :placeholder="t('chat.assistantInstructionsPlaceholder')"></textarea></div>
           <div class="field">
-            <label>Model provider</label>
+            <label>{{ t('chat.modelProvider') }}</label>
             <select v-model="af.providerId" @change="onAssistantFormProvider">
-              <option value="">Chat default</option>
+              <option value="">{{ t('chat.chatDefault') }}</option>
               <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
             </select>
           </div>
           <div class="field" v-if="af.providerId">
-            <label>Model</label>
+            <label>{{ t('chat.model') }}</label>
             <input v-model="af.model" list="assistant-model-list" placeholder="gpt-4o-mini" />
             <datalist id="assistant-model-list">
               <option v-for="m in providers.find((p) => p.id === af.providerId)?.models ?? []" :key="m" :value="m" />
             </datalist>
           </div>
           <div class="field">
-            <label>Tools (optional)</label>
+            <label>{{ t('chat.toolsOptional') }}</label>
             <select v-model="af.vserverSlug">
-              <option value="">No tools</option>
+              <option value="">{{ t('chat.noTools') }}</option>
               <option v-for="v in vservers" :key="v.slug" :value="v.slug">{{ v.name }}</option>
             </select>
           </div>
           <div class="btn-row" style="justify-content: flex-end">
-            <button class="btn" @click="assistantEditing = false">Back</button>
-            <button class="btn primary" :disabled="!af.name.trim()" @click="saveAssistant">Save</button>
+            <button class="btn" @click="assistantEditing = false">{{ t('chat.back') }}</button>
+            <button class="btn primary" :disabled="!af.name.trim()" @click="saveAssistant">{{ t('chat.save') }}</button>
           </div>
         </template>
       </div>

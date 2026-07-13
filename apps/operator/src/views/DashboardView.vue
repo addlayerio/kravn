@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { RouterLink } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import type { UpstreamServer, Tool, McpEndpoint } from '@kravn/contracts';
 import { api } from '../api/client';
 import { useBootstrapStore } from '../stores/bootstrap';
 import ArchitectureFlow from '../components/ArchitectureFlow.vue';
 
+const { t } = useI18n();
 const bootstrap = useBootstrapStore();
 const servers = ref<UpstreamServer[]>([]);
 const tools = ref<Tool[]>([]);
@@ -31,7 +33,7 @@ onMounted(async () => {
 <template>
   <div class="topbar">
     <div>
-      <h1>Dashboard</h1>
+      <h1>{{ t('dashboardView.title') }}</h1>
       <small class="muted">{{ bootstrap.info?.instanceName }} · v{{ bootstrap.info?.version }}</small>
     </div>
   </div>
@@ -40,29 +42,29 @@ onMounted(async () => {
 
   <div class="grid cols-3">
     <RouterLink to="/servers" class="card">
-      <small class="muted">MCP Servers</small>
+      <small class="muted">{{ t('dashboardView.mcpServers') }}</small>
       <div class="kpi">{{ servers.length }}</div>
-      <small class="muted">{{ servers.filter((s) => s.status === 'online').length }} online</small>
+      <small class="muted">{{ t('dashboardView.online', { count: servers.filter((s) => s.status === 'online').length }) }}</small>
     </RouterLink>
     <RouterLink to="/tools" class="card">
-      <small class="muted">Tools</small>
+      <small class="muted">{{ t('dashboardView.tools') }}</small>
       <div class="kpi">{{ tools.length }}</div>
     </RouterLink>
     <RouterLink to="/mcp-endpoints" class="card">
-      <small class="muted">MCP Endpoints</small>
+      <small class="muted">{{ t('dashboardView.mcpEndpoints') }}</small>
       <div class="kpi">{{ vservers.length }}</div>
     </RouterLink>
   </div>
 
   <div class="card">
-    <h3>Server status</h3>
-    <p v-if="loading" class="muted">Loading…</p>
+    <h3>{{ t('dashboardView.serverStatus') }}</h3>
+    <p v-if="loading" class="muted">{{ t('dashboardView.loading') }}</p>
     <div v-else-if="servers.length === 0" class="empty">
-      No upstream servers yet. <RouterLink to="/servers">Add your first one →</RouterLink>
+      {{ t('dashboardView.noServers') }} <RouterLink to="/servers">{{ t('dashboardView.addFirst') }}</RouterLink>
     </div>
     <table v-else>
       <thead>
-        <tr><th>Name</th><th>Transport</th><th>Status</th><th>Last error</th></tr>
+        <tr><th>{{ t('dashboardView.colName') }}</th><th>{{ t('dashboardView.colTransport') }}</th><th>{{ t('dashboardView.colStatus') }}</th><th>{{ t('dashboardView.colLastError') }}</th></tr>
       </thead>
       <tbody>
         <tr v-for="s in servers" :key="s.id">

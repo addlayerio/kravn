@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { PlatformOverview } from '@kravn/contracts';
 import { api } from '../api/client';
 import { useThemeStore } from '../stores/theme';
@@ -33,6 +34,7 @@ const COL_X = { input: 130, gateway: 500, output: 858 } as const;
 const RAIL_HALF = { input: 118, gateway: 165, output: 145 } as const;
 
 const theme = useThemeStore();
+const { t } = useI18n();
 const data = ref<PlatformOverview | null>(null);
 const loading = ref(true);
 const error = ref('');
@@ -43,7 +45,7 @@ async function load(): Promise<void> {
   try {
     data.value = await api.get<PlatformOverview>('/api/overview');
   } catch (e) {
-    error.value = (e as Error).message || 'Failed to load overview.';
+    error.value = (e as Error).message || t('architectureFlow.loadError');
   } finally {
     loading.value = false;
   }
@@ -114,13 +116,14 @@ const nodes = computed<NodeModel[]>(() => {
       w: 196,
       hue: 'blue',
       icon: 'server',
-      title: 'MCP Endpoints',
+      title: t('architectureFlow.mcpEndpointsTitle'),
       value: `${d.mcpEndpoints.active}`,
-      unit: `/ ${d.mcpEndpoints.total} active`,
+      unit: t('architectureFlow.unitActive', { total: d.mcpEndpoints.total }),
       ok: d.mcpEndpoints.active > 0 ? true : null,
-      tip:
-        `MCP Endpoints (inputs)\n` +
-        `Active: ${d.mcpEndpoints.active} of ${d.mcpEndpoints.total}`,
+      tip: t('architectureFlow.tipEndpoints', {
+        active: d.mcpEndpoints.active,
+        total: d.mcpEndpoints.total,
+      }),
     },
     {
       id: 'gateway',
@@ -131,15 +134,21 @@ const nodes = computed<NodeModel[]>(() => {
       icon: 'gate',
       title: d.instanceName || 'Kravn',
       value: `${d.plugins.enabled}`,
-      unit: `/ ${d.plugins.total} plugins enabled`,
+      unit: t('architectureFlow.unitPluginsEnabled', { total: d.plugins.total }),
       ok: null,
       tip:
-        `Gateway middleware — v${d.version}\n` +
-        `Plugins enabled: ${d.plugins.enabled} of ${d.plugins.total}\n\n` +
-        `Hook breakdown:\n` +
+        t('architectureFlow.tipGatewayHeader', { version: d.version }) +
+        '\n' +
+        t('architectureFlow.tipGatewayPlugins', {
+          enabled: d.plugins.enabled,
+          total: d.plugins.total,
+        }) +
+        '\n\n' +
+        t('architectureFlow.tipHookBreakdown') +
+        '\n' +
         (d.plugins.byHook.length
           ? d.plugins.byHook.map((h) => `  • ${h.hook}: ${h.count}`).join('\n')
-          : '  • no hook plugins'),
+          : '  • ' + t('architectureFlow.noHookPlugins')),
     },
     {
       id: 'database',
@@ -148,15 +157,23 @@ const nodes = computed<NodeModel[]>(() => {
       w: 236,
       hue: dbOk ? 'green' : 'red',
       icon: 'db',
-      title: 'Database',
+      title: t('architectureFlow.databaseTitle'),
       value: d.database.kind,
-      unit: dbOk ? 'connected' : 'disconnected',
+      unit: dbOk
+        ? t('architectureFlow.connected')
+        : t('architectureFlow.disconnected'),
       ok: dbOk,
       textMetric: true,
       tip:
-        `Infrastructure\n` +
-        `Engine: ${d.database.kind}\n` +
-        `Status: ${dbOk ? 'connected' : 'disconnected'}`,
+        t('architectureFlow.tipInfraHeader') +
+        '\n' +
+        t('architectureFlow.tipEngine', { kind: d.database.kind }) +
+        '\n' +
+        t('architectureFlow.tipStatus', {
+          status: dbOk
+            ? t('architectureFlow.connected')
+            : t('architectureFlow.disconnected'),
+        }),
     },
     {
       id: 'servers',
@@ -165,11 +182,14 @@ const nodes = computed<NodeModel[]>(() => {
       w: 228,
       hue: 'green',
       icon: 'cloud',
-      title: 'MCP Servers',
+      title: t('architectureFlow.mcpServersTitle'),
       value: `${d.servers.online}`,
-      unit: `/ ${d.servers.total} online`,
+      unit: t('architectureFlow.unitOnline', { total: d.servers.total }),
       ok: d.servers.total === 0 ? null : d.servers.online === d.servers.total,
-      tip: `Upstream MCP servers\nOnline: ${d.servers.online} of ${d.servers.total}`,
+      tip: t('architectureFlow.tipServers', {
+        online: d.servers.online,
+        total: d.servers.total,
+      }),
     },
     {
       id: 'tools',
@@ -178,11 +198,14 @@ const nodes = computed<NodeModel[]>(() => {
       w: 228,
       hue: 'red',
       icon: 'tool',
-      title: 'Tools',
+      title: t('architectureFlow.toolsTitle'),
       value: `${d.tools.enabled}`,
-      unit: `/ ${d.tools.total} enabled`,
+      unit: t('architectureFlow.unitEnabled', { total: d.tools.total }),
       ok: null,
-      tip: `Tools\nEnabled: ${d.tools.enabled} of ${d.tools.total}`,
+      tip: t('architectureFlow.tipTools', {
+        enabled: d.tools.enabled,
+        total: d.tools.total,
+      }),
     },
     {
       id: 'prompts',
@@ -191,11 +214,14 @@ const nodes = computed<NodeModel[]>(() => {
       w: 228,
       hue: 'blue',
       icon: 'prompt',
-      title: 'Prompts',
+      title: t('architectureFlow.promptsTitle'),
       value: `${d.prompts.enabled}`,
-      unit: `/ ${d.prompts.total} enabled`,
+      unit: t('architectureFlow.unitEnabled', { total: d.prompts.total }),
       ok: null,
-      tip: `Prompts\nEnabled: ${d.prompts.enabled} of ${d.prompts.total}`,
+      tip: t('architectureFlow.tipPrompts', {
+        enabled: d.prompts.enabled,
+        total: d.prompts.total,
+      }),
     },
     {
       id: 'resources',
@@ -204,11 +230,14 @@ const nodes = computed<NodeModel[]>(() => {
       w: 228,
       hue: 'amber',
       icon: 'doc',
-      title: 'Resources',
+      title: t('architectureFlow.resourcesTitle'),
       value: `${d.resources.enabled}`,
-      unit: `/ ${d.resources.total} enabled`,
+      unit: t('architectureFlow.unitEnabled', { total: d.resources.total }),
       ok: null,
-      tip: `Resources\nEnabled: ${d.resources.enabled} of ${d.resources.total}`,
+      tip: t('architectureFlow.tipResources', {
+        enabled: d.resources.enabled,
+        total: d.resources.total,
+      }),
     },
   ];
 });
@@ -314,9 +343,9 @@ function rail(key: keyof typeof COL_X, label: string, hue: string): RailModel {
   };
 }
 const rails = computed<RailModel[]>(() => [
-  rail('input', 'Inputs', HUE.blue),
-  rail('gateway', 'Gateway', HUE.violet),
-  rail('output', 'Outputs', HUE.green),
+  rail('input', t('architectureFlow.railInputs'), HUE.blue),
+  rail('gateway', t('architectureFlow.railGateway'), HUE.violet),
+  rail('output', t('architectureFlow.railOutputs'), HUE.green),
 ]);
 
 function pct(v: number, total: number): string {
@@ -329,14 +358,14 @@ function pct(v: number, total: number): string {
     <div class="arch-head">
       <div class="arch-title">
         <span class="arch-dot" aria-hidden="true"></span>
-        <h3>Architecture Flow</h3>
+        <h3>{{ t('architectureFlow.title') }}</h3>
         <small v-if="data" class="muted">{{ data.instanceName }} · v{{ data.version }}</small>
       </div>
       <button
         class="arch-refresh"
         :disabled="loading"
-        title="Refresh"
-        aria-label="Refresh"
+        :title="t('architectureFlow.refresh')"
+        :aria-label="t('architectureFlow.refresh')"
         @click="load"
       >
         <svg viewBox="0 0 20 20" width="15" height="15" :class="{ spin: loading }" aria-hidden="true">
@@ -353,7 +382,7 @@ function pct(v: number, total: number): string {
     </div>
 
     <p v-if="error" class="empty">{{ error }}</p>
-    <p v-else-if="loading && !data" class="muted arch-loading">Loading platform topology…</p>
+    <p v-else-if="loading && !data" class="muted arch-loading">{{ t('architectureFlow.loading') }}</p>
 
     <div v-else-if="data" class="arch-stage">
       <!-- Translucent column rails (backdrop), aligned to the same virtual x-anchors -->
@@ -433,7 +462,7 @@ function pct(v: number, total: number): string {
           <div class="gw-meter">
             <div class="gw-meter-top">
               <span class="gw-pct">{{ pluginPct }}%</span>
-              <span class="gw-meter-label">enabled</span>
+              <span class="gw-meter-label">{{ t('architectureFlow.enabledLabel') }}</span>
             </div>
             <div class="gw-track">
               <div class="gw-fill" :style="{ width: pluginPct + '%' }"></div>
@@ -450,7 +479,7 @@ function pct(v: number, total: number): string {
               {{ h.hook }}<b>{{ h.count }}</b>
             </span>
             <span v-if="gatewayHooksMore > 0" class="pill pill-more">+{{ gatewayHooksMore }}</span>
-            <span v-if="gatewayHooks.length === 0" class="pill pill-empty">no hooks</span>
+            <span v-if="gatewayHooks.length === 0" class="pill pill-empty">{{ t('architectureFlow.noHooks') }}</span>
           </div>
         </template>
       </div>

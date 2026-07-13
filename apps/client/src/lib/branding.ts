@@ -21,11 +21,19 @@ export function applyBranding(info: BootstrapInfo | null): void {
   const parts: string[] = [];
   if (b?.primaryColor) parts.push(`:root{--accent:${b.primaryColor};}`);
   if (b?.cssOverride) parts.push(sanitizeCssOverride(b.cssOverride));
-  // Attribution guard — appended AFTER the override (later + high specificity wins) so a casual
-  // `.powered-by{display:none}` in the CSS override can't strip the "Powered by Kravn" mark.
+  // Attribution guard — appended AFTER the override (later + higher specificity wins) so a CSS override
+  // can't strip the "Powered by Kravn" mark. Covers the common hiding vectors; note that a determined
+  // operator writing adversarial CSS can still find edge cases — raw CSS is an admin-only capability.
   parts.push(
-    '[data-kravn-attribution][data-kravn-attribution]{display:inline-flex!important;visibility:visible!important;' +
-      'opacity:1!important;height:auto!important;width:auto!important;position:static!important;clip:auto!important;overflow:visible!important;}',
+    '[data-kravn-attribution][data-kravn-attribution]{' +
+      'display:inline-flex!important;visibility:visible!important;opacity:1!important;' +
+      'height:auto!important;max-height:none!important;width:auto!important;max-width:none!important;' +
+      'min-height:0!important;min-width:0!important;position:static!important;inset:auto!important;' +
+      'transform:none!important;scale:none!important;translate:none!important;rotate:none!important;' +
+      'clip:auto!important;clip-path:none!important;filter:none!important;-webkit-filter:none!important;' +
+      'margin:0!important;padding:0!important;font-size:11px!important;line-height:1!important;' +
+      'overflow:visible!important;transition:none!important;animation:none!important;' +
+      'text-indent:0!important;pointer-events:auto!important;content-visibility:visible!important;}',
   );
   style.textContent = parts.join('\n');
 

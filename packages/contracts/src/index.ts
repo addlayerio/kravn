@@ -1,4 +1,5 @@
 export * from './permissions.js';
+export * from './i18n.js';
 export * from './settings.js';
 export * from './entities.js';
 export * from './dtos.js';

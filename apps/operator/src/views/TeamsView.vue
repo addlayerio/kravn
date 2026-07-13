@@ -1,10 +1,12 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { Team, TeamMember, User } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const toast = useToastStore();
 const canWrite = auth.can('teams.write');
@@ -42,10 +44,10 @@ function openCreate() {
   error.value = '';
   showTeam.value = true;
 }
-function openEdit(t: Team) {
-  form.name = t.name;
-  form.description = t.description;
-  editingId.value = t.id;
+function openEdit(team: Team) {
+  form.name = team.name;
+  form.description = team.description;
+  editingId.value = team.id;
   error.value = '';
   showTeam.value = true;
 }
@@ -56,28 +58,28 @@ async function save() {
     if (editingId.value) await api.patch(`/api/teams/${editingId.value}`, { ...form });
     else await api.post('/api/teams', { ...form });
     showTeam.value = false;
-    toast.success(editingId.value ? 'Team updated.' : 'Team created.');
+    toast.success(editingId.value ? t('teamsView.teamUpdated') : t('teamsView.teamCreated'));
     await load();
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Save failed.';
+    error.value = e instanceof ApiError ? e.message : t('teamsView.saveFailed');
   } finally {
     saving.value = false;
   }
 }
-async function remove(t: Team) {
-  if (!confirm(`Delete team "${t.name}"?`)) return;
-  await api.del(`/api/teams/${t.id}`);
-  toast.success('Team deleted.');
+async function remove(team: Team) {
+  if (!confirm(t('teamsView.deleteTeamConfirm', { name: team.name }))) return;
+  await api.del(`/api/teams/${team.id}`);
+  toast.success(t('teamsView.teamDeleted'));
   await load();
 }
 
-async function openMembers(t: Team) {
-  membersTeam.value = t;
+async function openMembers(team: Team) {
+  membersTeam.value = team;
   addUserId.value = '';
   addRole.value = 'member';
   showMembers.value = true;
   const [m, u] = await Promise.all([
-    api.get<{ members: TeamMember[] }>(`/api/teams/${t.id}/members`),
+    api.get<{ members: TeamMember[] }>(`/api/teams/${team.id}/members`),
     api.get<{ users: User[] }>('/api/users').catch(() => ({ users: [] })),
   ]);
   members.value = m.members;
@@ -92,17 +94,17 @@ async function addMember() {
     });
     members.value = res.members;
     addUserId.value = '';
-    toast.success('Member added.');
+    toast.success(t('teamsView.memberAdded'));
     await load();
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not add member.');
+    toast.error(e instanceof ApiError ? e.message : t('teamsView.memberAddFailed'));
   }
 }
 async function removeMember(m: TeamMember) {
   if (!membersTeam.value) return;
   await api.del(`/api/teams/${membersTeam.value.id}/members/${m.userId}`);
   members.value = members.value.filter((x) => x.userId !== m.userId);
-  toast.success('Member removed.');
+  toast.success(t('teamsView.memberRemoved'));
   await load();
 }
 
@@ -125,14 +127,14 @@ function displayMode(vs: ServerAccess): 'all' | 'subset' {
   return toolMode[vs.id] ?? (vs.allTools ? 'all' : 'subset');
 }
 
-async function openAccess(t: Team) {
-  accessTeam.value = t;
+async function openAccess(team: Team) {
+  accessTeam.value = team;
   showAccess.value = true;
   accessServers.value = [];
   Object.keys(toolMode).forEach((k) => delete toolMode[k]); // derive mode from freshly-loaded state
   accessLoading.value = true;
   try {
-    accessServers.value = (await api.get<{ servers: ServerAccess[] }>(`/api/teams/${t.id}/servers`)).servers;
+    accessServers.value = (await api.get<{ servers: ServerAccess[] }>(`/api/teams/${team.id}/servers`)).servers;
   } finally {
     accessLoading.value = false;
   }
@@ -145,9 +147,9 @@ async function saveAccess(vs: ServerAccess, body: { granted: boolean; toolIds?: 
     const res = await api.put<{ server: ServerAccess }>(`/api/teams/${accessTeam.value.id}/servers/${vs.id}`, body);
     const i = accessServers.value.findIndex((x) => x.id === vs.id);
     if (i >= 0 && res.server) accessServers.value[i] = res.server;
-    toast.success('MCP access updated.');
+    toast.success(t('teamsView.accessUpdated'));
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not update access.');
+    toast.error(e instanceof ApiError ? e.message : t('teamsView.accessUpdateFailed'));
   } finally {
     accessBusy.value = null;
   }
@@ -172,32 +174,32 @@ function toggleTool(vs: ServerAccess, toolId: string) {
 <template>
   <div class="topbar">
     <div>
-      <h1>Teams</h1>
-      <small class="muted">Group users and grant them access to MCP endpoints.</small>
+      <h1>{{ t('teamsView.title') }}</h1>
+      <small class="muted">{{ t('teamsView.subtitle') }}</small>
     </div>
-    <button v-if="canWrite" class="btn primary" @click="openCreate">+ New team</button>
+    <button v-if="canWrite" class="btn primary" @click="openCreate">{{ t('teamsView.newTeam') }}</button>
   </div>
 
   <div class="card">
-    <p v-if="loading" class="muted">Loading…</p>
-    <div v-else-if="teams.length === 0" class="empty">No teams yet.</div>
+    <p v-if="loading" class="muted">{{ t('teamsView.loading') }}</p>
+    <div v-else-if="teams.length === 0" class="empty">{{ t('teamsView.noTeams') }}</div>
     <table v-else>
       <thead>
-        <tr><th>Name</th><th>Members</th><th></th></tr>
+        <tr><th>{{ t('teamsView.colName') }}</th><th>{{ t('teamsView.colMembers') }}</th><th></th></tr>
       </thead>
       <tbody>
-        <tr v-for="t in teams" :key="t.id">
+        <tr v-for="team in teams" :key="team.id">
           <td>
-            <div style="font-weight: 600">{{ t.name }}</div>
-            <small class="muted">{{ t.description }}</small>
+            <div style="font-weight: 600">{{ team.name }}</div>
+            <small class="muted">{{ team.description }}</small>
           </td>
-          <td><span class="badge">{{ t.memberCount }}</span></td>
+          <td><span class="badge">{{ team.memberCount }}</span></td>
           <td>
             <div class="btn-row">
-              <button class="btn" @click="openMembers(t)">Members</button>
-              <button v-if="canWrite" class="btn" @click="openAccess(t)">MCP access</button>
-              <button v-if="canWrite" class="btn" @click="openEdit(t)">Edit</button>
-              <button v-if="canWrite" class="btn danger" @click="remove(t)">Delete</button>
+              <button class="btn" @click="openMembers(team)">{{ t('teamsView.members') }}</button>
+              <button v-if="canWrite" class="btn" @click="openAccess(team)">{{ t('teamsView.mcpAccess') }}</button>
+              <button v-if="canWrite" class="btn" @click="openEdit(team)">{{ t('teamsView.edit') }}</button>
+              <button v-if="canWrite" class="btn danger" @click="remove(team)">{{ t('teamsView.delete') }}</button>
             </div>
           </td>
         </tr>
@@ -208,13 +210,13 @@ function toggleTool(vs: ServerAccess, toolId: string) {
   <!-- Create/edit team -->
   <div v-if="showTeam" class="modal-backdrop" @click.self="showTeam = false">
     <div class="modal">
-      <h2>{{ editingId ? 'Edit team' : 'New team' }}</h2>
+      <h2>{{ editingId ? t('teamsView.editTeam') : t('teamsView.newTeamTitle') }}</h2>
       <div v-if="error" class="alert error">{{ error }}</div>
-      <div class="field"><label>Name</label><input v-model="form.name" /></div>
-      <div class="field"><label>Description</label><input v-model="form.description" /></div>
+      <div class="field"><label>{{ t('teamsView.nameLabel') }}</label><input v-model="form.name" /></div>
+      <div class="field"><label>{{ t('teamsView.descriptionLabel') }}</label><input v-model="form.description" /></div>
       <div class="btn-row" style="justify-content: flex-end">
-        <button class="btn" @click="showTeam = false">Cancel</button>
-        <button class="btn primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn" @click="showTeam = false">{{ t('teamsView.cancel') }}</button>
+        <button class="btn primary" :disabled="saving" @click="save">{{ saving ? t('teamsView.saving') : t('teamsView.save') }}</button>
       </div>
     </div>
   </div>
@@ -222,37 +224,37 @@ function toggleTool(vs: ServerAccess, toolId: string) {
   <!-- Members -->
   <div v-if="showMembers" class="modal-backdrop" @click.self="showMembers = false">
     <div class="modal">
-      <h2>Members · {{ membersTeam?.name }}</h2>
+      <h2>{{ t('teamsView.membersTitle', { name: membersTeam?.name }) }}</h2>
 
       <table v-if="members.length">
-        <thead><tr><th>User</th><th>Role</th><th></th></tr></thead>
+        <thead><tr><th>{{ t('teamsView.colUser') }}</th><th>{{ t('teamsView.colRole') }}</th><th></th></tr></thead>
         <tbody>
           <tr v-for="m in members" :key="m.userId">
             <td><div style="font-weight: 600">{{ m.email }}</div><small class="muted">{{ m.name }}</small></td>
             <td><span class="badge">{{ m.role }}</span></td>
-            <td><button v-if="canWrite" class="btn danger" @click="removeMember(m)">Remove</button></td>
+            <td><button v-if="canWrite" class="btn danger" @click="removeMember(m)">{{ t('teamsView.remove') }}</button></td>
           </tr>
         </tbody>
       </table>
-      <div v-else class="empty">No members yet.</div>
+      <div v-else class="empty">{{ t('teamsView.noMembers') }}</div>
 
       <div v-if="canWrite" class="card" style="background: var(--bg-page); margin-top: 1rem">
-        <label>Add member</label>
+        <label>{{ t('teamsView.addMember') }}</label>
         <div class="row" style="gap: 0.5rem">
           <select v-model="addUserId" style="flex: 2">
-            <option value="">Select user…</option>
+            <option value="">{{ t('teamsView.selectUser') }}</option>
             <option v-for="u in allUsers" :key="u.id" :value="u.id">{{ u.email }}</option>
           </select>
           <select v-model="addRole" style="flex: 1">
-            <option value="member">member</option>
-            <option value="owner">owner</option>
+            <option value="member">{{ t('teamsView.roleMember') }}</option>
+            <option value="owner">{{ t('teamsView.roleOwner') }}</option>
           </select>
-          <button class="btn primary" :disabled="!addUserId" @click="addMember">Add</button>
+          <button class="btn primary" :disabled="!addUserId" @click="addMember">{{ t('teamsView.add') }}</button>
         </div>
       </div>
 
       <div class="btn-row" style="justify-content: flex-end; margin-top: 1rem">
-        <button class="btn" @click="showMembers = false">Close</button>
+        <button class="btn" @click="showMembers = false">{{ t('teamsView.close') }}</button>
       </div>
     </div>
   </div>
@@ -260,14 +262,15 @@ function toggleTool(vs: ServerAccess, toolId: string) {
   <!-- MCP access -->
   <div v-if="showAccess" class="modal-backdrop" @click.self="showAccess = false">
     <div class="modal" style="max-width: 640px">
-      <h2>MCP access · {{ accessTeam?.name }}</h2>
+      <h2>{{ t('teamsView.accessTitle', { name: accessTeam?.name }) }}</h2>
       <small class="muted">
-        Choose which MCPs this team can use, and — per MCP — whether they get all its tools or only some.
-        Granting an MCP switches it to <strong>restricted</strong> so only granted teams/roles can use it.
+        <i18n-t keypath="teamsView.accessDescription" tag="span">
+          <template #restricted><strong>{{ t('teamsView.restricted') }}</strong></template>
+        </i18n-t>
       </small>
 
-      <p v-if="accessLoading" class="muted" style="margin-top: 1rem">Loading…</p>
-      <div v-else-if="accessServers.length === 0" class="empty" style="margin-top: 1rem">No MCP endpoints yet.</div>
+      <p v-if="accessLoading" class="muted" style="margin-top: 1rem">{{ t('teamsView.loading') }}</p>
+      <div v-else-if="accessServers.length === 0" class="empty" style="margin-top: 1rem">{{ t('teamsView.noEndpoints') }}</div>
 
       <div v-else style="margin-top: 1rem; display: flex; flex-direction: column; gap: 0.75rem">
         <div v-for="vs in accessServers" :key="vs.id" class="card" style="background: var(--bg-page)">
@@ -277,36 +280,36 @@ function toggleTool(vs: ServerAccess, toolId: string) {
                 <input type="checkbox" :checked="vs.granted" :disabled="!canWrite || accessBusy === vs.id" @change="toggleGrant(vs)" />
                 {{ vs.name }}
               </label>
-              <small class="muted">/endpoints/{{ vs.slug }}/mcp · {{ vs.access }}<span v-if="!vs.enabled"> · disabled</span></small>
+              <small class="muted">/endpoints/{{ vs.slug }}/mcp · {{ vs.access }}<span v-if="!vs.enabled"> · {{ t('teamsView.disabled') }}</span></small>
             </div>
-            <span v-if="accessBusy === vs.id" class="muted">Saving…</span>
+            <span v-if="accessBusy === vs.id" class="muted">{{ t('teamsView.savingShort') }}</span>
           </div>
 
           <div v-if="vs.granted" style="margin-top: 0.5rem; padding-left: 1.5rem">
             <div class="row" style="gap: 1rem; margin-bottom: 0.4rem">
               <label class="checkbox">
                 <input type="radio" :name="'mode-' + vs.id" :checked="displayMode(vs) === 'all'" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'all')" />
-                All tools
+                {{ t('teamsView.allTools') }}
               </label>
               <label class="checkbox">
                 <input type="radio" :name="'mode-' + vs.id" :checked="displayMode(vs) === 'subset'" :disabled="!canWrite || accessBusy === vs.id" @change="setMode(vs, 'subset')" />
-                Only selected tools
+                {{ t('teamsView.onlySelectedTools') }}
               </label>
             </div>
             <div v-if="displayMode(vs) === 'subset'" style="display: flex; flex-direction: column; gap: 0.2rem; padding-left: 0.5rem">
-              <label v-for="t in vs.tools" :key="t.id" class="checkbox">
-                <input type="checkbox" :checked="vs.toolIds.includes(t.id)" :disabled="!canWrite || accessBusy === vs.id" @change="toggleTool(vs, t.id)" />
-                {{ t.name }}
+              <label v-for="tool in vs.tools" :key="tool.id" class="checkbox">
+                <input type="checkbox" :checked="vs.toolIds.includes(tool.id)" :disabled="!canWrite || accessBusy === vs.id" @change="toggleTool(vs, tool.id)" />
+                {{ tool.name }}
               </label>
-              <small v-if="vs.tools.length === 0" class="muted">This MCP has no tools.</small>
-              <small v-else-if="vs.toolIds.length === 0" class="muted">Pick the tools this team may use (none selected = the team gets all).</small>
+              <small v-if="vs.tools.length === 0" class="muted">{{ t('teamsView.noTools') }}</small>
+              <small v-else-if="vs.toolIds.length === 0" class="muted">{{ t('teamsView.pickTools') }}</small>
             </div>
           </div>
         </div>
       </div>
 
       <div class="btn-row" style="justify-content: flex-end; margin-top: 1rem">
-        <button class="btn" @click="showAccess = false">Close</button>
+        <button class="btn" @click="showAccess = false">{{ t('teamsView.close') }}</button>
       </div>
     </div>
   </div>

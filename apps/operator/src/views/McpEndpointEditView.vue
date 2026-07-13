@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
+import { useI18n } from 'vue-i18n';
 import type { McpEndpoint, Tool, Resource, Prompt, LocalPrompt, Team, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
@@ -15,6 +16,7 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
 const toast = useToastStore();
+const { t } = useI18n();
 const canWrite = auth.can('endpoints.write');
 
 const routeId = computed(() => String(route.params.id));
@@ -64,7 +66,7 @@ async function load(): Promise<void> {
     // Fetch everything up front (teams included) so there is NO await between populating the item lists
     // and populating form.*Ids below — otherwise GroupedSelect's length watcher flushes on a microtask
     // during an intervening await and seeds its expanded groups before the selection exists.
-    const [v, t, r, p, lp, sv, tm] = await Promise.all([
+    const [v, toolsRes, r, p, lp, sv, tm] = await Promise.all([
       api.get<{ mcpEndpoints: McpEndpoint[] }>('/api/mcp-endpoints'),
       api.get<{ tools: Tool[] }>('/api/tools'),
       api.get<{ resources: Resource[] }>('/api/resources'),
@@ -73,21 +75,21 @@ async function load(): Promise<void> {
       api.get<{ servers: UpstreamServer[] }>('/api/servers').catch(() => ({ servers: [] as UpstreamServer[] })),
       api.get<{ teams: Team[] }>('/api/teams').catch(() => ({ teams: [] as Team[] })),
     ]);
-    tools.value = t.tools;
+    tools.value = toolsRes.tools;
     resources.value = r.resources;
     prompts.value = p.prompts;
     localPrompts.value = lp.localPrompts;
     teams.value = tm.teams;
     // Group metadata: each origin server's human name + brand-icon id, plus the synthetic local-prompts group.
     serverMeta.value = {
-      [LOCAL_GROUP]: { name: 'Kravn prompts (local)' },
+      [LOCAL_GROUP]: { name: t('endpointEditView.kravnPromptsLocal') },
       ...Object.fromEntries(sv.servers.map((s) => [s.id, { name: s.name, iconId: serverIconId(s) }])),
     };
 
     if (!isNew.value) {
       const found = v.mcpEndpoints.find((x) => x.id === routeId.value);
       if (!found) {
-        toast.error('MCP endpoint not found.');
+        toast.error(t('endpointEditView.notFound'));
         router.replace('/mcp-endpoints');
         return;
       }
@@ -116,16 +118,16 @@ async function save(): Promise<void> {
     const payload = { ...form };
     if (vsId.value) {
       await api.patch(`/api/mcp-endpoints/${vsId.value}`, payload);
-      toast.success('MCP endpoint updated.');
+      toast.success(t('endpointEditView.updated'));
     } else {
       const created = await api.post<{ mcpEndpoint: McpEndpoint }>('/api/mcp-endpoints', payload);
-      toast.success('MCP endpoint created — now configure its pipeline below.');
+      toast.success(t('endpointEditView.created'));
       // Navigate to the edit route so the pipeline editor (which needs an id) appears.
       router.replace(`/mcp-endpoints/${created.mcpEndpoint.id}`);
       vsId.value = created.mcpEndpoint.id;
     }
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Save failed.';
+    error.value = e instanceof ApiError ? e.message : t('endpointEditView.saveFailed');
   } finally {
     saving.value = false;
   }
@@ -135,53 +137,52 @@ async function save(): Promise<void> {
 <template>
   <div class="topbar">
     <div class="row" style="gap: 0.6rem; align-items: center">
-      <button class="btn" @click="router.push('/mcp-endpoints')">← Back</button>
-      <h1 style="margin: 0">{{ isNew ? 'New MCP endpoint' : form.name || 'MCP endpoint' }}</h1>
+      <button class="btn" @click="router.push('/mcp-endpoints')">← {{ t('endpointEditView.back') }}</button>
+      <h1 style="margin: 0">{{ isNew ? t('endpointEditView.newEndpoint') : form.name || t('endpointEditView.mcpEndpoint') }}</h1>
     </div>
   </div>
 
-  <div v-if="loading" class="card"><p class="muted">Loading…</p></div>
+  <div v-if="loading" class="card"><p class="muted">{{ t('endpointEditView.loading') }}</p></div>
 
   <template v-else>
     <div class="card">
-      <h3>Configuration</h3>
+      <h3>{{ t('endpointEditView.configuration') }}</h3>
       <div v-if="error" class="alert error">{{ error }}</div>
 
-      <div class="field"><label>Name</label><input v-model="form.name" required :disabled="!canWrite" /></div>
-      <div class="field"><label>Description</label><input v-model="form.description" :disabled="!canWrite" /></div>
+      <div class="field"><label>{{ t('endpointEditView.name') }}</label><input v-model="form.name" required :disabled="!canWrite" /></div>
+      <div class="field"><label>{{ t('endpointEditView.description') }}</label><input v-model="form.description" :disabled="!canWrite" /></div>
 
       <div class="field">
-        <label>Tools</label>
-        <small class="muted picker-hint">Grouped by their origin server. Search, or tick a server to select all its tools.</small>
-        <GroupedSelect v-model="form.toolIds" :items="toolItems" :groups="serverMeta" noun="tool" :disabled="!canWrite" />
+        <label>{{ t('endpointEditView.tools') }}</label>
+        <small class="muted picker-hint">{{ t('endpointEditView.toolsHint') }}</small>
+        <GroupedSelect v-model="form.toolIds" :items="toolItems" :groups="serverMeta" :noun="t('grouped.nounTools')" :disabled="!canWrite" />
       </div>
 
       <div class="field">
-        <label>Resources</label>
-        <GroupedSelect v-model="form.resourceIds" :items="resourceItems" :groups="serverMeta" noun="resource" :disabled="!canWrite" />
+        <label>{{ t('endpointEditView.resources') }}</label>
+        <GroupedSelect v-model="form.resourceIds" :items="resourceItems" :groups="serverMeta" :noun="t('grouped.nounResources')" :disabled="!canWrite" />
       </div>
 
       <div class="field">
-        <label>Prompts</label>
-        <GroupedSelect v-model="form.promptIds" :items="promptItems" :groups="serverMeta" noun="prompt" :disabled="!canWrite" />
+        <label>{{ t('endpointEditView.prompts') }}</label>
+        <GroupedSelect v-model="form.promptIds" :items="promptItems" :groups="serverMeta" :noun="t('grouped.nounPrompts')" :disabled="!canWrite" />
       </div>
 
       <div class="field">
-        <label>Access policy</label>
+        <label>{{ t('endpointEditView.accessPolicy') }}</label>
         <select v-model="form.access" :disabled="!canWrite">
-          <option value="public">Public — no authentication</option>
-          <option value="authenticated">Authenticated — any signed-in user</option>
-          <option value="restricted">Restricted — specific teams</option>
+          <option value="public">{{ t('endpointEditView.accessPublic') }}</option>
+          <option value="authenticated">{{ t('endpointEditView.accessAuthenticated') }}</option>
+          <option value="restricted">{{ t('endpointEditView.accessRestricted') }}</option>
         </select>
         <small class="muted">
-          Consumption is by team membership — a platform admin consumes a restricted endpoint by being in one
-          of its teams, not by being an admin.
+          {{ t('endpointEditView.accessNote') }}
         </small>
       </div>
       <div class="field" v-if="form.access === 'restricted'">
-        <label>Allowed teams</label>
+        <label>{{ t('endpointEditView.allowedTeams') }}</label>
         <div class="card picker">
-          <div v-if="teams.length === 0" class="muted">No teams defined.</div>
+          <div v-if="teams.length === 0" class="muted">{{ t('endpointEditView.noTeams') }}</div>
           <label v-for="t in teams" :key="t.id" class="checkbox" style="font-weight: 400">
             <input type="checkbox" :value="t.id" v-model="form.allowedTeams" :disabled="!canWrite" /> {{ t.name }}
           </label>
@@ -190,26 +191,25 @@ async function save(): Promise<void> {
 
       <div class="field checkbox">
         <input id="vs-enabled" v-model="form.enabled" type="checkbox" :disabled="!canWrite" />
-        <label for="vs-enabled" style="margin: 0">Enabled</label>
+        <label for="vs-enabled" style="margin: 0">{{ t('endpointEditView.enabled') }}</label>
       </div>
 
       <div class="btn-row" style="justify-content: flex-end">
         <button v-if="canWrite" class="btn primary" :disabled="saving" @click="save">
-          {{ saving ? 'Saving…' : vsId ? 'Save changes' : 'Create' }}
+          {{ saving ? t('endpointEditView.saving') : vsId ? t('endpointEditView.saveChanges') : t('endpointEditView.create') }}
         </button>
       </div>
     </div>
 
     <!-- Per-VS pipeline: only after the VS exists (needs an id). Global hooks show inherited (read-only). -->
     <div v-if="vsId" class="vs-pipeline">
-      <h2>Pipeline for this MCP endpoint</h2>
-      <p class="muted">
-        Global hooks run first and can't be removed here. Add hooks that run <strong>only</strong> for calls
-        routed through this MCP endpoint.
-      </p>
+      <h2>{{ t('endpointEditView.pipelineTitle') }}</h2>
+      <i18n-t keypath="endpointEditView.pipelineHint" tag="p" class="muted">
+        <template #only><strong>{{ t('endpointEditView.pipelineHintOnly') }}</strong></template>
+      </i18n-t>
       <PipelineEditor :scope="vsId" />
     </div>
-    <div v-else class="card muted">Create the MCP endpoint first to configure its own pipeline.</div>
+    <div v-else class="card muted">{{ t('endpointEditView.createFirst') }}</div>
   </template>
 </template>
 

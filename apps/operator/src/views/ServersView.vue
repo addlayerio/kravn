@@ -10,7 +10,9 @@ import PluginConfigModal from '../components/PluginConfigModal.vue';
 import IntegrationIcon from '../components/IntegrationIcon.vue';
 import MarkdownText from '../components/MarkdownText.vue';
 import { serverIconId } from '../lib/server-icon';
+import { useI18n } from 'vue-i18n';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const toast = useToastStore();
 const servers = ref<UpstreamServer[]>([]);
@@ -84,11 +86,11 @@ async function saveOAuthConfig(id: string) {
 // URLs already registered, so a catalog card shows "Added" instead of "Add".
 const installedUrls = computed(() => new Set(servers.value.map((s) => s.url).filter(Boolean)));
 
-const authLabel: Record<CatalogServer['auth'], string> = {
-  open: 'No auth',
-  apikey: 'API key',
+const authLabel = computed<Record<CatalogServer['auth'], string>>(() => ({
+  open: t('serversView.authNoAuth'),
+  apikey: t('serversView.authApiKey'),
   oauth: 'OAuth 2.1',
-};
+}));
 
 // ── Unified catalog: remote MCP servers + native (built-in) mcp-server plugins in one browse ──────
 const nativeIntegrations = ref<PluginView[]>([]);
@@ -122,11 +124,9 @@ interface CatalogItem {
 
 /** Generic, always-accurate "what you need" text derived from the auth class. */
 function authGuidance(auth?: CatalogServer['auth']): string {
-  if (auth === 'apikey')
-    return 'Create an API key in your provider account and paste it as the token when you add this server. It is sent as a Bearer header and stored encrypted.';
-  if (auth === 'oauth')
-    return 'No token to manage — add it, then click Connect and sign in with the provider. Kravn stores the tokens encrypted and refreshes them automatically. Some providers (e.g. GitHub) require you to register an OAuth app first — Kravn will show the exact redirect URL and ask for the Client ID/secret if so.';
-  return 'No credential needed — add it and it connects immediately.';
+  if (auth === 'apikey') return t('serversView.authGuidanceApikey');
+  if (auth === 'oauth') return t('serversView.authGuidanceOauth');
+  return t('serversView.authGuidanceOpen');
 }
 
 const catalogItems = computed<CatalogItem[]>(() => {
@@ -157,7 +157,7 @@ function addInstance(p: PluginView) {
 }
 async function onInstanceSaved() {
   instanceConfig.value = null;
-  toast.success('Instance saved.');
+  toast.success(t('serversView.instanceSaved'));
   await load();
 }
 
@@ -179,16 +179,16 @@ async function toggleNative(p: PluginView) {
       const fresh = nativeIntegrations.value.find((x) => x.id === p.id);
       if (fresh) detailItem.value = { ...detailItem.value, plugin: fresh };
     }
-    toast.success(`${p.name} ${p.enabled ? 'disabled' : 'enabled'}.`);
+    toast.success(p.enabled ? t('serversView.integrationDisabled', { name: p.name }) : t('serversView.integrationEnabled', { name: p.name }));
     await load(); // reflect the plugin-backed server in the Installed list
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not update integration.');
+    toast.error(e instanceof ApiError ? e.message : t('serversView.couldNotUpdateIntegration'));
   }
 }
 
 function onPluginSaved(res?: { plugins: PluginView[] }) {
   if (res) nativeIntegrations.value = res.plugins.filter((p) => p.type === 'mcp-server');
-  toast.success('Configuration saved.');
+  toast.success(t('serversView.configurationSaved'));
 }
 
 async function load() {
@@ -290,18 +290,18 @@ async function connectOAuth(srv: UpstreamServer, cfg?: OAuthCfg) {
     oauthClient.value = null;
     const win = window.open(res.authorizationUrl, '_blank', 'width=560,height=720');
     if (!win) {
-      toast.error('Popup blocked — allow popups for this site and try Connect again.');
+      toast.error(t('serversView.popupBlocked'));
       return;
     }
     // No polling — the SSE stream refreshes the list when the callback connects the server.
-    toast.success('Finish signing in in the new window…');
+    toast.success(t('serversView.finishSigningIn'));
   } catch (e) {
     if (e instanceof ApiError && e.code === 'oauth_needs_client') {
       Object.assign(oauthClientForm, { clientId: '', clientSecret: '', authorizationUrl: '', tokenUrl: '', scope: '' });
       oauthClient.value = { id: srv.id, name: srv.name };
       return;
     }
-    toast.error(e instanceof ApiError ? e.message : 'Could not start OAuth authorization.');
+    toast.error(e instanceof ApiError ? e.message : t('serversView.couldNotStartOAuth'));
   }
 }
 
@@ -329,7 +329,7 @@ function parseHeaders(): Record<string, string> {
   try {
     return JSON.parse(form.headersText);
   } catch {
-    throw new Error('Headers must be valid JSON.');
+    throw new Error(t('serversView.headersInvalidJson'));
   }
 }
 
@@ -364,11 +364,11 @@ async function save() {
     // Persist the editable OAuth config so Connect uses it and it isn't lost on a failed attempt.
     if (form.authType === 'oauth' && serverId) await saveOAuthConfig(serverId);
     showModal.value = false;
-    toast.success(editingId.value ? 'Server updated.' : 'Server added.');
+    toast.success(editingId.value ? t('serversView.serverUpdated') : t('serversView.serverAdded'));
     tab.value = 'installed';
     await load();
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : (e as Error).message || 'Save failed.';
+    error.value = e instanceof ApiError ? e.message : (e as Error).message || t('serversView.saveFailed');
   } finally {
     saving.value = false;
   }
@@ -377,41 +377,41 @@ async function save() {
 async function sync(srv: UpstreamServer) {
   try {
     const res = await api.post<{ server: UpstreamServer }>(`/api/servers/${srv.id}/sync`);
-    if (res.server.status === 'online') toast.success(`"${srv.name}" connected and synced.`);
-    else toast.error(`"${srv.name}": ${res.server.lastError || 'could not connect.'}`);
+    if (res.server.status === 'online') toast.success(t('serversView.syncedOk', { name: srv.name }));
+    else toast.error(t('serversView.syncFailedError', { name: srv.name, error: res.server.lastError || t('serversView.couldNotConnect') }));
   } catch {
-    toast.error(`Could not sync "${srv.name}".`);
+    toast.error(t('serversView.couldNotSync', { name: srv.name }));
   }
   await load();
 }
 async function remove(srv: UpstreamServer) {
-  if (!confirm(`Delete server "${srv.name}"? This also removes its imported tools.`)) return;
+  if (!confirm(t('serversView.confirmDelete', { name: srv.name }))) return;
   await api.del(`/api/servers/${srv.id}`);
-  toast.success('Server deleted.');
+  toast.success(t('serversView.serverDeleted'));
   await load();
 }
 </script>
 
 <template>
   <div class="topbar">
-    <h1>MCP Servers</h1>
+    <h1>{{ t('serversView.mcpServers') }}</h1>
     <div class="btn-row">
       <div class="segmented" role="tablist">
-        <button :class="{ active: tab === 'installed' }" @click="tab = 'installed'">Installed</button>
-        <button data-tour="catalog-tab" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog</button>
+        <button :class="{ active: tab === 'installed' }" @click="tab = 'installed'">{{ t('serversView.installed') }}</button>
+        <button data-tour="catalog-tab" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">{{ t('serversView.catalog') }}</button>
       </div>
-      <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ Add server</button>
+      <button v-if="auth.can('servers.write')" class="btn primary" @click="openCreate">+ {{ t('serversView.addServer') }}</button>
     </div>
   </div>
 
   <div v-if="tab === 'installed'" class="card">
-    <p v-if="loading" class="muted">Loading…</p>
+    <p v-if="loading" class="muted">{{ t('serversView.loading') }}</p>
     <div v-else-if="servers.length === 0" class="empty">
-      No upstream MCP servers registered yet. Browse the <a href="#" @click.prevent="tab = 'catalog'">Catalog</a> to add one.
+      {{ t('serversView.emptyPrefix') }} <a href="#" @click.prevent="tab = 'catalog'">{{ t('serversView.catalog') }}</a> {{ t('serversView.emptySuffix') }}
     </div>
     <table v-else>
       <thead>
-        <tr><th>Name</th><th>Transport</th><th>Endpoint</th><th>Status</th><th></th></tr>
+        <tr><th>{{ t('serversView.colName') }}</th><th>{{ t('serversView.colTransport') }}</th><th>{{ t('serversView.colEndpoint') }}</th><th>{{ t('serversView.colStatus') }}</th><th></th></tr>
       </thead>
       <tbody>
         <tr v-for="s in servers" :key="s.id">
@@ -432,10 +432,10 @@ async function remove(srv: UpstreamServer) {
           </td>
           <td>
             <div class="btn-row">
-              <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">Connect</button>
-              <button class="btn" @click="sync(s)">Sync</button>
-              <button v-if="auth.can('servers.write')" class="btn" @click="editServer(s)">{{ s.transport === 'plugin' ? 'Configure' : 'Edit' }}</button>
-              <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">Delete</button>
+              <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">{{ t('serversView.connect') }}</button>
+              <button class="btn" @click="sync(s)">{{ t('serversView.sync') }}</button>
+              <button v-if="auth.can('servers.write')" class="btn" @click="editServer(s)">{{ s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit') }}</button>
+              <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">{{ t('serversView.delete') }}</button>
             </div>
           </td>
         </tr>
@@ -446,48 +446,48 @@ async function remove(srv: UpstreamServer) {
   <template v-else>
     <div class="card">
       <div class="catalog-toolbar">
-        <input v-model="catalogSearch" data-tour="catalog-search" class="catalog-search" placeholder="Search integrations…" />
+        <input v-model="catalogSearch" data-tour="catalog-search" class="catalog-search" :placeholder="t('serversView.searchPlaceholder')" />
         <select v-model="catalogCategory">
-          <option value="">All categories</option>
+          <option value="">{{ t('serversView.allCategories') }}</option>
           <option v-for="c in allCategories" :key="c" :value="c">{{ c }}</option>
         </select>
-        <span class="muted count">{{ catalogItems.length }} integrations</span>
+        <span class="muted count">{{ t('serversView.integrationsCount', { count: catalogItems.length }) }}</span>
       </div>
       <p class="muted legend">
-        Every integration in one place. <span class="cc-auth native">Built-in</span> run inside Kravn;
-        the rest are public MCP servers — <span class="cc-auth open">No auth</span> /
-        <span class="cc-auth apikey">API key</span> connect on add, <span class="cc-auth oauth">OAuth 2.1</span>
-        with one-click sign-in. Click a card for details.
+        {{ t('serversView.legendIntro') }} <span class="cc-auth native">{{ t('serversView.builtIn') }}</span> {{ t('serversView.legendRunInside') }}
+        <span class="cc-auth open">{{ t('serversView.authNoAuth') }}</span> /
+        <span class="cc-auth apikey">{{ t('serversView.authApiKey') }}</span> {{ t('serversView.legendConnectOnAdd') }} <span class="cc-auth oauth">OAuth 2.1</span>
+        {{ t('serversView.legendOneClick') }}
       </p>
     </div>
 
     <div class="catalog-grid" data-tour="catalog-grid">
       <div v-for="e in catalogItems" :key="e.key" class="catalog-card">
-        <div class="cc-body" role="button" tabindex="0" title="View details" @click="detailItem = e" @keydown.enter="detailItem = e">
+        <div class="cc-body" role="button" tabindex="0" :title="t('serversView.viewDetails')" @click="detailItem = e" @keydown.enter="detailItem = e">
           <div class="cc-head">
             <span class="cc-title">
               <IntegrationIcon :id="e.iconId" :name="e.name" :size="30" />
               <span class="cc-name">{{ e.name }}</span>
             </span>
-            <span v-if="e.kind === 'native'" class="cc-auth native">Built-in</span>
+            <span v-if="e.kind === 'native'" class="cc-auth native">{{ t('serversView.builtIn') }}</span>
             <span v-else class="cc-auth" :class="e.auth">{{ e.auth ? authLabel[e.auth] : '' }}</span>
           </div>
           <div class="cc-cat muted">{{ e.category }}</div>
           <p class="cc-desc">{{ e.description }}</p>
-          <div class="cc-hint muted"><small>Details →</small></div>
+          <div class="cc-hint muted"><small>{{ t('serversView.details') }} →</small></div>
         </div>
         <div class="cc-foot">
           <template v-if="e.kind === 'native'">
             <template v-if="auth.can('settings.write')">
-              <button class="btn" @click="configPlugin = e.plugin ?? null">Config</button>
-              <button class="btn" :class="{ primary: !e.plugin?.enabled }" @click="e.plugin && toggleNative(e.plugin)">{{ e.plugin?.enabled ? 'Disable' : 'Enable' }}</button>
+              <button class="btn" @click="configPlugin = e.plugin ?? null">{{ t('serversView.config') }}</button>
+              <button class="btn" :class="{ primary: !e.plugin?.enabled }" @click="e.plugin && toggleNative(e.plugin)">{{ e.plugin?.enabled ? t('serversView.disable') : t('serversView.enable') }}</button>
             </template>
             <!-- Add another INSTANCE (its own credentials), same flow as a remote server. -->
-            <button v-if="auth.can('servers.write') && e.plugin" class="btn primary" @click="addInstance(e.plugin)">Add</button>
+            <button v-if="auth.can('servers.write') && e.plugin" class="btn primary" @click="addInstance(e.plugin)">{{ t('serversView.add') }}</button>
           </template>
           <template v-else>
-            <span v-if="e.installed" class="muted">Added ✓</span>
-            <button v-else-if="auth.can('servers.write')" class="btn" @click="e.remote && addFromCatalog(e.remote)">Add</button>
+            <span v-if="e.installed" class="muted">{{ t('serversView.added') }} ✓</span>
+            <button v-else-if="auth.can('servers.write')" class="btn" @click="e.remote && addFromCatalog(e.remote)">{{ t('serversView.add') }}</button>
           </template>
         </div>
       </div>
@@ -502,7 +502,7 @@ async function remove(srv: UpstreamServer) {
           <IntegrationIcon :id="detailItem.iconId" :name="detailItem.name" :size="38" />
           <h2 style="margin: 0">{{ detailItem.name }}</h2>
         </div>
-        <span v-if="detailItem.kind === 'native'" class="cc-auth native">Built-in</span>
+        <span v-if="detailItem.kind === 'native'" class="cc-auth native">{{ t('serversView.builtIn') }}</span>
         <span v-else class="cc-auth" :class="detailItem.auth">{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}</span>
       </div>
       <div class="cc-cat muted" style="margin-top: 0.4rem">
@@ -511,37 +511,37 @@ async function remove(srv: UpstreamServer) {
       <MarkdownText :text="detailItem.description" style="margin-top: 1rem" />
 
       <template v-if="detailItem.kind === 'remote'">
-        <div class="cc-kv"><span class="muted">Endpoint</span><code>{{ detailItem.url }}</code></div>
+        <div class="cc-kv"><span class="muted">{{ t('serversView.endpoint') }}</span><code>{{ detailItem.url }}</code></div>
         <div class="cc-kv">
-          <span class="muted">Connects with</span>
-          <span>{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}<template v-if="detailItem.auth === 'oauth'"> — sign in after adding</template></span>
+          <span class="muted">{{ t('serversView.connectsWith') }}</span>
+          <span>{{ detailItem.auth ? authLabel[detailItem.auth] : '' }}<template v-if="detailItem.auth === 'oauth'"> {{ t('serversView.signInAfterAdding') }}</template></span>
         </div>
         <div class="setup-note">
-          <div class="setup-title">Getting set up</div>
+          <div class="setup-title">{{ t('serversView.gettingSetUp') }}</div>
           <MarkdownText :text="detailItem.setup || authGuidance(detailItem.auth)" />
-          <a v-if="detailItem.docsUrl" :href="detailItem.docsUrl" target="_blank" rel="noopener noreferrer" class="docs-link">Provider docs ↗</a>
+          <a v-if="detailItem.docsUrl" :href="detailItem.docsUrl" target="_blank" rel="noopener noreferrer" class="docs-link">{{ t('serversView.providerDocs') }} ↗</a>
         </div>
         <div v-if="detailItem.tags && detailItem.tags.length" class="cc-tags">
           <span v-for="t in detailItem.tags" :key="t" class="badge">{{ t }}</span>
         </div>
       </template>
       <template v-else>
-        <div class="cc-kv"><span class="muted">Runs</span><span>In-process, built into Kravn (app-only credential)</span></div>
+        <div class="cc-kv"><span class="muted">{{ t('serversView.runs') }}</span><span>{{ t('serversView.runsInProcess') }}</span></div>
         <div v-if="detailItem.plugin?.setup" class="setup-note">
-          <div class="setup-title">Setup &amp; required permissions</div>
+          <div class="setup-title">{{ t('serversView.setupPermissions') }}</div>
           <MarkdownText :text="detailItem.plugin.setup" />
         </div>
       </template>
 
       <div class="btn-row" style="justify-content: flex-end; margin-top: 1.5rem">
-        <button class="btn" @click="detailItem = null">Close</button>
+        <button class="btn" @click="detailItem = null">{{ t('serversView.close') }}</button>
         <template v-if="detailItem.kind === 'native' && auth.can('settings.write')">
-          <button class="btn" @click="configPlugin = detailItem.plugin ?? null">Configure</button>
-          <button class="btn primary" @click="detailItem.plugin && toggleNative(detailItem.plugin)">{{ detailItem.plugin?.enabled ? 'Disable' : 'Enable' }}</button>
+          <button class="btn" @click="configPlugin = detailItem.plugin ?? null">{{ t('serversView.configure') }}</button>
+          <button class="btn primary" @click="detailItem.plugin && toggleNative(detailItem.plugin)">{{ detailItem.plugin?.enabled ? t('serversView.disable') : t('serversView.enable') }}</button>
         </template>
         <template v-else-if="detailItem.kind === 'remote'">
-          <span v-if="detailItem.installed" class="muted" style="align-self: center">Added ✓</span>
-          <button v-else-if="auth.can('servers.write')" class="btn primary" @click="addFromDetail()">Add</button>
+          <span v-if="detailItem.installed" class="muted" style="align-self: center">{{ t('serversView.added') }} ✓</span>
+          <button v-else-if="auth.can('servers.write')" class="btn primary" @click="addFromDetail()">{{ t('serversView.add') }}</button>
         </template>
       </div>
     </div>
@@ -559,178 +559,171 @@ async function remove(srv: UpstreamServer) {
   <!-- OAuth client credentials (providers without automatic app registration, e.g. GitHub) -->
   <div v-if="oauthClient" class="modal-backdrop" @click.self="oauthClient = null">
     <div class="modal" style="max-width: 560px">
-      <h2>Connect {{ oauthClient.name }}</h2>
+      <h2>{{ t('serversView.connectName', { name: oauthClient.name }) }}</h2>
       <p class="muted" style="margin-top: -0.25rem">
-        This provider needs a pre-registered OAuth app (it doesn't support automatic registration). Create one
-        in the provider's developer settings using the redirect URL below, then paste its Client ID (and
-        secret) here.
+        {{ t('serversView.oauthClientIntro') }}
       </p>
       <div class="field">
-        <label>Redirect URL — register this at the provider</label>
+        <label>{{ t('serversView.redirectUrlLabel') }}</label>
         <input :value="oauthCallbackUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
       </div>
       <div class="field">
-        <label>Client ID</label>
-        <input v-model="oauthClientForm.clientId" placeholder="the OAuth app's Client ID" />
+        <label>{{ t('serversView.clientId') }}</label>
+        <input v-model="oauthClientForm.clientId" :placeholder="t('serversView.clientIdPlaceholder')" />
       </div>
       <div class="field">
-        <label>Client Secret <span class="muted">(if the app has one)</span></label>
-        <input v-model="oauthClientForm.clientSecret" type="password" autocomplete="new-password" placeholder="leave blank for a public/PKCE app" />
+        <label>{{ t('serversView.clientSecret') }} <span class="muted">{{ t('serversView.secretOptionalNote') }}</span></label>
+        <input v-model="oauthClientForm.clientSecret" type="password" autocomplete="new-password" :placeholder="t('serversView.clientSecretPlaceholderPublic')" />
       </div>
       <div class="field">
-        <label>Authorization URL <span class="muted">(only if the provider doesn't auto-discover)</span></label>
+        <label>{{ t('serversView.authorizationUrl') }} <span class="muted">{{ t('serversView.authUrlNoteDiscover') }}</span></label>
         <input v-model="oauthClientForm.authorizationUrl" placeholder="e.g. https://github.com/login/oauth/authorize" />
       </div>
       <div class="field">
-        <label>Token URL <span class="muted">(pair it with the Authorization URL)</span></label>
+        <label>{{ t('serversView.tokenUrl') }} <span class="muted">{{ t('serversView.tokenUrlNotePair') }}</span></label>
         <input v-model="oauthClientForm.tokenUrl" placeholder="e.g. https://github.com/login/oauth/access_token" />
       </div>
       <div class="field">
-        <label>Scopes <span class="muted">(space-separated, optional)</span></label>
+        <label>{{ t('serversView.scopes') }} <span class="muted">{{ t('serversView.scopesNoteOptional') }}</span></label>
         <input v-model="oauthClientForm.scope" placeholder="e.g. repo read:org read:user" />
       </div>
       <p class="muted" style="font-size: 0.82em">
-        Leave the URLs blank if the server advertises OAuth metadata — Kravn discovers them. Fill them in for
-        providers that don't (e.g. GitHub).
+        {{ t('serversView.oauthClientUrlsNote') }}
       </p>
       <div class="btn-row" style="justify-content: flex-end">
-        <button class="btn" @click="oauthClient = null">Cancel</button>
-        <button class="btn primary" :disabled="!oauthClientForm.clientId.trim()" @click="submitOAuthClient">Continue</button>
+        <button class="btn" @click="oauthClient = null">{{ t('serversView.cancel') }}</button>
+        <button class="btn primary" :disabled="!oauthClientForm.clientId.trim()" @click="submitOAuthClient">{{ t('serversView.continue') }}</button>
       </div>
     </div>
   </div>
 
   <div v-if="showModal" class="modal-backdrop" @click.self="showModal = false">
     <div class="modal">
-      <h2>{{ editingId ? 'Edit server' : 'Add server' }}</h2>
+      <h2>{{ editingId ? t('serversView.editServerTitle') : t('serversView.addServerTitle') }}</h2>
       <div v-if="error" class="alert error">{{ error }}</div>
 
       <div class="field">
-        <label>Name</label>
+        <label>{{ t('serversView.name') }}</label>
         <input v-model="form.name" required maxlength="120" />
       </div>
       <div class="field">
-        <label>Description</label>
+        <label>{{ t('serversView.description') }}</label>
         <input v-model="form.description" maxlength="2000" />
       </div>
       <div class="field" v-if="!editingId">
-        <label>Transport</label>
+        <label>{{ t('serversView.transport') }}</label>
         <select v-model="form.transport">
           <option value="streamable-http">Streamable HTTP</option>
           <option value="sse">SSE</option>
-          <option value="stdio">stdio (local process)</option>
+          <option value="stdio">{{ t('serversView.stdioOption') }}</option>
         </select>
       </div>
 
       <template v-if="form.transport !== 'stdio'">
         <div class="field">
-          <label>URL</label>
+          <label>{{ t('serversView.url') }}</label>
           <input v-model="form.url" maxlength="2048" placeholder="https://my-mcp-server.svc.cluster.local/mcp" />
         </div>
       </template>
       <template v-else>
         <div class="field">
-          <label>Command</label>
+          <label>{{ t('serversView.command') }}</label>
           <input v-model="form.command" maxlength="2000" placeholder="npx" />
         </div>
         <div class="field">
-          <label>Arguments (one per line)</label>
+          <label>{{ t('serversView.argumentsLabel') }}</label>
           <textarea v-model="form.argsText" rows="3" placeholder="-y&#10;@modelcontextprotocol/server-everything"></textarea>
         </div>
       </template>
 
       <div class="field">
-        <label>Auth</label>
+        <label>{{ t('serversView.auth') }}</label>
         <select v-model="form.authType">
-          <option value="none">None</option>
-          <option value="bearer">Bearer token</option>
-          <option value="basic">Basic (user:pass)</option>
-          <option value="oauth">OAuth 2.1 (sign in after saving)</option>
+          <option value="none">{{ t('serversView.authNone') }}</option>
+          <option value="bearer">{{ t('serversView.authBearer') }}</option>
+          <option value="basic">{{ t('serversView.authBasic') }}</option>
+          <option value="oauth">{{ t('serversView.authOAuthOption') }}</option>
         </select>
       </div>
       <div class="field" v-if="form.authType === 'bearer' || form.authType === 'basic'">
-        <label>Credential {{ editingId ? '(leave blank to keep current)' : '' }}</label>
+        <label>{{ t('serversView.credential') }} {{ editingId ? t('serversView.leaveBlankKeepCurrent') : '' }}</label>
         <input v-model="form.authValue" type="password" maxlength="8192" :placeholder="form.authType === 'basic' ? 'user:password' : 'token'" />
       </div>
       <template v-else-if="form.authType === 'oauth'">
         <p class="muted oauth-note">
-          Configure OAuth and Save, then click <strong>Connect</strong>. Most providers auto-discover — just
-          add a Client ID/Secret if needed and leave the URLs blank. For providers like GitHub, register an
-          OAuth app with the redirect URL below and fill all fields. Saved here, so a failed Connect never
-          loses it.
+          {{ t('serversView.oauthNotePart1') }} <strong>{{ t('serversView.connect') }}</strong>{{ t('serversView.oauthNotePart2') }}
         </p>
         <div class="field">
-          <label>Redirect URL — register this at the provider</label>
+          <label>{{ t('serversView.redirectUrlLabel') }}</label>
           <input :value="callbackUrl" readonly @focus="($event.target as HTMLInputElement).select()" />
         </div>
         <div class="field">
-          <label>Client ID</label>
-          <input v-model="form.oauthClientId" placeholder="the OAuth app's Client ID" />
+          <label>{{ t('serversView.clientId') }}</label>
+          <input v-model="form.oauthClientId" :placeholder="t('serversView.clientIdPlaceholder')" />
         </div>
         <div class="field">
-          <label>Client Secret <span class="muted">{{ form.oauthSecretSet ? '(set — leave blank to keep)' : '(if the app has one)' }}</span></label>
-          <input v-model="form.oauthClientSecret" type="password" autocomplete="new-password" :placeholder="form.oauthSecretSet ? '•••••• (leave blank to keep)' : 'leave blank for a public/PKCE app'" />
+          <label>{{ t('serversView.clientSecret') }} <span class="muted">{{ form.oauthSecretSet ? t('serversView.secretSetNote') : t('serversView.secretOptionalNote') }}</span></label>
+          <input v-model="form.oauthClientSecret" type="password" autocomplete="new-password" :placeholder="form.oauthSecretSet ? t('serversView.secretPlaceholderSet') : t('serversView.clientSecretPlaceholderPublic')" />
         </div>
         <div class="field">
-          <label>Authorization URL <span class="muted">(blank = auto-discover)</span></label>
+          <label>{{ t('serversView.authorizationUrl') }} <span class="muted">{{ t('serversView.authUrlNoteDiscoverBlank') }}</span></label>
           <input v-model="form.oauthAuthUrl" placeholder="e.g. https://github.com/login/oauth/authorize" />
         </div>
         <div class="field">
-          <label>Token URL</label>
+          <label>{{ t('serversView.tokenUrl') }}</label>
           <input v-model="form.oauthTokenUrl" placeholder="e.g. https://github.com/login/oauth/access_token" />
         </div>
         <div class="field">
-          <label>Scopes <span class="muted">(space-separated)</span></label>
+          <label>{{ t('serversView.scopes') }} <span class="muted">{{ t('serversView.scopesNoteSpaceSep') }}</span></label>
           <input v-model="form.oauthScope" placeholder="e.g. repo read:org read:user" />
         </div>
         <div class="field">
-          <label>Client authentication <span class="muted">(how the secret is sent to the token endpoint)</span></label>
+          <label>{{ t('serversView.clientAuth') }} <span class="muted">{{ t('serversView.clientAuthNote') }}</span></label>
           <select v-model="form.oauthTokenAuthMethod">
-            <option value="">Auto / POST body (default — GitHub, most)</option>
-            <option value="client_secret_basic">Basic auth header (required by Notion)</option>
-            <option value="client_secret_post">POST body</option>
-            <option value="none">None (public app + PKCE)</option>
+            <option value="">{{ t('serversView.tokenAuthAuto') }}</option>
+            <option value="client_secret_basic">{{ t('serversView.tokenAuthBasic') }}</option>
+            <option value="client_secret_post">{{ t('serversView.tokenAuthPost') }}</option>
+            <option value="none">{{ t('serversView.tokenAuthNone') }}</option>
           </select>
         </div>
       </template>
 
       <div class="field">
-        <label>Extra headers (JSON, optional)</label>
+        <label>{{ t('serversView.extraHeaders') }}</label>
         <textarea v-model="form.headersText" rows="2" placeholder='{ "X-Tenant": "acme" }'></textarea>
       </div>
 
       <div v-if="form.transport !== 'stdio'" class="field">
         <label style="cursor: pointer" @click="showTls = !showTls">
-          {{ showTls ? '▾' : '▸' }} TLS / mTLS to the upstream <span class="muted">(advanced)</span>
+          {{ showTls ? '▾' : '▸' }} {{ t('serversView.tlsToggle') }} <span class="muted">{{ t('serversView.advanced') }}</span>
         </label>
         <div v-if="showTls" class="card" style="margin: 0; background: var(--bg-page)">
           <small class="muted" style="display: block; margin-bottom: 0.5rem">
-            For internal upstreams behind a corporate/self-signed CA, or that require a client certificate
-            (mutual TLS). PEM format. The client key is stored encrypted and never shown back.
+            {{ t('serversView.tlsNote') }}
           </small>
           <div class="field">
-            <label>Custom CA bundle (PEM)</label>
+            <label>{{ t('serversView.caBundle') }}</label>
             <textarea v-model="form.tlsCa" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;…"></textarea>
           </div>
           <div class="field">
-            <label>Client certificate (PEM) — for mTLS</label>
+            <label>{{ t('serversView.clientCert') }}</label>
             <textarea v-model="form.tlsClientCert" rows="3" spellcheck="false" placeholder="-----BEGIN CERTIFICATE-----&#10;…"></textarea>
           </div>
           <div class="field">
-            <label>Client private key (PEM) — for mTLS</label>
-            <textarea v-model="form.tlsClientKey" rows="3" spellcheck="false" :placeholder="form.tlsClientKeySet ? 'set — leave blank to keep' : 'Paste the PEM private key'"></textarea>
+            <label>{{ t('serversView.clientKey') }}</label>
+            <textarea v-model="form.tlsClientKey" rows="3" spellcheck="false" :placeholder="form.tlsClientKeySet ? t('serversView.clientKeyPlaceholderSet') : t('serversView.clientKeyPlaceholderUnset')"></textarea>
           </div>
         </div>
       </div>
 
       <div class="field checkbox">
         <input id="enabled" v-model="form.enabled" type="checkbox" />
-        <label for="enabled" style="margin: 0">Enabled (connect on save)</label>
+        <label for="enabled" style="margin: 0">{{ t('serversView.enabledLabel') }}</label>
       </div>
 
       <div class="btn-row" style="justify-content: flex-end">
-        <button class="btn" @click="showModal = false">Cancel</button>
-        <button class="btn primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save' }}</button>
+        <button class="btn" @click="showModal = false">{{ t('serversView.cancel') }}</button>
+        <button class="btn primary" :disabled="saving" @click="save">{{ saving ? t('serversView.saving') : t('serversView.save') }}</button>
       </div>
     </div>
   </div>

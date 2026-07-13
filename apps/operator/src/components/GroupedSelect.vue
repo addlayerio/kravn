@@ -15,20 +15,23 @@ export interface GroupMeta {
 
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ChevronRight } from 'lucide-vue-next';
 import IntegrationIcon from './IntegrationIcon.vue';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
     items: GroupedItem[];
     /** Metadata per groupId (server name + brand-icon id). Missing → groupId shown raw. */
     groups?: Record<string, GroupMeta>;
-    /** Noun for empty/summary copy, e.g. "tool". */
+    /** Already-localized PLURAL noun for empty/summary copy, e.g. "tools". */
     noun?: string;
     disabled?: boolean;
     emptyText?: string;
   }>(),
-  { noun: 'item', disabled: false, emptyText: '' },
+  { noun: 'items', disabled: false, emptyText: '' },
 );
 
 const model = defineModel<string[]>({ required: true });
@@ -161,20 +164,20 @@ const vIndeterminate = {
 <template>
   <div class="gs">
     <div class="gs-toolbar">
-      <input v-model="search" class="gs-search" :placeholder="`Search ${noun}s…`" />
+      <input v-model="search" class="gs-search" :placeholder="t('grouped.searchNoun', { noun })" />
       <label class="gs-only" :class="{ active: onlySelected }">
         <input type="checkbox" v-model="onlySelected" />
-        Only selected
+        {{ t('grouped.onlySelected') }}
       </label>
       <span class="gs-actions">
-        <button type="button" class="gs-link" @click="expandAll" :disabled="filtering">Expand all</button>
-        <button type="button" class="gs-link" @click="collapseAll" :disabled="filtering">Collapse all</button>
+        <button type="button" class="gs-link" @click="expandAll" :disabled="filtering">{{ t('grouped.expandAll') }}</button>
+        <button type="button" class="gs-link" @click="collapseAll" :disabled="filtering">{{ t('grouped.collapseAll') }}</button>
       </span>
     </div>
 
     <div class="gs-scroll">
-      <div v-if="items.length === 0" class="gs-empty">{{ emptyText || `No ${noun}s available.` }}</div>
-      <div v-else-if="groupViews.length === 0" class="gs-empty">No {{ noun }}s match “{{ search }}”.</div>
+      <div v-if="items.length === 0" class="gs-empty">{{ emptyText || t('grouped.noItemsAvailable', { noun }) }}</div>
+      <div v-else-if="groupViews.length === 0" class="gs-empty">{{ t('grouped.noMatch', { noun, q: search }) }}</div>
 
       <div v-for="g in groupViews" :key="g.groupId" class="gs-group">
         <div class="gs-head" role="button" tabindex="0" @click="toggleExpand(g.groupId)" @keydown.enter="toggleExpand(g.groupId)">
@@ -188,7 +191,7 @@ const vIndeterminate = {
             :checked="g.allSelected"
             v-indeterminate="g.someSelected && !g.allSelected"
             :disabled="disabled"
-            :title="g.allSelected ? `Clear all in ${g.name}` : `Select all in ${g.name}`"
+            :title="g.allSelected ? t('grouped.clearAllIn', { name: g.name }) : t('grouped.selectAllIn', { name: g.name })"
             @click.stop
             @change="toggleGroup(g)"
           />
@@ -208,8 +211,8 @@ const vIndeterminate = {
     </div>
 
     <div class="gs-summary">
-      <span><strong>{{ totalSelected }}</strong> {{ noun }}{{ totalSelected === 1 ? '' : 's' }} selected<template v-if="serversWithSelection"> · {{ serversWithSelection }} server{{ serversWithSelection === 1 ? '' : 's' }}</template></span>
-      <button v-if="totalSelected > 0 && !disabled" type="button" class="gs-link" @click="clearAll">Clear all</button>
+      <span><strong>{{ totalSelected }}</strong> {{ t('grouped.nounSelectedSuffix', { noun }) }}<template v-if="serversWithSelection"> · {{ t('grouped.serverCount', { count: serversWithSelection }, serversWithSelection) }}</template></span>
+      <button v-if="totalSelected > 0 && !disabled" type="button" class="gs-link" @click="clearAll">{{ t('grouped.clearAll') }}</button>
     </div>
   </div>
 </template>

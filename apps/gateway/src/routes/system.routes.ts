@@ -24,6 +24,7 @@ export function systemRoutes(app: FastifyInstance, s: Services): void {
       ssoMethods: await s.sso.methods(),
       // White-label branding for the login + OAuth approval screens (public — only the branding subset).
       branding: settings.branding,
+      locale: settings.general.locale,
     };
   });
 

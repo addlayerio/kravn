@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { PluginView } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import PluginConfigModal from '../components/PluginConfigModal.vue';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const toast = useToastStore();
 const canWrite = auth.can('settings.write');
@@ -93,19 +95,23 @@ onMounted(load);
 async function toggle(p: PluginView) {
   try {
     applyList(await api.patch(`/api/plugins/${p.id}`, { enabled: !p.enabled }));
-    toast.success(`${p.name} ${p.enabled ? 'disabled' : 'enabled'}.`);
+    toast.success(
+      p.enabled
+        ? t('pluginsView.pluginDisabled', { name: p.name })
+        : t('pluginsView.pluginEnabled', { name: p.name }),
+    );
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not update plugin.');
+    toast.error(e instanceof ApiError ? e.message : t('pluginsView.updateError'));
   }
 }
 async function rescan() {
   applyList(await api.post('/api/plugins/rescan'));
-  toast.success('Plugins re-scanned.');
+  toast.success(t('pluginsView.rescanned'));
 }
 async function remove(p: PluginView) {
-  if (!confirm(`Delete plugin "${p.name}"? This removes its file from the plugins directory.`)) return;
+  if (!confirm(t('pluginsView.confirmDelete', { name: p.name }))) return;
   await api.del(`/api/plugins/${p.id}`);
-  toast.success('Plugin removed.');
+  toast.success(t('pluginsView.pluginRemoved'));
   await load();
 }
 
@@ -121,10 +127,10 @@ async function doImport() {
   try {
     await api.post('/api/plugins/import', { id: importForm.id, source: importForm.source });
     showImport.value = false;
-    toast.success('Plugin imported.');
+    toast.success(t('pluginsView.pluginImported'));
     await load();
   } catch (e) {
-    importError.value = e instanceof ApiError ? e.message : 'Import failed.';
+    importError.value = e instanceof ApiError ? e.message : t('pluginsView.importFailed');
   } finally {
     importing.value = false;
   }
@@ -144,56 +150,56 @@ function configFromDetail() {
 <template>
   <div class="topbar">
     <div>
-      <h1>Plugins</h1>
-      <small class="muted">Governance hooks — transform tool-call requests, results and the advertised tool list.</small>
+      <h1>{{ t('pluginsView.title') }}</h1>
+      <small class="muted">{{ t('pluginsView.subtitle') }}</small>
     </div>
     <div class="btn-row">
-      <button class="btn" @click="rescan">Rescan</button>
-      <button v-if="canWrite" class="btn primary" @click="openImport">+ Import plugin</button>
+      <button class="btn" @click="rescan">{{ t('pluginsView.rescan') }}</button>
+      <button v-if="canWrite" class="btn primary" @click="openImport">{{ t('pluginsView.importPlugin') }}</button>
     </div>
   </div>
 
   <div class="alert" style="border-color: var(--warning); background: var(--warning-bg); color: var(--warning)">
-    Plugins run in-process with the gateway's privileges. Only enable plugins you trust. Looking for
-    integrations (Jira, Notion, Stripe…)? They live in the <strong>Catalog</strong> on the MCP Servers page.
+    {{ t('pluginsView.alertTrust') }} {{ t('pluginsView.alertLookingForPre') }}
+    <strong>{{ t('pluginsView.catalog') }}</strong> {{ t('pluginsView.alertLookingForPost') }}
   </div>
 
   <div v-if="loadErrors.length" class="alert error">
-    <strong>Some plugin files failed to load:</strong>
+    <strong>{{ t('pluginsView.loadErrorsTitle') }}</strong>
     <div v-for="(e, i) in loadErrors" :key="i"><code>{{ e.source }}</code>: {{ e.error }}</div>
   </div>
 
   <div class="seg">
-    <button class="seg-btn" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">Catalog · {{ plugins.length }}</button>
-    <button class="seg-btn" :class="{ active: tab === 'installed' }" @click="tab = 'installed'">Enabled · {{ enabledCount }}</button>
+    <button class="seg-btn" :class="{ active: tab === 'catalog' }" @click="tab = 'catalog'">{{ t('pluginsView.tabCatalog', { count: plugins.length }) }}</button>
+    <button class="seg-btn" :class="{ active: tab === 'installed' }" @click="tab = 'installed'">{{ t('pluginsView.tabEnabled', { count: enabledCount }) }}</button>
   </div>
 
   <div class="card filter-bar">
-    <input class="search" v-model="search" placeholder="Search hooks by name, description, author…" />
+    <input class="search" v-model="search" :placeholder="t('pluginsView.searchPlaceholder')" />
     <select v-model="filterHook">
-      <option value="all">All hook points</option>
+      <option value="all">{{ t('pluginsView.allHookPoints') }}</option>
       <option v-for="h in hookOptions" :key="h" :value="h">{{ h }}</option>
     </select>
   </div>
 
-  <div v-if="loading" class="card"><p class="muted">Loading…</p></div>
-  <div v-else-if="plugins.length === 0" class="card empty">No hook plugins installed yet. Import one to get started.</div>
+  <div v-if="loading" class="card"><p class="muted">{{ t('pluginsView.loading') }}</p></div>
+  <div v-else-if="plugins.length === 0" class="card empty">{{ t('pluginsView.emptyNoPlugins') }}</div>
   <div v-else-if="filtered.length === 0" class="card empty">
-    No plugins match your filters. <button class="btn" @click="resetFilters">Clear filters</button>
+    {{ t('pluginsView.emptyNoMatch') }} <button class="btn" @click="resetFilters">{{ t('pluginsView.clearFilters') }}</button>
   </div>
   <div v-else class="plugin-grid">
     <div v-for="p in filtered" :key="p.id" class="plugin-card" :class="{ off: !p.enabled }">
-      <div class="pc-body" role="button" tabindex="0" title="View details" @click="openDetail(p)" @keydown.enter="openDetail(p)">
+      <div class="pc-body" role="button" tabindex="0" :title="t('pluginsView.viewDetails')" @click="openDetail(p)" @keydown.enter="openDetail(p)">
         <div class="pc-head">
           <div class="pc-title">
             <span class="pc-name">{{ p.name }}</span>
-            <span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? 'on' : 'off' }}</span>
+            <span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? t('pluginsView.statusOn') : t('pluginsView.statusOff') }}</span>
           </div>
           <div class="pc-meta">
-            <span class="badge type hook">Hook</span>
+            <span class="badge type hook">{{ t('pluginsView.hook') }}</span>
             <small class="muted">v{{ p.version }}</small>
             <small class="muted" v-if="p.author">· {{ p.author }}</small>
-            <span v-if="p.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+            <span v-if="p.source === 'native'" class="badge" :title="t('pluginsView.builtInTitle')">{{ t('pluginsView.builtIn') }}</span>
           </div>
         </div>
         <p class="pc-desc muted">{{ p.description }}</p>
@@ -201,12 +207,12 @@ function configFromDetail() {
           <span v-for="hp in p.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
         </div>
         <div v-if="p.error" class="pc-err"><small>{{ p.error }}</small></div>
-        <div class="pc-detail-hint muted"><small>Details →</small></div>
+        <div class="pc-detail-hint muted"><small>{{ t('pluginsView.detailsHint') }}</small></div>
       </div>
       <div class="pc-actions btn-row" v-if="canWrite">
-        <button class="btn" @click="configPlugin = p">Config</button>
-        <button class="btn" :class="{ primary: !p.enabled }" @click="toggle(p)">{{ p.enabled ? 'Disable' : 'Enable' }}</button>
-        <button v-if="p.source !== 'native'" class="btn danger" @click="remove(p)">Delete</button>
+        <button class="btn" @click="configPlugin = p">{{ t('pluginsView.config') }}</button>
+        <button class="btn" :class="{ primary: !p.enabled }" @click="toggle(p)">{{ p.enabled ? t('pluginsView.disable') : t('pluginsView.enable') }}</button>
+        <button v-if="p.source !== 'native'" class="btn danger" @click="remove(p)">{{ t('pluginsView.delete') }}</button>
       </div>
     </div>
   </div>
@@ -214,14 +220,14 @@ function configFromDetail() {
   <!-- Import modal -->
   <div v-if="showImport" class="modal-backdrop" @click.self="showImport = false">
     <div class="modal" style="max-width: 720px">
-      <h2>Import plugin</h2>
-      <p class="muted" style="margin-top: -0.5rem">Paste a plugin module. The id must match the manifest id.</p>
+      <h2>{{ t('pluginsView.importTitle') }}</h2>
+      <p class="muted" style="margin-top: -0.5rem">{{ t('pluginsView.importHint') }}</p>
       <div v-if="importError" class="alert error">{{ importError }}</div>
-      <div class="field"><label>Plugin id (slug)</label><input v-model="importForm.id" placeholder="my-plugin" /></div>
-      <div class="field"><label>Source (ES module)</label><textarea v-model="importForm.source" rows="16" spellcheck="false"></textarea></div>
+      <div class="field"><label>{{ t('pluginsView.pluginIdLabel') }}</label><input v-model="importForm.id" placeholder="my-plugin" /></div>
+      <div class="field"><label>{{ t('pluginsView.sourceLabel') }}</label><textarea v-model="importForm.source" rows="16" spellcheck="false"></textarea></div>
       <div class="btn-row" style="justify-content: flex-end">
-        <button class="btn" @click="showImport = false">Cancel</button>
-        <button class="btn primary" :disabled="importing" @click="doImport">{{ importing ? 'Importing…' : 'Import' }}</button>
+        <button class="btn" @click="showImport = false">{{ t('pluginsView.cancel') }}</button>
+        <button class="btn primary" :disabled="importing" @click="doImport">{{ importing ? t('pluginsView.importing') : t('pluginsView.import') }}</button>
       </div>
     </div>
   </div>
@@ -231,26 +237,26 @@ function configFromDetail() {
     <div class="modal" style="max-width: 660px">
       <div class="row spread">
         <h2 style="margin: 0">{{ detailPlugin?.name }}</h2>
-        <span class="badge" :class="detailPlugin?.enabled ? 'online' : 'disabled'">{{ detailPlugin?.enabled ? 'on' : 'off' }}</span>
+        <span class="badge" :class="detailPlugin?.enabled ? 'online' : 'disabled'">{{ detailPlugin?.enabled ? t('pluginsView.statusOn') : t('pluginsView.statusOff') }}</span>
       </div>
       <div class="pc-meta" style="margin-top: 0.6rem">
-        <span class="badge type hook">Hook</span>
+        <span class="badge type hook">{{ t('pluginsView.hook') }}</span>
         <small class="muted">v{{ detailPlugin?.version }}</small>
         <small class="muted" v-if="detailPlugin?.author">· {{ detailPlugin?.author }}</small>
-        <span v-if="detailPlugin?.source === 'native'" class="badge" title="Built-in plugin">built-in</span>
+        <span v-if="detailPlugin?.source === 'native'" class="badge" :title="t('pluginsView.builtInTitle')">{{ t('pluginsView.builtIn') }}</span>
       </div>
       <p style="margin-top: 1rem">{{ detailPlugin?.description }}</p>
       <div v-if="detailPlugin?.hookPoints && detailPlugin.hookPoints.length" class="pc-hooks" style="margin-top: 0.5rem">
         <span v-for="hp in detailPlugin.hookPoints" :key="hp" class="badge hook">{{ hp }}</span>
       </div>
       <div v-if="detailPlugin?.setup" class="setup-note" style="margin-top: 1.25rem">
-        <div class="setup-title">Setup &amp; required permissions</div>
+        <div class="setup-title">{{ t('pluginsView.setupTitle') }}</div>
         {{ detailPlugin.setup }}
       </div>
       <div v-if="detailPlugin?.error" class="alert error" style="margin-top: 1rem">{{ detailPlugin.error }}</div>
       <div class="btn-row" style="justify-content: flex-end; margin-top: 1.5rem">
-        <button class="btn" @click="showDetail = false">Close</button>
-        <button v-if="canWrite" class="btn primary" @click="configFromDetail()">Configure</button>
+        <button class="btn" @click="showDetail = false">{{ t('pluginsView.close') }}</button>
+        <button v-if="canWrite" class="btn primary" @click="configFromDetail()">{{ t('pluginsView.configure') }}</button>
       </div>
     </div>
   </div>
@@ -260,7 +266,7 @@ function configFromDetail() {
     v-if="configPlugin"
     :plugin="configPlugin"
     @close="configPlugin = null"
-    @saved="(res) => { if (res) applyList(res); toast.success('Plugin configuration saved.'); }"
+    @saved="(res) => { if (res) applyList(res); toast.success(t('pluginsView.configSaved')); }"
   />
 </template>
 

@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import { roleSchema } from './permissions.js';
 import type { Branding } from './settings.js';
+import type { LocaleCode } from './i18n.js';
 import {
   transportSchema,
   authTypeSchema,
@@ -213,6 +214,8 @@ export interface BootstrapInfo {
   ssoMethods: SsoMethod[];
   /** White-label branding for client-facing surfaces (public — rendered before authentication). */
   branding: Branding;
+  /** Instance default locale (ISO code); the SPAs apply it unless the user overrides it locally. */
+  locale: LocaleCode;
 }
 
 /** Aggregated platform state for the dashboard "Architecture Flow" panel. */

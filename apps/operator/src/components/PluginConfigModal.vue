@@ -1,10 +1,13 @@
 <script setup lang="ts">
 import { computed, reactive, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { PluginView, Tool, UpstreamServer } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import MarkdownText from './MarkdownText.vue';
 import GroupedSelect, { type GroupedItem, type GroupMeta } from './GroupedSelect.vue';
 import { serverIconId } from '../lib/server-icon';
+
+const { t } = useI18n();
 
 /**
  * Schema-driven plugin configuration modal, extracted from PluginsView so BOTH the Plugins page (hooks) and
@@ -146,7 +149,7 @@ async function saveConfig() {
     try {
       config = rawText.value.trim() ? JSON.parse(rawText.value) : {};
     } catch {
-      configError.value = 'Config must be valid JSON.';
+      configError.value = t('pluginConfigModal.configMustBeJson');
       return;
     }
   } else {
@@ -155,13 +158,13 @@ async function saveConfig() {
       if (f.control === 'string[]') config[f.key] = (arrText[f.key] ?? '').split('\n').map((s) => s.trim()).filter(Boolean);
       else if (f.control === 'pick-multi') config[f.key] = Array.isArray(model[f.key]) ? model[f.key] : [];
       else if (f.control === 'json') {
-        const t = (jsonText[f.key] ?? '').trim();
-        if (!t) delete config[f.key];
+        const raw = (jsonText[f.key] ?? '').trim();
+        if (!raw) delete config[f.key];
         else {
           try {
-            config[f.key] = JSON.parse(t);
+            config[f.key] = JSON.parse(raw);
           } catch {
-            configError.value = `Field "${f.label}" must be valid JSON.`;
+            configError.value = t('pluginConfigModal.fieldMustBeJson', { label: f.label });
             return;
           }
         }
@@ -179,7 +182,7 @@ async function saveConfig() {
         }
       } else {
         if (!instanceName.value.trim()) {
-          configError.value = 'Give this instance a name (e.g. "Azure — DevOps").';
+          configError.value = t('pluginConfigModal.instanceNameRequired');
           return;
         }
         await api.post('/api/servers/plugin-instance', { typeId: props.plugin.id, name: instanceName.value.trim(), config });
@@ -195,7 +198,7 @@ async function saveConfig() {
     emit('saved', res);
     emit('close');
   } catch (e) {
-    configError.value = e instanceof ApiError ? e.message : 'Could not save config.';
+    configError.value = e instanceof ApiError ? e.message : t('pluginConfigModal.couldNotSave');
   }
 }
 </script>
@@ -205,35 +208,35 @@ async function saveConfig() {
     <div class="modal">
       <div class="row spread">
         <h2 style="margin: 0">
-          {{ isInstance ? (isInstanceEdit ? 'Configure ' + (instanceName || plugin.name) : 'Add ' + plugin.name + ' instance') : 'Configure: ' + plugin.name }}
+          {{ isInstance ? (isInstanceEdit ? t('pluginConfigModal.titleConfigureInstance', { name: instanceName || plugin.name }) : t('pluginConfigModal.titleAddInstance', { name: plugin.name })) : t('pluginConfigModal.titleConfigurePlugin', { name: plugin.name }) }}
         </h2>
-        <button v-if="fields" class="btn" @click="rawMode = !rawMode">{{ rawMode ? 'Form' : 'Edit as JSON' }}</button>
+        <button v-if="fields" class="btn" @click="rawMode = !rawMode">{{ rawMode ? t('pluginConfigModal.form') : t('pluginConfigModal.editAsJson') }}</button>
       </div>
 
       <div v-if="isInstance" class="field" style="margin-top: 0.75rem">
-        <label>Instance name</label>
-        <input v-model="instanceName" placeholder="e.g. Azure — DevOps" />
-        <span class="field-help">A label for this connection. You can add the same integration more than once, each with its own credentials.</span>
+        <label>{{ t('pluginConfigModal.instanceName') }}</label>
+        <input v-model="instanceName" :placeholder="t('pluginConfigModal.instanceNamePlaceholder')" />
+        <span class="field-help">{{ t('pluginConfigModal.instanceNameHelp') }}</span>
       </div>
 
       <div v-if="plugin.setup" class="setup-note">
-        <div class="setup-title">Setup &amp; required permissions</div>
+        <div class="setup-title">{{ t('pluginConfigModal.setupTitle') }}</div>
         <MarkdownText :text="plugin.setup" />
       </div>
 
       <div v-if="configError" class="alert error" style="margin-top: 0.75rem">{{ configError }}</div>
 
       <p v-if="!fields && !rawMode" class="muted" style="margin-top: 0.5rem">
-        This plugin doesn't declare a <code>configSchema</code>, so there are no known fields. Edit the raw config below.
+        {{ t('pluginConfigModal.noSchemaPre') }} <code>configSchema</code>{{ t('pluginConfigModal.noSchemaPost') }}
       </p>
 
       <template v-if="fields && !rawMode">
-        <div v-if="fields.length === 0" class="empty">This plugin has an empty config schema.</div>
+        <div v-if="fields.length === 0" class="empty">{{ t('pluginConfigModal.emptySchema') }}</div>
         <div v-for="f in fields" :key="f.key" class="field" style="margin-top: 1rem">
           <label>{{ f.label }}</label>
           <div v-if="f.control === 'boolean'" class="checkbox">
             <input type="checkbox" v-model="model[f.key]" />
-            <span class="muted">{{ model[f.key] ? 'Enabled' : 'Disabled' }}</span>
+            <span class="muted">{{ model[f.key] ? t('pluginConfigModal.enabled') : t('pluginConfigModal.disabled') }}</span>
           </div>
           <input v-else-if="f.control === 'number'" type="number" v-model="model[f.key]" />
           <select v-else-if="f.control === 'enum'" v-model="model[f.key]">
@@ -244,27 +247,27 @@ async function saveConfig() {
             v-model="model[f.key]"
             :items="toolGrouped"
             :groups="serverMeta"
-            noun="tool"
-            empty-text="No tools available — add/sync a server first."
+            :noun="t('grouped.nounTools')"
+            :empty-text="t('pluginConfigModal.toolsEmpty')"
           />
           <div v-else-if="f.control === 'pick-multi'" class="card" style="max-height: 170px; overflow: auto; margin: 0; background: var(--bg-page)">
-            <div v-if="optionsFor(f).length === 0" class="muted">No {{ f.source }} available — add/sync some first.</div>
+            <div v-if="optionsFor(f).length === 0" class="muted">{{ t('pluginConfigModal.noSourceAvailable', { source: f.source }) }}</div>
             <label v-for="o in optionsFor(f)" :key="o" class="checkbox" style="font-weight: 400">
               <input type="checkbox" :value="o" v-model="model[f.key]" /> {{ o }}
             </label>
           </div>
           <select v-else-if="f.control === 'pick-one'" v-model="model[f.key]">
-            <option value="">(none)</option>
+            <option value="">{{ t('pluginConfigModal.none') }}</option>
             <option v-for="o in optionsFor(f)" :key="o" :value="o">{{ o }}</option>
           </select>
-          <textarea v-else-if="f.control === 'string[]'" rows="3" v-model="arrText[f.key]" placeholder="One per line"></textarea>
-          <textarea v-else-if="f.control === 'json'" rows="4" spellcheck="false" v-model="jsonText[f.key]" placeholder="JSON value"></textarea>
+          <textarea v-else-if="f.control === 'string[]'" rows="3" v-model="arrText[f.key]" :placeholder="t('pluginConfigModal.onePerLine')"></textarea>
+          <textarea v-else-if="f.control === 'json'" rows="4" spellcheck="false" v-model="jsonText[f.key]" :placeholder="t('pluginConfigModal.jsonValue')"></textarea>
           <input
             v-else-if="f.control === 'secret'"
             type="password"
             autocomplete="new-password"
             v-model="model[f.key]"
-            :placeholder="activeSecretsSet[f.key] ? '•••••• (set — leave blank to keep)' : ''"
+            :placeholder="activeSecretsSet[f.key] ? t('pluginConfigModal.secretSetPlaceholder') : ''"
           />
           <input v-else v-model="model[f.key]" />
           <MarkdownText v-if="f.help" :text="f.help" inline class="field-help" />
@@ -273,14 +276,14 @@ async function saveConfig() {
 
       <template v-if="!fields || rawMode">
         <div class="field" style="margin-top: 1rem">
-          <label>Config (JSON)</label>
+          <label>{{ t('pluginConfigModal.configJson') }}</label>
           <textarea v-model="rawText" rows="8" spellcheck="false"></textarea>
         </div>
       </template>
 
       <div class="btn-row" style="justify-content: flex-end; margin-top: 1rem">
-        <button class="btn" @click="emit('close')">Cancel</button>
-        <button class="btn primary" @click="saveConfig">Save</button>
+        <button class="btn" @click="emit('close')">{{ t('pluginConfigModal.cancel') }}</button>
+        <button class="btn primary" @click="saveConfig">{{ t('pluginConfigModal.save') }}</button>
       </div>
     </div>
   </div>

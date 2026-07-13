@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { onMounted, ref, computed } from 'vue';
 import { useRoute } from 'vue-router';
-import { isBrandingCustomized } from '@kravn/contracts';
+import { useI18n } from 'vue-i18n';
+import { shouldShowAttribution } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import BrandLogo from '../components/BrandLogo.vue';
 import PoweredByKravn from '../components/PoweredByKravn.vue';
 
+const { t } = useI18n();
 const route = useRoute();
 const auth = useAuthStore();
 const bootstrap = useBootstrapStore();
@@ -15,7 +17,7 @@ const bootstrap = useBootstrapStore();
 // Branding is applied here as SAFE structured data only — logo, name, tagline, accent colour. The raw CSS
 // override is deliberately NOT applied on this security-sensitive approval screen.
 const brandName = computed(() => bootstrap.info?.branding?.brandName || bootstrap.info?.instanceName || 'Kravn');
-const brandCustomized = computed(() => isBrandingCustomized(bootstrap.info?.branding));
+const brandCustomized = computed(() => shouldShowAttribution(bootstrap.info?.branding, bootstrap.info?.instanceName));
 const brandStyle = computed(() =>
   bootstrap.info?.branding?.primaryColor ? { '--accent': bootstrap.info.branding.primaryColor } : {},
 );
@@ -63,36 +65,34 @@ async function decide(approve: boolean): Promise<void> {
         <BrandLogo :size="44" />
         <h1 style="margin: 0">{{ brandName }}</h1>
         <p v-if="bootstrap.info?.branding?.tagline" class="muted" style="margin: 0">{{ bootstrap.info.branding.tagline }}</p>
-        <p class="muted" style="margin: 0">Authorize access</p>
+        <p class="muted" style="margin: 0">{{ t('consent.authorizeAccess') }}</p>
         <PoweredByKravn v-if="brandCustomized" style="margin-top: 2px" />
       </div>
 
       <div v-if="error" class="alert error">{{ error }}</div>
-      <p v-if="loading" class="muted" style="text-align: center">Loading…</p>
+      <p v-if="loading" class="muted" style="text-align: center">{{ t('common.loading') }}</p>
 
       <template v-else-if="consent">
         <p style="margin: 0 0 0.25rem">
-          <strong>{{ consent.clientName }}</strong> wants to connect to your MCP gateway.
+          {{ t('consent.wantsToConnect', { client: consent.clientName }) }}
         </p>
         <p class="muted" style="margin: 0 0 1rem; font-size: 0.85rem">
-          It will access tools, resources and prompts on your behalf as
-          <strong>{{ auth.user?.email }}</strong> ({{ auth.user?.role }}). Access is limited to MCP — it
-          cannot manage your gateway.
+          {{ t('consent.onBehalf', { email: auth.user?.email, role: auth.user?.role }) }}
         </p>
 
         <div class="consent-scope">
-          <span class="muted">Scope</span>
+          <span class="muted">{{ t('consent.scope') }}</span>
           <code>{{ consent.scope || 'mcp' }}</code>
         </div>
         <div v-if="consent.redirectHost" class="consent-scope" style="margin-top: 0.5rem">
-          <span class="muted">Redirects to</span>
+          <span class="muted">{{ t('consent.redirectsTo') }}</span>
           <code>{{ consent.redirectHost }}</code>
         </div>
 
         <div class="btn-row" style="margin-top: 1.25rem; gap: 0.5rem">
-          <button class="btn" style="flex: 1" :disabled="busy" @click="decide(false)">Deny</button>
+          <button class="btn" style="flex: 1" :disabled="busy" @click="decide(false)">{{ t('consent.deny') }}</button>
           <button class="btn primary" style="flex: 2" :disabled="busy" @click="decide(true)">
-            {{ busy ? 'Authorizing…' : 'Allow' }}
+            {{ busy ? t('consent.authorizing') : t('consent.allow') }}
           </button>
         </div>
       </template>

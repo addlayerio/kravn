@@ -7,15 +7,18 @@ export interface GroupListMeta {
 
 <script setup lang="ts" generic="T extends { groupId: string }">
 import { computed, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { ChevronRight } from 'lucide-vue-next';
 import IntegrationIcon from './IntegrationIcon.vue';
+
+const { t } = useI18n();
 
 const props = withDefaults(
   defineProps<{
     items: T[];
     /** Metadata per groupId (server name + brand-icon id). Missing → groupId shown raw. */
     groups?: Record<string, GroupListMeta>;
-    /** Noun for empty/search copy, e.g. "tool". */
+    /** Already-localized PLURAL noun for empty/search copy, e.g. "tools". */
     noun?: string;
     /** Text to match a row against when searching. Defaults to JSON of the item. */
     searchText?: (item: T) => string;
@@ -23,7 +26,7 @@ const props = withDefaults(
     defaultExpanded?: boolean;
     emptyText?: string;
   }>(),
-  { noun: 'item', defaultExpanded: true },
+  { noun: 'items', defaultExpanded: true },
 );
 
 const search = ref('');
@@ -80,15 +83,15 @@ function setAll(open: boolean): void {
 <template>
   <div class="gl">
     <div class="gl-toolbar">
-      <input v-model="search" class="gl-search" :placeholder="`Search ${noun}s…`" />
+      <input v-model="search" class="gl-search" :placeholder="t('grouped.searchNoun', { noun })" />
       <span class="gl-actions">
-        <button type="button" class="gl-link" @click="setAll(true)" :disabled="filtering">Expand all</button>
-        <button type="button" class="gl-link" @click="setAll(false)" :disabled="filtering">Collapse all</button>
+        <button type="button" class="gl-link" @click="setAll(true)" :disabled="filtering">{{ t('grouped.expandAll') }}</button>
+        <button type="button" class="gl-link" @click="setAll(false)" :disabled="filtering">{{ t('grouped.collapseAll') }}</button>
       </span>
     </div>
 
-    <div v-if="items.length === 0" class="gl-empty">{{ emptyText || `No ${noun}s yet.` }}</div>
-    <div v-else-if="groupViews.length === 0" class="gl-empty">No {{ noun }}s match “{{ search }}”.</div>
+    <div v-if="items.length === 0" class="gl-empty">{{ emptyText || t('grouped.noItemsYet', { noun }) }}</div>
+    <div v-else-if="groupViews.length === 0" class="gl-empty">{{ t('grouped.noMatch', { noun, q: search }) }}</div>
 
     <div v-for="g in groupViews" :key="g.groupId" class="gl-group">
       <div class="gl-head" role="button" tabindex="0" @click="toggle(g.groupId)" @keydown.enter="toggle(g.groupId)">

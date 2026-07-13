@@ -8,11 +8,13 @@ import '@fontsource/jetbrains-mono/400.css';
 import App from './App.vue';
 import { router } from './router';
 import { useThemeStore } from './stores/theme';
+import { i18n } from './i18n';
 import '@kravn/ui/style.css';
 
 const app = createApp(App);
 const pinia = createPinia();
 app.use(pinia);
+app.use(i18n);
 
 // Apply persisted light/dark theme before mount to avoid a flash.
 useThemeStore(pinia).load();

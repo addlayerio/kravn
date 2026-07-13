@@ -30,7 +30,10 @@ import { startTour, shouldAutoTour } from '../lib/tour';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import { useThemeStore } from '../stores/theme';
+import { useI18n } from 'vue-i18n';
+import LocaleSwitcher from './LocaleSwitcher.vue';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const bootstrap = useBootstrapStore();
 const theme = useThemeStore();
@@ -39,6 +42,19 @@ const route = useRoute();
 
 const instanceName = computed(() => bootstrap.info?.instanceName || 'Kravn');
 const collapsed = computed(() => theme.sidebarCollapsed);
+
+// Map each nav route to its i18n key; falls back to the static English label if unmapped.
+const NAV_KEY: Record<string, string> = {
+  '/': 'dashboard', '/servers': 'servers', '/tools': 'tools', '/resources': 'resources',
+  '/prompts': 'prompts', '/mcp-endpoints': 'endpoints', '/users': 'users', '/teams': 'teams',
+  '/authentication': 'authentication', '/plugins': 'plugins', '/pipelines': 'pipelines',
+  '/llm-models': 'llmModels', '/settings': 'settings', '/appearance': 'appearance',
+  '/governance': 'governance', '/logs': 'logs',
+};
+function navLabel(i: { to: string; label: string }): string {
+  const key = NAV_KEY[i.to];
+  return key ? t(`nav.${key}`) : i.label;
+}
 
 interface NavItem {
   to: string;
@@ -110,7 +126,7 @@ onMounted(() => {
           :data-tour="i.tour"
         >
           <component :is="i.icon" :size="18" :stroke-width="2" />
-          <span>{{ i.label }}</span>
+          <span>{{ navLabel(i) }}</span>
         </RouterLink>
 
         <template v-if="adminItems.length">
@@ -126,7 +142,7 @@ onMounted(() => {
             :data-tour="i.tour"
           >
             <component :is="i.icon" :size="18" :stroke-width="2" />
-            <span>{{ i.label }}</span>
+            <span>{{ navLabel(i) }}</span>
           </RouterLink>
         </template>
       </nav>
@@ -136,6 +152,7 @@ onMounted(() => {
           <div class="u-name">{{ auth.user?.name || auth.user?.email }}</div>
           <small class="muted">{{ auth.user?.role }}</small>
         </div>
+        <div v-if="!collapsed" style="padding: 4px 0 6px"><LocaleSwitcher /></div>
         <button class="ghost-btn" @click="startTour(router, route.path)">
           <Compass :size="16" />
           <span>Take a tour</span>
@@ -146,7 +163,7 @@ onMounted(() => {
         </button>
         <button class="ghost-btn" @click="logout">
           <LogOut :size="16" />
-          <span>Sign out</span>
+          <span>{{ t('common.signOut') }}</span>
         </button>
         <button class="ghost-btn" @click="theme.toggleSidebar()">
           <component :is="collapsed ? PanelLeftOpen : PanelLeftClose" :size="16" />

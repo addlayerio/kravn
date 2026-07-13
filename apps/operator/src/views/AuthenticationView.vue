@@ -1,11 +1,13 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
+import { useI18n } from 'vue-i18n';
 import type { AuthConfigView } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import { copyText } from '../lib/clipboard';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const toast = useToastStore();
 const canWrite = auth.can('settings.write');
@@ -69,31 +71,31 @@ async function loadScim() {
   }
 }
 async function generateScimToken() {
-  if (!confirm('Generate a new SCIM bearer token? Any existing token stops working immediately.')) return;
+  if (!confirm(t('authenticationView.confirmGenerateScimToken'))) return;
   try {
     const r = await api.post<{ token: string }>('/api/scim/token', {});
     newScimToken.value = r.token;
     await loadScim();
-    toast.success('SCIM token generated — copy it now, it will not be shown again.');
+    toast.success(t('authenticationView.scimTokenGenerated'));
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not generate SCIM token.');
+    toast.error(e instanceof ApiError ? e.message : t('authenticationView.scimTokenGenerateError'));
   }
 }
 async function saveScim() {
   try {
     await api.put('/api/scim/config', { enabled: scim.enabled, defaultRole: scim.defaultRole });
-    toast.success('SCIM settings saved.');
+    toast.success(t('authenticationView.scimSettingsSaved'));
     await loadScim();
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Could not save SCIM settings.');
+    toast.error(e instanceof ApiError ? e.message : t('authenticationView.scimSettingsSaveError'));
   }
 }
 async function disableScim() {
-  if (!confirm('Disable SCIM and revoke the token?')) return;
+  if (!confirm(t('authenticationView.confirmDisableScim'))) return;
   await api.del('/api/scim/token');
   newScimToken.value = '';
   await loadScim();
-  toast.success('SCIM disabled.');
+  toast.success(t('authenticationView.scimDisabled'));
 }
 
 function applyConfig(c: AuthConfigView) {
@@ -168,21 +170,21 @@ async function save() {
     };
     const { config } = await api.put<{ config: AuthConfigView }>('/api/auth/config', payload);
     applyConfig(config);
-    toast.success('Authentication settings saved.');
+    toast.success(t('authenticationView.authSettingsSaved'));
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Could not save.';
+    error.value = e instanceof ApiError ? e.message : t('authenticationView.saveError');
   } finally {
     saving.value = false;
   }
 }
 
 async function copyCb() {
-  if (await copyText(callbackUrl.value)) toast.success('Callback URL copied.');
+  if (await copyText(callbackUrl.value)) toast.success(t('authenticationView.callbackUrlCopied'));
 }
 
 async function importMetadata() {
   if (!metadataUrl.value.trim()) {
-    toast.error('Enter a federation metadata URL.');
+    toast.error(t('authenticationView.enterMetadataUrl'));
     return;
   }
   importing.value = true;
@@ -196,9 +198,9 @@ async function importMetadata() {
     saml.idpCertSet = true;
     saml.idpIssuer = metadata.entityId;
     saml.enabled = true;
-    toast.success('Metadata imported — review the fields and click “Save changes”.');
+    toast.success(t('authenticationView.metadataImported'));
   } catch (e) {
-    toast.error(e instanceof ApiError ? e.message : 'Import failed.');
+    toast.error(e instanceof ApiError ? e.message : t('authenticationView.importFailed'));
   } finally {
     importing.value = false;
   }
@@ -208,53 +210,53 @@ async function importMetadata() {
 <template>
   <div class="topbar">
     <div>
-      <h1>Authentication</h1>
-      <small class="muted">Single sign-on for people logging into Kravn (global identity).</small>
+      <h1>{{ t('authenticationView.title') }}</h1>
+      <small class="muted">{{ t('authenticationView.subtitle') }}</small>
     </div>
-    <button v-if="canWrite" class="btn primary" :disabled="saving" @click="save">{{ saving ? 'Saving…' : 'Save changes' }}</button>
+    <button v-if="canWrite" class="btn primary" :disabled="saving" @click="save">{{ saving ? t('authenticationView.saving') : t('authenticationView.saveChanges') }}</button>
   </div>
 
   <div v-if="error" class="alert error">{{ error }}</div>
-  <p v-if="loading" class="muted">Loading…</p>
+  <p v-if="loading" class="muted">{{ t('authenticationView.loading') }}</p>
 
   <template v-else>
     <!-- OAuth2 / OIDC -->
     <div class="card">
       <div class="row spread">
-        <h3>OAuth2 / OIDC providers</h3>
-        <button v-if="canWrite" class="btn" @click="addProvider">+ Add provider</button>
+        <h3>{{ t('authenticationView.oauthProvidersTitle') }}</h3>
+        <button v-if="canWrite" class="btn" @click="addProvider">{{ t('authenticationView.addProvider') }}</button>
       </div>
-      <p class="muted" style="margin-top: -0.25rem">Any OIDC provider with a discovery URL (Entra ID, Okta, Google, Keycloak, Auth0…).</p>
+      <p class="muted" style="margin-top: -0.25rem">{{ t('authenticationView.oauthProvidersHint') }}</p>
 
-      <div v-if="providers.length === 0" class="empty">No providers configured.</div>
+      <div v-if="providers.length === 0" class="empty">{{ t('authenticationView.noProviders') }}</div>
       <div v-for="(p, i) in providers" :key="i" class="card" style="background: var(--bg)">
         <div class="row" style="gap: 1rem">
-          <div class="field" style="flex: 1"><label>ID (slug)</label><input v-model="p.id" placeholder="entra" :disabled="!canWrite" /></div>
-          <div class="field" style="flex: 1"><label>Button label</label><input v-model="p.label" placeholder="Microsoft" :disabled="!canWrite" /></div>
-          <div class="field checkbox" style="margin-top: 1.5rem"><input :id="`pe-${i}`" v-model="p.enabled" type="checkbox" :disabled="!canWrite" /><label :for="`pe-${i}`" style="margin: 0">Enabled</label></div>
+          <div class="field" style="flex: 1"><label>{{ t('authenticationView.idSlug') }}</label><input v-model="p.id" placeholder="entra" :disabled="!canWrite" /></div>
+          <div class="field" style="flex: 1"><label>{{ t('authenticationView.buttonLabel') }}</label><input v-model="p.label" placeholder="Microsoft" :disabled="!canWrite" /></div>
+          <div class="field checkbox" style="margin-top: 1.5rem"><input :id="`pe-${i}`" v-model="p.enabled" type="checkbox" :disabled="!canWrite" /><label :for="`pe-${i}`" style="margin: 0">{{ t('authenticationView.enabled') }}</label></div>
         </div>
-        <div class="field"><label>Discovery URL</label><input v-model="p.discoveryUrl" placeholder="https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration" :disabled="!canWrite" /></div>
+        <div class="field"><label>{{ t('authenticationView.discoveryUrl') }}</label><input v-model="p.discoveryUrl" placeholder="https://login.microsoftonline.com/<tenant>/v2.0/.well-known/openid-configuration" :disabled="!canWrite" /></div>
         <div class="row" style="gap: 1rem">
-          <div class="field" style="flex: 1"><label>Client ID</label><input v-model="p.clientId" :disabled="!canWrite" /></div>
+          <div class="field" style="flex: 1"><label>{{ t('authenticationView.clientId') }}</label><input v-model="p.clientId" :disabled="!canWrite" /></div>
           <div class="field" style="flex: 1">
-            <label>Client secret {{ p.clientSecretSet ? '(set — leave blank to keep)' : '' }}</label>
+            <label>{{ t('authenticationView.clientSecret') }} {{ p.clientSecretSet ? t('authenticationView.setLeaveBlank') : '' }}</label>
             <input v-model="p.clientSecret" type="password" :placeholder="p.clientSecretSet ? '••••••••' : ''" :disabled="!canWrite" />
           </div>
         </div>
-        <div class="field"><label>Scopes (space-separated)</label><input v-model="p.scopes" :disabled="!canWrite" /></div>
+        <div class="field"><label>{{ t('authenticationView.scopes') }}</label><input v-model="p.scopes" :disabled="!canWrite" /></div>
         <div class="row spread">
-          <small class="muted">Redirect URI: <code>{{ callbackUrl.replace('/saml/callback', '/oauth/' + (p.id || '<id>') + '/callback') }}</code></small>
-          <button v-if="canWrite" class="btn danger" @click="removeProvider(i)">Remove</button>
+          <small class="muted">{{ t('authenticationView.redirectUri') }} <code>{{ callbackUrl.replace('/saml/callback', '/oauth/' + (p.id || '<id>') + '/callback') }}</code></small>
+          <button v-if="canWrite" class="btn danger" @click="removeProvider(i)">{{ t('authenticationView.remove') }}</button>
         </div>
       </div>
     </div>
 
     <!-- SAML -->
     <div class="card">
-      <h3>SAML</h3>
+      <h3>{{ t('authenticationView.samlTitle') }}</h3>
 
       <div class="card" style="background: var(--bg-page); border-style: dashed">
-        <label>Import from federation metadata URL</label>
+        <label>{{ t('authenticationView.importFromMetadata') }}</label>
         <div class="row" style="gap: 0.5rem">
           <input
             v-model="metadataUrl"
@@ -262,47 +264,46 @@ async function importMetadata() {
             :disabled="!canWrite"
           />
           <button class="btn" :disabled="!canWrite || importing" @click="importMetadata">
-            {{ importing ? 'Importing…' : 'Import' }}
+            {{ importing ? t('authenticationView.importing') : t('authenticationView.import') }}
           </button>
         </div>
         <small class="muted">
-          Pulls the SSO URL, signing certificate and IdP issuer from your IdP's metadata (Entra ID, Okta, Keycloak…).
-          The fields below are filled in — review them and click “Save changes”.
+          {{ t('authenticationView.importMetadataHint') }}
         </small>
       </div>
 
-      <div class="field checkbox"><input id="saml-en" v-model="saml.enabled" type="checkbox" :disabled="!canWrite" /><label for="saml-en" style="margin: 0">Enable SAML</label></div>
+      <div class="field checkbox"><input id="saml-en" v-model="saml.enabled" type="checkbox" :disabled="!canWrite" /><label for="saml-en" style="margin: 0">{{ t('authenticationView.enableSaml') }}</label></div>
       <div class="row" style="gap: 1rem">
-        <div class="field" style="flex: 1"><label>Button label</label><input v-model="saml.label" :disabled="!canWrite" /></div>
-        <div class="field" style="flex: 1"><label>Email attribute</label><input v-model="saml.emailAttribute" placeholder="email or nameID" :disabled="!canWrite" /></div>
+        <div class="field" style="flex: 1"><label>{{ t('authenticationView.buttonLabel') }}</label><input v-model="saml.label" :disabled="!canWrite" /></div>
+        <div class="field" style="flex: 1"><label>{{ t('authenticationView.emailAttribute') }}</label><input v-model="saml.emailAttribute" :placeholder="t('authenticationView.emailAttributePlaceholder')" :disabled="!canWrite" /></div>
       </div>
-      <div class="field"><label>IdP SSO URL (entryPoint)</label><input v-model="saml.entryPoint" :disabled="!canWrite" /></div>
-      <div class="field"><label>SP entity ID (issuer)</label><input v-model="saml.issuer" :disabled="!canWrite" /></div>
-      <div class="field"><label>IdP issuer (entityID) — optional, validates the assertion source</label><input v-model="saml.idpIssuer" :disabled="!canWrite" /></div>
+      <div class="field"><label>{{ t('authenticationView.idpSsoUrl') }}</label><input v-model="saml.entryPoint" :disabled="!canWrite" /></div>
+      <div class="field"><label>{{ t('authenticationView.spEntityId') }}</label><input v-model="saml.issuer" :disabled="!canWrite" /></div>
+      <div class="field"><label>{{ t('authenticationView.idpIssuer') }}</label><input v-model="saml.idpIssuer" :disabled="!canWrite" /></div>
       <div class="field">
-        <label>IdP signing certificate (PEM) {{ saml.idpCertSet ? '(set — leave blank to keep)' : '' }}</label>
-        <textarea v-model="saml.idpCert" rows="4" :placeholder="saml.idpCertSet ? '••••• stored •••••' : '-----BEGIN CERTIFICATE-----'" :disabled="!canWrite"></textarea>
+        <label>{{ t('authenticationView.idpCert') }} {{ saml.idpCertSet ? t('authenticationView.setLeaveBlank') : '' }}</label>
+        <textarea v-model="saml.idpCert" rows="4" :placeholder="saml.idpCertSet ? t('authenticationView.certStoredPlaceholder') : '-----BEGIN CERTIFICATE-----'" :disabled="!canWrite"></textarea>
       </div>
       <div class="row spread">
-        <small class="muted">ACS / callback URL (register in your IdP): <code>{{ callbackUrl }}</code></small>
-        <button class="btn" @click="copyCb">Copy</button>
+        <small class="muted">{{ t('authenticationView.acsCallbackUrl') }} <code>{{ callbackUrl }}</code></small>
+        <button class="btn" @click="copyCb">{{ t('authenticationView.copy') }}</button>
       </div>
     </div>
 
     <!-- Provisioning -->
     <div class="card">
-      <h3>Provisioning</h3>
-      <div class="field checkbox"><input id="ap" v-model="general.autoProvision" type="checkbox" :disabled="!canWrite" /><label for="ap" style="margin: 0">Auto-create users on first SSO login</label></div>
+      <h3>{{ t('authenticationView.provisioningTitle') }}</h3>
+      <div class="field checkbox"><input id="ap" v-model="general.autoProvision" type="checkbox" :disabled="!canWrite" /><label for="ap" style="margin: 0">{{ t('authenticationView.autoCreateUsers') }}</label></div>
       <div class="field" style="max-width: 240px">
-        <label>Default role for new SSO users</label>
+        <label>{{ t('authenticationView.defaultRoleSso') }}</label>
         <select v-model="general.defaultRole" :disabled="!canWrite">
-          <option value="viewer">Viewer</option>
-          <option value="editor">Editor</option>
-          <option value="admin">Admin</option>
+          <option value="viewer">{{ t('authenticationView.roleViewer') }}</option>
+          <option value="editor">{{ t('authenticationView.roleEditor') }}</option>
+          <option value="admin">{{ t('authenticationView.roleAdmin') }}</option>
         </select>
       </div>
       <div class="field" style="max-width: 480px">
-        <label>Admin emails (one per line)</label>
+        <label>{{ t('authenticationView.adminEmails') }}</label>
         <textarea
           v-model="general.adminEmails"
           rows="3"
@@ -310,55 +311,51 @@ async function importMetadata() {
           placeholder="admin@yourcompany.com"
         ></textarea>
         <small class="muted">
-          These accounts are granted the admin role when they sign in via SSO (e.g. an EntraID user that
-          replaces the local admin) — created/promoted even if auto-create is off. Disable local password
-          login (Settings → Authentication) once your SSO admin can sign in.
+          {{ t('authenticationView.adminEmailsHint') }}
         </small>
       </div>
     </div>
 
     <div v-if="canManageScim" class="card">
-      <h2>Directory sync (SCIM)</h2>
+      <h2>{{ t('authenticationView.scimTitle') }}</h2>
       <small class="muted">
-        Let Entra ID / your IdP provision and deactivate users automatically (SCIM 2.0). This complements
-        SAML: SAML signs users in, SCIM keeps the user list in sync (create / update / deactivate). SCIM never
-        creates admins.
+        {{ t('authenticationView.scimHint') }}
       </small>
 
       <div class="field" style="max-width: 560px; margin-top: 0.75rem">
-        <label>SCIM endpoint — the “Tenant URL” in Entra</label>
+        <label>{{ t('authenticationView.scimEndpoint') }}</label>
         <div class="row" style="gap: 0.5rem">
           <input :value="scimEndpoint" readonly />
-          <button class="btn" type="button" @click="copyText(scimEndpoint)">Copy</button>
+          <button class="btn" type="button" @click="copyText(scimEndpoint)">{{ t('authenticationView.copy') }}</button>
         </div>
       </div>
 
       <div v-if="newScimToken" class="alert" style="border-color: var(--accent)">
-        <strong>Secret token — copy it now, it won’t be shown again:</strong>
+        <strong>{{ t('authenticationView.secretTokenNotice') }}</strong>
         <div class="row" style="gap: 0.5rem; margin-top: 0.4rem">
           <input :value="newScimToken" readonly />
-          <button class="btn" type="button" @click="copyText(newScimToken)">Copy</button>
+          <button class="btn" type="button" @click="copyText(newScimToken)">{{ t('authenticationView.copy') }}</button>
         </div>
       </div>
 
       <div class="row" style="gap: 0.5rem; align-items: center; margin-top: 0.5rem">
         <span class="badge" :class="scim.enabled && scim.hasToken ? 'online' : 'offline'">
-          {{ scim.enabled && scim.hasToken ? 'enabled' : 'disabled' }}
+          {{ scim.enabled && scim.hasToken ? t('authenticationView.statusEnabled') : t('authenticationView.statusDisabled') }}
         </span>
         <button class="btn primary" type="button" @click="generateScimToken">
-          {{ scim.hasToken ? 'Regenerate token' : 'Generate token' }}
+          {{ scim.hasToken ? t('authenticationView.regenerateToken') : t('authenticationView.generateToken') }}
         </button>
-        <button v-if="scim.hasToken" class="btn danger" type="button" @click="disableScim">Disable</button>
+        <button v-if="scim.hasToken" class="btn danger" type="button" @click="disableScim">{{ t('authenticationView.disable') }}</button>
       </div>
 
       <div class="field" style="max-width: 240px; margin-top: 0.75rem">
-        <label>Role for provisioned users</label>
+        <label>{{ t('authenticationView.roleForProvisioned') }}</label>
         <select v-model="scim.defaultRole">
-          <option value="viewer">Viewer</option>
-          <option value="editor">Editor</option>
+          <option value="viewer">{{ t('authenticationView.roleViewer') }}</option>
+          <option value="editor">{{ t('authenticationView.roleEditor') }}</option>
         </select>
       </div>
-      <div class="btn-row"><button class="btn" type="button" @click="saveScim">Save SCIM settings</button></div>
+      <div class="btn-row"><button class="btn" type="button" @click="saveScim">{{ t('authenticationView.saveScimSettings') }}</button></div>
     </div>
   </template>
 </template>

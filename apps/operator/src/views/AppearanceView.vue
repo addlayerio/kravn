@@ -1,13 +1,15 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref, computed } from 'vue';
-import type { AppSettings } from '@kravn/contracts';
-import { isBrandingCustomized } from '@kravn/contracts';
+import { useI18n } from 'vue-i18n';
+import type { AppSettings, LocaleCode } from '@kravn/contracts';
+import { shouldShowAttribution, AVAILABLE_LOCALES } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useBootstrapStore } from '../stores/bootstrap';
 import BrandLogo from '../components/BrandLogo.vue';
 import PoweredByKravn from '../components/PoweredByKravn.vue';
 
+const { t } = useI18n();
 const auth = useAuthStore();
 const bootstrap = useBootstrapStore();
 const canWrite = auth.can('settings.write');
@@ -18,6 +20,7 @@ const message = ref('');
 const error = ref('');
 const showCss = ref(false);
 const instanceName = ref('Kravn');
+const locale = ref<LocaleCode>('en');
 
 const form = reactive({
   brandName: '',
@@ -27,20 +30,22 @@ const form = reactive({
   cssOverride: '',
 });
 
-const LOGO_MAX_BYTES = 480 * 1024;
+// The server caps the stored data URI at 512 KB; base64 inflates bytes ~33%, so validate the ENCODED length.
+const LOGO_MAX_DATAURI = 512_000;
 
 const previewName = computed(() => form.brandName || instanceName.value || 'Kravn');
-const previewTagline = computed(() => form.tagline || 'Sign in to your AI workspace.');
-const previewCustomized = computed(() => isBrandingCustomized({ ...form } as AppSettings['branding']));
+const previewTagline = computed(() => form.tagline || t('appearanceView.previewTaglineDefault'));
+const previewCustomized = computed(() => shouldShowAttribution({ ...form } as AppSettings['branding'], instanceName.value));
 const previewStyle = computed(() => (form.primaryColor ? { '--accent': form.primaryColor } : {}));
 
 onMounted(async () => {
   try {
     const { settings } = await api.get<{ settings: AppSettings }>('/api/settings');
     instanceName.value = settings.general.instanceName;
+    locale.value = settings.general.locale;
     Object.assign(form, settings.branding);
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Could not load settings.';
+    error.value = e instanceof ApiError ? e.message : t('appearanceView.couldNotLoad');
   } finally {
     loading.value = false;
   }
@@ -51,16 +56,18 @@ function onLogoFile(e: Event) {
   const file = (e.target as HTMLInputElement).files?.[0];
   if (!file) return;
   if (!file.type.startsWith('image/')) {
-    error.value = 'Please choose an image file (PNG, SVG, JPG, WEBP).';
-    return;
-  }
-  if (file.size > LOGO_MAX_BYTES) {
-    error.value = 'That image is too large (max ~480 KB). Use a smaller or optimised logo (SVG or compressed PNG).';
+    error.value = t('appearanceView.invalidImage');
     return;
   }
   const reader = new FileReader();
   reader.onload = () => {
-    form.logoDataUri = String(reader.result || '');
+    const dataUri = String(reader.result || '');
+    // Validate the ENCODED size (what actually gets stored + rejected server-side), not the raw file bytes.
+    if (dataUri.length > LOGO_MAX_DATAURI) {
+      error.value = t('appearanceView.imageTooLarge');
+      return;
+    }
+    form.logoDataUri = dataUri;
   };
   reader.readAsDataURL(file);
 }
@@ -77,11 +84,11 @@ async function save() {
   message.value = '';
   error.value = '';
   try {
-    await api.put<{ settings: AppSettings }>('/api/settings', { branding: { ...form } });
+    await api.put<{ settings: AppSettings }>('/api/settings', { general: { locale: locale.value }, branding: { ...form } });
     await bootstrap.load(true); // refresh the operator's own live branding (e.g. the consent page)
-    message.value = 'Appearance saved. Client login, sidebar and the approval page now use it.';
+    message.value = t('appearanceView.savedSuccess');
   } catch (e) {
-    error.value = e instanceof ApiError ? e.message : 'Could not save appearance.';
+    error.value = e instanceof ApiError ? e.message : t('appearanceView.couldNotSave');
   } finally {
     saving.value = false;
   }
@@ -90,97 +97,99 @@ async function save() {
 
 <template>
   <div class="topbar">
-    <h1>Appearance</h1>
+    <h1>{{ t('appearanceView.title') }}</h1>
     <button v-if="canWrite" class="btn primary" :disabled="saving || loading" @click="save">
-      {{ saving ? 'Saving…' : 'Save changes' }}
+      {{ saving ? t('appearanceView.saving') : t('appearanceView.saveChanges') }}
     </button>
   </div>
-  <p class="muted intro">
-    White-label the client-facing surfaces so they match your organisation. These apply immediately (no
-    redeploy) to the <strong>chat client</strong> and the <strong>MCP approval page</strong>. A small
-    “Powered by Kravn” mark always shows below a custom logo.
-  </p>
+  <p class="muted intro" v-html="t('appearanceView.intro')"></p>
 
   <div v-if="message" class="alert success">{{ message }}</div>
   <div v-if="error" class="alert error">{{ error }}</div>
-  <p v-if="loading" class="muted">Loading…</p>
+  <p v-if="loading" class="muted">{{ t('appearanceView.loading') }}</p>
 
   <div v-else class="appearance">
     <!-- ── Editor ── -->
     <div class="ap-form">
       <div class="field">
-        <label>Brand name</label>
-        <input v-model="form.brandName" :disabled="!canWrite" placeholder="Acme Compliance" maxlength="80" />
-        <small class="muted">Replaces the “Kravn” wordmark. Appears on: the login screen, the sidebar header, the browser tab, and the approval page.</small>
+        <label>{{ t('appearanceView.languageLabel') }}</label>
+        <select v-model="locale" :disabled="!canWrite">
+          <option v-for="l in AVAILABLE_LOCALES" :key="l.code" :value="l.code">{{ l.name }}</option>
+        </select>
+        <small class="muted">{{ t('appearanceView.languageHint') }}</small>
       </div>
 
       <div class="field">
-        <label>Tagline</label>
-        <input v-model="form.tagline" :disabled="!canWrite" placeholder="Your secure AI workspace." maxlength="160" />
-        <small class="muted">Short phrase under the logo on the login and approval screens.</small>
+        <label>{{ t('appearanceView.brandNameLabel') }}</label>
+        <input v-model="form.brandName" :disabled="!canWrite" :placeholder="t('appearanceView.brandNamePlaceholder')" maxlength="80" />
+        <small class="muted">{{ t('appearanceView.brandNameHint') }}</small>
       </div>
 
       <div class="field">
-        <label>Logo</label>
+        <label>{{ t('appearanceView.taglineLabel') }}</label>
+        <input v-model="form.tagline" :disabled="!canWrite" :placeholder="t('appearanceView.taglinePlaceholder')" maxlength="160" />
+        <small class="muted">{{ t('appearanceView.taglineHint') }}</small>
+      </div>
+
+      <div class="field">
+        <label>{{ t('appearanceView.logoLabel') }}</label>
         <div class="logo-row">
           <span class="logo-box"><BrandLogo :size="40" :logo="form.logoDataUri" /></span>
           <label class="btn">
-            {{ form.logoDataUri ? 'Replace…' : 'Upload image…' }}
+            {{ form.logoDataUri ? t('appearanceView.logoReplace') : t('appearanceView.logoUpload') }}
             <input type="file" accept="image/*" :disabled="!canWrite" style="display: none" @change="onLogoFile" />
           </label>
-          <button v-if="form.logoDataUri" class="btn" :disabled="!canWrite" @click="removeLogo">Remove</button>
+          <button v-if="form.logoDataUri" class="btn" :disabled="!canWrite" @click="removeLogo">{{ t('appearanceView.remove') }}</button>
         </div>
-        <small class="muted">PNG or SVG, up to ~480 KB. Appears on: the login screen, the sidebar, the empty chat state, the browser favicon, and the approval page.</small>
+        <small class="muted">{{ t('appearanceView.logoHint') }}</small>
       </div>
 
       <div class="field">
-        <label>Primary colour</label>
+        <label>{{ t('appearanceView.primaryColorLabel') }}</label>
         <div class="logo-row">
           <input type="color" :value="form.primaryColor || '#325ea8'" :disabled="!canWrite" @input="form.primaryColor = ($event.target as HTMLInputElement).value" />
           <input v-model="form.primaryColor" :disabled="!canWrite" placeholder="#325ea8" style="max-width: 130px" />
-          <button v-if="form.primaryColor" class="btn" :disabled="!canWrite" @click="resetColor">Reset</button>
+          <button v-if="form.primaryColor" class="btn" :disabled="!canWrite" @click="resetColor">{{ t('appearanceView.reset') }}</button>
         </div>
-        <small class="muted">Accent colour used across buttons and highlights. Applied to the chat client and approval page.</small>
+        <small class="muted">{{ t('appearanceView.primaryColorHint') }}</small>
       </div>
 
       <div class="field">
         <label>
-          <button class="linkish" @click="showCss = !showCss">{{ showCss ? '▾' : '▸' }} Advanced: custom CSS</button>
+          <button class="linkish" @click="showCss = !showCss">{{ showCss ? '▾' : '▸' }} {{ t('appearanceView.advancedCss') }}</button>
         </label>
         <template v-if="showCss">
           <textarea v-model="form.cssOverride" :disabled="!canWrite" rows="6" spellcheck="false" placeholder="/* e.g. */
 .chat-sidebar { background: #0b1b2b; }"></textarea>
-          <small class="muted">For a technician: raw CSS injected into the <strong>chat client only</strong> (never the approval page, for safety). Applied on top of the theme.</small>
+          <small class="muted" v-html="t('appearanceView.cssHint')"></small>
         </template>
       </div>
     </div>
 
     <!-- ── Live preview + where-it-appears ── -->
     <div class="ap-preview">
-      <div class="preview-label">Preview</div>
+      <div class="preview-label">{{ t('appearanceView.previewLabel') }}</div>
       <div class="preview-surfaces" :style="previewStyle">
         <!-- Login card -->
         <div class="pv-card">
-          <div class="pv-badge">Login screen</div>
+          <div class="pv-badge">{{ t('appearanceView.loginScreenBadge') }}</div>
           <div class="pv-brand">
             <BrandLogo :size="40" :logo="form.logoDataUri" />
             <div class="pv-name">{{ previewName }}</div>
             <div class="pv-tag">{{ previewTagline }}</div>
             <PoweredByKravn v-if="previewCustomized" style="margin-top: 4px" />
           </div>
-          <div class="pv-btn">Sign in</div>
+          <div class="pv-btn">{{ t('appearanceView.signIn') }}</div>
         </div>
 
         <!-- Sidebar header -->
         <div class="pv-side">
-          <div class="pv-badge">Chat sidebar</div>
+          <div class="pv-badge">{{ t('appearanceView.chatSidebarBadge') }}</div>
           <div class="pv-side-brand"><BrandLogo :size="22" :logo="form.logoDataUri" /> <strong>{{ previewName }}</strong></div>
           <PoweredByKravn v-if="previewCustomized" style="padding-left: 2px" />
         </div>
       </div>
-      <p class="muted where">
-        These changes also apply to the <strong>MCP approval page</strong> users see when they connect a client.
-      </p>
+      <p class="muted where" v-html="t('appearanceView.whereText')"></p>
     </div>
   </div>
 </template>

@@ -1,6 +1,9 @@
 <script setup lang="ts">
 import { onMounted, onBeforeUnmount, ref, nextTick } from 'vue';
+import { useI18n } from 'vue-i18n';
 import { api } from '../api/client';
+
+const { t } = useI18n();
 
 interface LogEntry {
   ts: string;
@@ -74,17 +77,17 @@ onBeforeUnmount(() => {
 
 <template>
   <div class="topbar">
-    <h1>Logs</h1>
-    <span class="badge" :class="connected ? 'online' : 'offline'">{{ connected ? 'live' : 'disconnected' }}</span>
+    <h1>{{ t('logsView.title') }}</h1>
+    <span class="badge" :class="connected ? 'online' : 'offline'">{{ connected ? t('logsView.statusLive') : t('logsView.statusDisconnected') }}</span>
   </div>
 
   <div class="card">
     <div class="row spread" style="margin-bottom: 0.75rem">
-      <input v-model="filter" placeholder="Filter…" style="max-width: 280px" />
-      <label class="checkbox"><input v-model="autoscroll" type="checkbox" /> Auto-scroll</label>
+      <input v-model="filter" :placeholder="t('logsView.filterPlaceholder')" style="max-width: 280px" />
+      <label class="checkbox"><input v-model="autoscroll" type="checkbox" /> {{ t('logsView.autoScroll') }}</label>
     </div>
     <div ref="container" style="max-height: 60vh; overflow: auto">
-      <div v-if="logs.length === 0" class="empty">Waiting for activity…</div>
+      <div v-if="logs.length === 0" class="empty">{{ t('logsView.waitingForActivity') }}</div>
       <div v-for="(e, i) in logs.filter(matches)" :key="i" class="log-line">
         <span class="muted">{{ new Date(e.ts).toLocaleTimeString() }}</span>
         <span class="lvl" :class="e.level">{{ e.level.toUpperCase() }}</span>

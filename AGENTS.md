@@ -162,6 +162,33 @@ wrong/unrelated icon is worse than initials — some niche MCP servers genuinely
    `description`s and the manifest `setup` text (rendered as Markdown in the operator). Don't duplicate config
    help into `guide/plugins.md`.
 
+### 8. Every user-facing string is localized (i18n)
+
+The platform is multi-locale. The supported locales are the single source of truth in
+`packages/contracts/src/i18n.ts` (`LOCALE_CODES` / `AVAILABLE_LOCALES`), keyed by **ISO `language-REGION`
+code** (`en`, `es-AR`, `fr-FR`, `pt-PT`, …). Everything keys off that code so a regional variant (e.g.
+`es-UY`) is added by: one row in `i18n.ts` + one message file per app. The instance default lives in
+`settings.general.locale` (served publicly on `/api/bootstrap`); each user may override it for their session
+(persisted in `localStorage`, key `kravn-locale`). Resolution order: **user override → instance default →
+`navigator.language` → `en`**.
+
+**Rule — any new user-facing feature MUST support all defined locales.** Concretely:
+
+- **No hardcoded human-readable strings** in `apps/client` or `apps/operator` templates/`.ts` — buttons,
+  labels, placeholders, `title`/`aria-label`, toasts, empty states, validation messages. Use `t('area.key')`
+  (`vue-i18n`; `const { t } = useI18n()`), and add the key to **every** locale file under
+  `apps/{client,operator}/src/i18n/locales/*.ts` — English first (the base + fallback), then a correct
+  translation for `es-AR`, `fr-FR`, `pt-PT`. Never leave a key present in one locale and missing in another.
+- **Keep keys in sync across all locale files.** A missing key silently falls back to English — a bug, not a
+  feature. When you add/rename a key, update all locale files in the same change.
+- **Interpolate, don't concatenate.** Use `t('x', { name })` with a placeholder; never build a sentence by
+  string concatenation (word order differs per language).
+- **Stored data defaults** (e.g. a conversation's default title) are not UI copy — don't translate the stored
+  value; translate only the display fallback if one is shown.
+- **Server-rendered / API strings**: the gateway's few user-facing HTML pages and any message shown verbatim
+  in the UI should read from the same locale set where practical; a new SPA surface is never exempt.
+- New locale files must stay `as const` and structurally identical to `en.ts`.
+
 ## Development, validation & release workflow
 
 This is the loop every change goes through. The **durable record** of what shipped and why lives in **git

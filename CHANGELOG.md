@@ -14,6 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🌍 **Multi-language platform (i18n).** The client and operator now run fully in **English, Español
+  (Argentina), Français (France)** and **Português (Portugal)** — every view, modal, menu, placeholder,
+  toast and the Settings field labels are localized (~4,000 translated strings across the two apps, all four
+  locales in exact key parity). Keyed by **ISO `language-REGION`** code (single source of truth in
+  `packages/contracts/src/i18n.ts`), so a regional variant (e.g. `es-UY`, which differs from `es-AR`/`es-ES`)
+  is added with one code + one message file per app. An admin sets the **instance default** in **Appearance →
+  Language**; each user can override it for their own session (a language switcher in both apps, persisted
+  locally). Resolution: user override → instance default → browser language → English (the fallback for any
+  key). Wired end-to-end via the public `/api/bootstrap` so the login and OAuth approval screens are localized
+  pre-auth. Left in English by design: brand names (OpenAI, Anthropic…) and raw values echoed from the
+  server. AGENTS.md now **requires** every new user-facing string to ship in all defined locales.
 - 🎨 **White-label Appearance (per-client branding).** A new admin **Appearance** page (operator console) lets
   each customer brand the client-facing surfaces to match their organisation — **logo** (image upload),
   **brand name**, **tagline**, **primary colour**, and an advanced **raw CSS override** for a technician.
