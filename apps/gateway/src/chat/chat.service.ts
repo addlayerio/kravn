@@ -189,9 +189,10 @@ export class ChatService {
           try {
             const entry = toolIndex.get(name);
             if (!entry) throw new Error(`unknown tool ${name}`);
-            // Each tool carries ITS OWN endpoint (a project may draw tools from several endpoints); that endpoint
-            // drives this call's pipeline overlays (incl. the approval gate) + usage metering, exactly as the MCP
-            // data plane does. undefined ⇒ global pipeline only (e.g. a plugin sandbox tool).
+            // endpointId scopes THIS call's pipeline overlays (incl. the approval gate) + usage metering: a
+            // normal chat's endpoint drives them exactly as the MCP data plane does. It is undefined for a
+            // project tool (endpoint-independent → global pipeline only) and for a plugin-sandbox tool. The tool
+            // always executes against its own origin server regardless.
             const result = await this.registry.invokeTool(entry.toolId, args, actor, { mcpEndpointId: entry.endpointId, files: workspaceFiles });
             // Only honor result `files` (→ downloadable attachments) from in-process plugin tools, never
             // from remote MCP upstreams (toolId `tl_plg_…` ⇒ plugin server). See review F1.
@@ -423,31 +424,34 @@ export class ChatService {
 
   /** Build the tool set for a project chat from the pinned tool ids. Entitlement is RE-CHECKED live via
    *  listAvailableTools (a tool the caller is no longer entitled to is silently dropped — the pin is a filter,
-   *  never a grant). Each tool executes through its own endpoint (per-tool pipeline/metering). Tools span
-   *  endpoints, so there is no single input-DLP endpoint → the global chat-input chain applies (mcpEndpointId
-   *  undefined). */
+   *  never a grant).
+   *
+   *  Governance is ENDPOINT-INDEPENDENT: a project picks tools, not an endpoint, so a tool must not depend on
+   *  which endpoint it happens to be reachable through. The tool still executes against its own origin SERVER
+   *  (that's `tool.serverId`, unaffected by any endpoint), and the **global** pipeline applies (audit, secrets,
+   *  PII, prompt-injection — the org-wide baseline). We deliberately do NOT attach a per-endpoint overlay
+   *  (approval gate / endpoint DLP), because the "endpoint" here is only a grouping reference the user never
+   *  chose — routing a tool through an arbitrary first-consumable endpoint's overlay would make it behave
+   *  unpredictably (and could silently block it). Hence endpointId is undefined for every project tool. */
   private async resolveProjectTools(actor: AuthUser, pinnedToolIds: string[]): Promise<{ tools: any[]; toolIndex: ToolIndex; mcpEndpointId: string | undefined }> {
     const tools: any[] = [];
     const toolIndex: ToolIndex = new Map();
-    const available = await this.listAvailableTools(actor); // entitled tools + their execution endpoint
-    const bySlug = new Map((await this.repos.mcpEndpoints.list()).map((v) => [v.slug, v] as const));
+    const available = await this.listAvailableTools(actor); // the tools the caller is CURRENTLY entitled to
+    const entitledIds = new Set(available.map((a) => a.id));
     const allTools = await this.repos.registry.listTools();
     const byId = new Map(allTools.map((t) => [t.id, t]));
-    const availableById = new Map(available.map((a) => [a.id, a]));
     const seen = new Set<string>();
     for (const toolId of pinnedToolIds) {
       if (seen.has(toolId)) continue;
       seen.add(toolId);
-      const a = availableById.get(toolId); // only survives if the caller is CURRENTLY entitled
+      if (!entitledIds.has(toolId)) continue; // re-validated live: not entitled → dropped (pin is a filter)
       const t = byId.get(toolId);
-      if (!a || !t || !t.enabled) continue;
+      if (!t || !t.enabled) continue;
       // Tool NAME is the model's addressing key and must be unique to the provider. Two DIFFERENT pinned tools
-      // can share a name across endpoints (e.g. `search`); offering both would duplicate the function name
-      // (provider 400) AND shadow one endpoint's approval gate/metering. First pinned wins — same rule as the
-      // plugin-tool merge. (Colliding names are rare; the picker groups by endpoint so the owner can see them.)
+      // can share a name (e.g. `search` from two servers); offering both would duplicate the function name
+      // (provider 400). First pinned wins — same rule as the plugin-tool merge.
       if (toolIndex.has(t.name)) continue;
-      const endpointId = bySlug.get(a.endpointSlug)?.id;
-      toolIndex.set(t.name, { toolId: t.id, endpointId });
+      toolIndex.set(t.name, { toolId: t.id, endpointId: undefined }); // endpoint-independent: global pipeline only
       tools.push(this.toolDef(t));
     }
     return { tools, toolIndex, mcpEndpointId: undefined };
