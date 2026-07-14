@@ -34,6 +34,13 @@ export const pluginManifestSchema = z.object({
   /** Optional JSON Schema describing the operator-editable config for this plugin. */
   configSchema: z.unknown().optional(),
   /**
+   * If true, an `mcp-server` plugin does NOT enable-on-install — it seeds DISABLED, so no empty default
+   * instance appears in the installed list. For "configure-first" connectors that are useless until an
+   * admin configures them but can't express that through `configSchema.required` (e.g. an HTTP connector
+   * needing a base URL *or* an explicit open-mode opt-in). The operator enables it, or adds instances.
+   */
+  seedDisabled: z.boolean().optional(),
+  /**
    * Optional setup / required-permissions guidance (plain text; blank lines and `•` bullets are fine).
    * Shown as a callout in the plugin's config screen — the place to document, e.g., which OAuth scopes or
    * Graph Application permissions the credential you enter here must be granted.

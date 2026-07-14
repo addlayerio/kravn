@@ -277,9 +277,13 @@ export class PluginManager {
         // stays disabled until the operator fills it in, so unconfigured tools don't pollute the catalog.
         const req = (n.manifest as { configSchema?: { required?: unknown[] } })?.configSchema?.required;
         const needsConfig = Array.isArray(req) && req.length > 0;
+        // A "configure-first" connector (e.g. the HTTP Request connector) has no *required* fields — it's
+        // useless-until-configured but can't express that via `required` — so it opts out of enable-on-install
+        // explicitly, avoiding an empty default instance in the installed list.
+        const seedDisabled = (n.manifest as { seedDisabled?: boolean }).seedDisabled === true;
         // Native mcp-servers (tools) enable on first install unless they need config; native HOOK plugins
         // (content interceptors) start DISABLED — they change behaviour, so the operator opts in + composes them.
-        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, m.type === 'mcp-server' && !needsConfig);
+        if (!existingIds.has(m.id)) await this.repos.plugins.setEnabled(m.id, m.type === 'mcp-server' && !needsConfig && !seedDisabled);
       } catch (err) {
         this.log.warn({ err, plugin: n.manifest.id }, 'failed to seed native plugin');
       }

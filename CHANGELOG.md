@@ -61,16 +61,24 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   link-local/reserved/metadata targets **regardless** of the `ssrfAllowPrivateNetworks` operator toggle (that
   setting only ever loosens the gateway's own egress to operator-configured upstreams), plus an explicit
   pre-flight that also covers IP-literal URLs (which undici does not run the dispatcher lookup for).
-- 🌐 **HTTP Request integration (native `kravn-http`) — a configurable API connector.** An admin points a
-  connector at **one API** (a **base URL** + **default headers**, e.g. `Authorization: Bearer …`, which are
-  encrypted at rest and never shown to the model or the chat) and clients call it via the **`http_request`**
-  tool with a method + **path** + optional body. The model can only reach **paths under that base URL** — it
-  cannot escape to another host — and a **read-only** toggle blocks POST/PUT/PATCH/DELETE. **Safe by default:**
-  an unconfigured connector refuses every request; an explicit **"Allow any host"** opt-in turns it into an
-  open HTTP tool (strict SSRF: private/internal/metadata always blocked). Add it once per API (each with its
-  own credentials). Responses come back **token-efficiently** — JSON as **TOML**, HTML as **Markdown**, else
-  capped text. (Replaces the earlier `kravn-web` search/fetch plugin — general web search is now the
-  provider-native chat toggle above.)
+- 🌐 **HTTP Request integration (native `kravn-http`) — a configurable API connector with three lock levels.**
+  An admin adds one connector per API and picks how much the client may vary the request: **Pinned** — fires
+  **one exact request** (fixed method + URL + optional fixed body); the model can only *trigger* it, never
+  change the URL, path or method (a "Postman saved request", ideal for a sensitive or write endpoint).
+  **Scoped** — a **base URL** (API root, or a single endpoint) that the client calls **paths under**; it can
+  never reach another host. **Open** — advanced opt-in: the client may call **any public URL** (strict SSRF).
+  **Default headers** (auth, e.g. `Authorization: Bearer …`) are encrypted at rest, applied server-side, and
+  **never shown to the model or chat**. Responses come back **token-efficiently** — JSON as **TOML**, HTML as
+  **Markdown**, else capped text. Add it again per API; it seeds **disabled** (configure-first) so no empty
+  default clutters the installed list. (Replaces the earlier `kravn-web` search/fetch plugin — general web
+  search is now the provider-native chat toggle above.)
+- 🔒 **Hardened the HTTP connector against redirect-based host-lock escape and credential leakage** (found by an
+  adversarial review of the connector). In a locked (Pinned/Scoped) connector, a **cross-host redirect is now
+  refused** — an open-redirect on the trusted API can no longer bounce the request to an attacker host — and the
+  server-side **auth headers are stripped whenever a request crosses to another host**, so a bearer token can't
+  be exfiltrated via a redirect. Also: `..` path segments are rejected (no climbing above the base path), the
+  base URL is joined with proper URL semantics (a base carrying a `?query`, e.g. an API key, is no longer
+  corrupted), and an empty/`/` path hits the base URL **exactly** instead of appending a stray `/`.
 - 🤖 **Assistants (chat client).** Reusable presets — a **persona (system instructions) + default model +
   default tools** — that a user can start a chat from. Picking an assistant in "New chat" pre-fills the model
   and tool endpoint and injects its instructions into every chat started from it; instructions are loaded

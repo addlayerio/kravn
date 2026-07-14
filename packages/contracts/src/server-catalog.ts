@@ -937,7 +937,7 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   },
   {
     id: 'kravn-http', name: 'HTTP Request', category: 'Developer Tools',
-    description: 'A configurable API connector — an admin points it at ONE API (base URL + auth headers, encrypted) and clients call it (read-only or read-write); the model can only reach paths under that API, never another host. JSON responses come back as TOML and HTML as Markdown to save tokens. SSRF-guarded. Add it again per API.',
+    description: 'A configurable API connector with three lock levels — Pinned (fire ONE exact request), Scoped (a base URL the client calls paths under, never another host), or Open (any public URL). Auth headers are encrypted, applied server-side, never shown to the model, and never leak across a cross-host redirect. JSON responses come back as TOML and HTML as Markdown to save tokens. SSRF-guarded. Add it again per API.',
   },
   {
     id: 'kravn-linkedin', name: 'LinkedIn', category: 'Social',
