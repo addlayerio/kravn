@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🔌 **MCP clients with a custom callback scheme (Cursor, VS Code, Windsurf, …) can now connect.** Kravn's
+  OAuth 2.1 authorization server previously rejected any `redirect_uri` that wasn't `https` or `http` on
+  loopback, so a native-app client registering e.g. `cursor://anysphere.cursor-mcp/oauth/callback` failed
+  Dynamic Client Registration with **"Invalid redirect_uri"**. Private-use / custom URI schemes are now
+  accepted for native apps (RFC 8252 §7.1) — PKCE S256 (already mandatory) is the standard mitigation, and a
+  denylist still refuses browser-executable / local-resource schemes (`javascript:`, `data:`, `file:`, …).
+  Claude (https) and loopback clients are unaffected.
 - 🌐 **Native web search in chat (per-chat toggle).** A 🌐 toggle in the composer turns on the LLM
   provider's own server-side web search for that conversation — **Claude** (Anthropic `web_search` tool,
   any model), **Gemini** (Google Search grounding, any 2.x model) and **OpenAI** (`web_search_options`,

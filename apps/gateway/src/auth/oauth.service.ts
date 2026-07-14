@@ -60,12 +60,30 @@ function randomToken(bytes = 32): string {
   return crypto.randomBytes(bytes).toString('base64url');
 }
 
-/** Allowed redirect targets: https anywhere, or http only on loopback (local dev clients). */
+// Schemes we must never redirect a browser to: they execute script or read local resources. Includes dead
+// script aliases (livescript/mocha) and view-source as defence-in-depth — no native app legitimately uses them.
+const DANGEROUS_REDIRECT_SCHEMES = new Set([
+  'javascript:', 'data:', 'vbscript:', 'file:', 'blob:', 'about:', 'filesystem:', 'livescript:', 'mocha:', 'view-source:',
+]);
+
+/**
+ * Allowed redirect targets:
+ *   • https anywhere (web clients, e.g. Claude);
+ *   • http only on loopback (local dev / native clients that listen on 127.0.0.1);
+ *   • a private-use / custom URI scheme for native app clients (RFC 8252 §7.1) — e.g. Cursor's
+ *     `cursor://…`, VS Code's `vscode://…`, `com.example.app:/…`. PKCE S256 (mandatory here) is the
+ *     standard mitigation for a custom scheme being claimed by another local app, and the code is bound to
+ *     the client, so an intercepted code is useless without the verifier.
+ * A short denylist keeps browser-executable / local-resource schemes (javascript:, data:, file:, …) out.
+ */
 function validRedirectUri(uri: string): boolean {
   try {
     const u = new URL(uri);
     if (u.protocol === 'https:') return true;
-    return u.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname);
+    if (u.protocol === 'http:') return ['localhost', '127.0.0.1', '[::1]', '::1'].includes(u.hostname);
+    if (DANGEROUS_REDIRECT_SCHEMES.has(u.protocol)) return false;
+    // Any other scheme is treated as a native-app private-use scheme; require a well-formed scheme token.
+    return /^[a-z][a-z0-9+.-]*:$/.test(u.protocol);
   } catch {
     return false;
   }
@@ -222,7 +240,10 @@ export class OAuthService {
     const client = await this.repos.oauth.getClient(p.clientId);
     let redirectHost = '';
     try {
-      redirectHost = new URL(p.redirectUri).host;
+      const ru = new URL(p.redirectUri);
+      // Custom native-app schemes can be opaque (no authority), e.g. `com.example.app:/cb` → empty host. Fall
+      // back to the scheme so the consent screen always shows the user WHERE approval sends the code.
+      redirectHost = ru.host || ru.protocol.replace(/:$/, '');
     } catch {
       /* validated at authorize; ignore */
     }
