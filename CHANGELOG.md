@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📁 **Projects (chat client): chats-first view + scheduled tasks inside a project.** Opening a project now
+  shows its **chats** (and its scheduled tasks) as the main view instead of dropping straight into edit mode;
+  project instructions / documents / sharing moved behind a **⚙️ settings** toggle. A project has a **"+
+  Scheduled task"** button that creates a schedule scoped to the project — the run inherits the project's
+  instructions + documents and its result lands as a chat in the project. Also renamed the confusing "Tools
+  (MCP endpoint)" picker to **"MCP Endpoint"** (it selects an endpoint, not individual tools). *(Project-level
+  tool selection — pick specific tools across endpoints — is the next step.)*
 - 🐛 **Opening a chat project no longer crashes the client** (white screen, console `SyntaxError: 10`). The
   "share by email" placeholder (`user@company.com`) contained a literal `@`, which vue-i18n parses as
   linked-message syntax and throws on (`INVALID_LINKED_FORMAT`) the first time the project view renders it — so
