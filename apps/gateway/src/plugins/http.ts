@@ -280,20 +280,22 @@ function pathOf(v: string): string {
   return q.length ? `${path}?${q.join('?')}` : path;
 }
 
-/** A `..` segment could climb above the base path after URL normalization — refused in locked modes. */
-function hasDotDot(pathPart: string): boolean {
-  return pathPart.split('/').includes('..');
-}
-
 /** Join a model path (path+query) UNDER a base URL using URL semantics — so a base that itself carries a query
- *  (e.g. ?apikey=…) isn't corrupted by string concatenation: the base query is kept and the model's query merged. */
-function joinUnderBase(base: string, pathAndQuery: string): string {
+ *  (e.g. ?apikey=…) isn't corrupted by string concatenation: the base query is kept and the model's query merged.
+ *  Returns null if the result escapes the base PATH: the WHATWG pathname setter resolves dot-segments in ANY
+ *  form (literal `..`, or percent-encoded `%2e%2e`/`.%2e`/`%2e.`), so rather than pattern-match the input we
+ *  verify the FINAL, normalized pathname is still within the base path — closing every encoding trick at once. */
+function joinUnderBase(base: string, pathAndQuery: string): string | null {
   const u = new URL(base);
+  const basePath = u.pathname.replace(/\/+$/, ''); // e.g. "/team-a/reports"; "" when the base is the host root
   const qi = pathAndQuery.indexOf('?');
   const pathPart = qi < 0 ? pathAndQuery : pathAndQuery.slice(0, qi);
   const query = qi < 0 ? '' : pathAndQuery.slice(qi + 1);
-  u.pathname = u.pathname.replace(/\/+$/, '') + pathPart; // base path (no trailing /) + single-leading-slash path
+  u.pathname = basePath + pathPart; // base path (no trailing /) + single-leading-slash path; setter normalizes dots
   if (query) u.search = u.search ? `${u.search}&${query}` : `?${query}`;
+  // Confinement: when the admin scoped to a sub-path, the normalized result must stay under it (a root base
+  // "" imposes no path constraint — the whole host is in scope, which is the documented root-scoping behaviour).
+  if (basePath && u.pathname !== basePath && !u.pathname.startsWith(`${basePath}/`)) return null;
   return u.toString();
 }
 
@@ -389,21 +391,30 @@ async function httpRequest(guard: SsrfGuard, cfg: HttpConfig, args: Record<strin
   let url: string;
   let strict: boolean;
   let lockedHost: string | undefined;
+  let headers: Record<string, string>;
   if (cfg.mode === 'scoped') {
     if (!cfg.target) return text('Error: this connector has no base URL configured.', true);
     // Locked to the admin-configured host: any host the model passes is discarded (only path+query is used), and
     // an empty / "/" path hits the base URL EXACTLY (so a base pinned to one resource works without a stray "/").
     const p = pathOf(raw);
-    if (hasDotDot(p.split('?')[0])) return text('Error: the path may not contain ".." segments.', true);
-    url = p === '/' ? cfg.target : joinUnderBase(cfg.target, p);
+    if (p === '/') url = cfg.target;
+    else {
+      const joined = joinUnderBase(cfg.target, p); // null → the (normalized) path escaped the base path
+      if (joined === null) return text('Error: that path escapes the connector\'s configured base path.', true);
+      url = joined;
+    }
     strict = false;
     lockedHost = hostOf(cfg.target);
+    headers = { ...cfg.defaultHeaders, ...normalizeHeaders(args.headers) }; // auth applied (host-locked)
   } else {
-    // open — the model supplies a full URL → treat it as untrusted (strict SSRF, no host lock).
+    // open — the model supplies a full URL → treat it as untrusted (strict SSRF, no host lock). The connector's
+    // default (auth) headers are NOT applied here: the target host is model-chosen, so sending a server-side
+    // credential to it would leak the secret to whatever host the model picked. Open = model headers only.
     if (!/^https?:\/\//i.test(raw)) return text('Error: `url` must be an absolute http(s) URL.', true);
     url = raw;
     strict = true;
     lockedHost = undefined;
+    headers = normalizeHeaders(args.headers);
   }
   try {
     const u = new URL(url);
@@ -411,7 +422,6 @@ async function httpRequest(guard: SsrfGuard, cfg: HttpConfig, args: Record<strin
   } catch {
     return text('Error: could not build a valid URL from the given path and Base URL.', true);
   }
-  const headers = { ...cfg.defaultHeaders, ...normalizeHeaders(args.headers) };
   const body = typeof args.body === 'string' ? args.body : args.body !== undefined ? JSON.stringify(args.body) : undefined;
   return sendAndRender(guard, method, url, headers, body, strict, lockedHost, sensitive);
 }
@@ -449,8 +459,9 @@ const SETUP =
   'never reach another host (redirects to a different host are refused).\n' +
   '• **Open** — advanced: the client may call ANY public URL (private/internal/metadata always blocked). No ' +
   'base URL; broadest surface — use only when you really want a general HTTP tool.\n' +
-  '• **Default headers (JSON)** — e.g. {"Authorization":"Bearer …"}. Applied to every request, encrypted at ' +
-  'rest, never shown to the model or chat, and (in Pinned/Scoped) never re-sent across a redirect to another host.\n' +
+  '• **Default headers (JSON)** — e.g. {"Authorization":"Bearer …"}. Applied to every request in Pinned/Scoped, ' +
+  'encrypted at rest, never shown to the model or chat, and never re-sent across a redirect to another host. NOT ' +
+  'applied in Open mode (the client chooses the host, so a stored credential would leak).\n' +
   '• **Read-only** — (Scoped/Open) allow only GET/HEAD so clients cannot change anything. Mutating calls can be ' +
   'put behind the approval gate.';
 
@@ -480,7 +491,7 @@ export function httpPlugin(guard: SsrfGuard): McpServerPlugin {
           baseUrl: { type: 'string', title: 'API base URL / request URL', description: 'PINNED: the full request URL (e.g. https://api.example.com/orders). SCOPED: the API ROOT (e.g. https://api.example.com — the client calls paths like /users/1) or a single endpoint (called with no path). The model can never reach another host. Leave empty for OPEN mode.' },
           method: { type: 'string', title: 'Method (Pinned mode)', enum: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'HEAD'], default: 'GET', description: 'The single HTTP method a PINNED connector is allowed to use. Ignored in Scoped/Open mode (the client chooses the method there, subject to Read-only).' },
           body: { type: 'string', title: 'Fixed body (Pinned mode, optional)', description: 'An optional fixed request body sent with a PINNED POST/PUT/PATCH. Ignored in other modes.' },
-          defaultHeaders: { type: 'string', title: 'Default headers (JSON)', description: 'Headers added to every request, e.g. {"Authorization":"Bearer …","X-Api-Key":"…"}. Encrypted at rest; never shown to the model or in the chat.', secret: true },
+          defaultHeaders: { type: 'string', title: 'Default headers (JSON)', description: 'Auth added to every request in Pinned/Scoped mode, e.g. {"Authorization":"Bearer …","X-Api-Key":"…"}. Encrypted at rest; never shown to the model or chat, and never sent to a different host. NOT applied in Open mode (the client picks the host, so a stored credential would leak).', secret: true },
           readOnly: { type: 'boolean', title: 'Read-only (GET/HEAD only)', description: 'Scoped/Open: block POST/PUT/PATCH/DELETE so clients can only read.' },
         },
       },

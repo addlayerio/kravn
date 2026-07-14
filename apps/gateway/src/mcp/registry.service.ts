@@ -588,20 +588,25 @@ export class RegistryService {
     const desired = this.d.plugins.enabledMcpServers();
     const desiredIds = new Set(desired.map((d) => d.id));
     const known = this.d.plugins.mcpServerTypeIds();
+    // "Configure-first" connectors (e.g. the HTTP Request connector) never get an auto-created default instance —
+    // they do nothing until an admin configures one, so a default `plg_<id>` would just be an empty, request-
+    // refusing duplicate in the installed list. Remove any that a prior build seeded, and never (re)create one.
+    const configureFirst = this.d.plugins.configureFirstTypeIds();
     const all = await this.d.repos.servers.list();
 
     for (const s of all) {
       if (s.transport !== 'plugin') continue;
       const isDefault = s.id === `plg_${s.command}`;
-      // Remove servers of an uninstalled plugin, and the auto-created default of a disabled type — but KEEP
-      // user-created instances of a known type (they are independent, with their own config + enabled flag).
-      if (!known.has(s.command) || (isDefault && !desiredIds.has(s.command))) {
+      // Remove servers of an uninstalled plugin, the auto-created default of a disabled type, and the default of
+      // a configure-first type — but KEEP user-created instances of a known type (independent config + enabled).
+      if (!known.has(s.command) || (isDefault && (!desiredIds.has(s.command) || configureFirst.has(s.command)))) {
         await this.d.upstream.disconnect(s.id);
         await this.d.repos.servers.delete(s.id);
       }
     }
 
     for (const d of desired) {
+      if (configureFirst.has(d.id)) continue; // no auto-default for configure-first connectors
       const id = `plg_${d.id}`;
       const existing = await this.d.repos.servers.getById(id);
       if (!existing) {

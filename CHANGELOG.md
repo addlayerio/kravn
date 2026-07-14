@@ -72,13 +72,22 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   **Markdown**, else capped text. Add it again per API; it seeds **disabled** (configure-first) so no empty
   default clutters the installed list. (Replaces the earlier `kravn-web` search/fetch plugin — general web
   search is now the provider-native chat toggle above.)
-- 🔒 **Hardened the HTTP connector against redirect-based host-lock escape and credential leakage** (found by an
+- 🔒 **Hardened the HTTP connector against host-lock escape and credential leakage** (found by two rounds of
   adversarial review of the connector). In a locked (Pinned/Scoped) connector, a **cross-host redirect is now
   refused** — an open-redirect on the trusted API can no longer bounce the request to an attacker host — and the
   server-side **auth headers are stripped whenever a request crosses to another host**, so a bearer token can't
-  be exfiltrated via a redirect. Also: `..` path segments are rejected (no climbing above the base path), the
-  base URL is joined with proper URL semantics (a base carrying a `?query`, e.g. an API key, is no longer
-  corrupted), and an empty/`/` path hits the base URL **exactly** instead of appending a stray `/`.
+  be exfiltrated via a redirect. **Path-scope confinement is enforced on the *normalized* path**, so encoded
+  dot-segments (`%2e%2e`, `.%2e`, any case) can no longer climb above a Scoped connector's base path — a base of
+  `…/team-a` really is confined to `/team-a`. In **Open** mode the connector no longer sends the stored auth
+  headers at all (the client chooses the host, so a credential would leak). An **IP-literal target** (e.g. an
+  IPv6 cloud-metadata address like `[fd00:ec2::254]`) is now validated up front, so metadata/IMDS ranges stay
+  blocked even in the admin-configured path. Plus: the base URL is joined with proper URL semantics (a base
+  carrying a `?query`, e.g. an API key, is no longer corrupted), and an empty/`/` path hits the base URL exactly.
+- 🐛 **A configure-first connector no longer leaves an empty default instance in the installed list.** A
+  `seedDisabled` mcp-server type (the HTTP Request connector) never gets an auto-created default `plg_<id>`
+  server — any that a prior build seeded is removed on the next sync — so adding your own instance (e.g.
+  "ComplianceOne Swagger") no longer sits next to a duplicate, request-refusing "HTTP Request" row. Your
+  instances are untouched.
 - 🤖 **Assistants (chat client).** Reusable presets — a **persona (system instructions) + default model +
   default tools** — that a user can start a chat from. Picking an assistant in "New chat" pre-fills the model
   and tool endpoint and injects its instructions into every chat started from it; instructions are loaded

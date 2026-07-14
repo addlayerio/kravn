@@ -639,6 +639,17 @@ export class PluginManager {
     );
   }
 
+  /** mcp-server TYPE ids that are "configure-first" (manifest `seedDisabled`): they must NOT get an auto-created
+   *  default `plg_<id>` instance — they're useless until configured, so the admin adds instances explicitly.
+   *  An empty default would just clutter the installed list and refuse every request. */
+  configureFirstTypeIds(): Set<string> {
+    return new Set(
+      [...this.records.values()]
+        .filter((r) => r.type === 'mcp-server' && (r.manifest as { seedDisabled?: boolean })?.seedDisabled === true)
+        .map((r) => r.id),
+    );
+  }
+
   /** Resolve the plugin TYPE object + record by plugin id (no config yet). */
   private mcpPluginObject(typeId: string): { plugin: McpServerPlugin; record: PluginRecord } {
     const r = this.records.get(typeId);
