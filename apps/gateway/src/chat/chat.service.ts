@@ -1,4 +1,4 @@
-import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider } from '@kravn/contracts';
+import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider, type AvailableTool } from '@kravn/contracts';
 import { newId, type Encryptor } from '../crypto.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { safeFetch } from '../http/client.js';
@@ -15,6 +15,10 @@ import type { Logger } from 'pino';
 
 /** Server id the registry assigns to a plugin-backed MCP server (see RegistryService.syncPluginServers). */
 const PLUGIN_SERVER_PREFIX = 'plg_';
+
+/** tool name → { registry tool id, the MCP endpoint that scopes THIS tool's pipeline/metering }. A project chat
+ *  may draw tools from several endpoints, so the endpoint is per-tool (undefined ⇒ global pipeline only). */
+type ToolIndex = Map<string, { toolId: string; endpointId?: string }>;
 
 function attachmentKindForName(name: string): ChatAttachmentKind {
   const e = name.toLowerCase().split('.').pop() ?? '';
@@ -123,7 +127,7 @@ export class ChatService {
     // composable into virtual servers like any mcp-server plugin). No special-casing of execution.
     const interpreterOn = supportsTools && this.plugins.isEnabled(CODE_INTERPRETER_ID);
     if (interpreterOn) {
-      await this.addPluginServerTools(`${PLUGIN_SERVER_PREFIX}${CODE_INTERPRETER_ID}`, tools, toolIndex);
+      await this.addPluginServerTools(`${PLUGIN_SERVER_PREFIX}${CODE_INTERPRETER_ID}`, tools, toolIndex, mcpEndpointId);
     }
 
     const history = await this.repos.chat.listMessages(conversationId);
@@ -180,12 +184,15 @@ export class ChatService {
           }
           let resultText: string;
           try {
-            const toolId = toolIndex.get(name);
-            if (!toolId) throw new Error(`unknown tool ${name}`);
-            const result = await this.registry.invokeTool(toolId, args, actor, { mcpEndpointId, files: workspaceFiles });
+            const entry = toolIndex.get(name);
+            if (!entry) throw new Error(`unknown tool ${name}`);
+            // Each tool carries ITS OWN endpoint (a project may draw tools from several endpoints); that endpoint
+            // drives this call's pipeline overlays (incl. the approval gate) + usage metering, exactly as the MCP
+            // data plane does. undefined ⇒ global pipeline only (e.g. a plugin sandbox tool).
+            const result = await this.registry.invokeTool(entry.toolId, args, actor, { mcpEndpointId: entry.endpointId, files: workspaceFiles });
             // Only honor result `files` (→ downloadable attachments) from in-process plugin tools, never
             // from remote MCP upstreams (toolId `tl_plg_…` ⇒ plugin server). See review F1.
-            const trusted = toolId.startsWith('tl_plg_');
+            const trusted = entry.toolId.startsWith('tl_plg_');
             resultText = await this.persistToolFiles(actor, conversationId, result, producedAttachmentIds, trusted);
             // Make trusted tool-produced files available to LATER tools THIS SAME turn — e.g. so a PDF the
             // code interpreter just generated can be attached to an email (via attachFiles) without the model
@@ -212,11 +219,12 @@ export class ChatService {
     return assistantMsg;
   }
 
-  /** Add an enabled plugin server's registry tools to the chat tool list (deduped), routed via registry.invokeTool. */
-  private async addPluginServerTools(serverId: string, tools: any[], toolIndex: Map<string, string>): Promise<void> {
+  /** Add an enabled plugin server's registry tools to the chat tool list (deduped), routed via registry.invokeTool.
+   *  `endpointId` scopes the call's pipeline/metering (the chat's endpoint for a normal chat; undefined otherwise). */
+  private async addPluginServerTools(serverId: string, tools: any[], toolIndex: ToolIndex, endpointId?: string): Promise<void> {
     for (const t of await this.repos.registry.listToolsByServer(serverId)) {
       if (!t.enabled || toolIndex.has(t.name)) continue;
-      toolIndex.set(t.name, t.id);
+      toolIndex.set(t.name, { toolId: t.id, endpointId });
       tools.push({ type: 'function', function: { name: t.name, description: t.description || undefined, parameters: t.inputSchema ?? { type: 'object', properties: {} } } });
     }
   }
@@ -344,13 +352,51 @@ export class ChatService {
 
   // ─── Tools from the conversation's virtual server (team-scoped) ─────────────────────────────────
 
-  private async resolveTools(actor: AuthUser, conv: ChatConversation) {
+  private toolDef(t: { name: string; description?: string; inputSchema?: unknown }) {
+    return { type: 'function', function: { name: t.name, description: t.description || undefined, parameters: t.inputSchema ?? { type: 'object', properties: {} } } };
+  }
+
+  /**
+   * The flat list of tools the user is ENTITLED to — the union across every MCP endpoint they can consume,
+   * narrowed by their team tool-grant — for the project tool picker (and the run-time re-validation below).
+   * Each tool references ONE endpoint the user can reach it through (dedup: first consumable endpoint wins);
+   * that endpoint is only a reference for grouping/execution — it does not widen access. Governance is the
+   * unchanged MCP data plane (endpoint access + team grants); this is a read over it, never a new grant.
+   */
+  async listAvailableTools(actor: AuthUser): Promise<AvailableTool[]> {
+    const endpoints = (await this.repos.mcpEndpoints.list()).filter((v) => v.enabled && canConsumeMcpEndpoint(v, actor));
+    const allTools = await this.repos.registry.listTools();
+    const byId = new Map(allTools.map((t) => [t.id, t]));
+    const serverName = new Map((await this.repos.servers.list()).map((srv) => [srv.id, srv.name] as const));
+    const out = new Map<string, AvailableTool>();
+    for (const vs of endpoints) {
+      const allowed = await this.repos.teams.allowedToolIdsForUser(actor, vs); // null = all of the endpoint's tools
+      for (const toolId of vs.toolIds) {
+        if (out.has(toolId)) continue; // first consumable endpoint wins
+        const t = byId.get(toolId);
+        if (!t || !t.enabled) continue;
+        if (allowed && !allowed.has(toolId)) continue;
+        out.set(toolId, { id: t.id, name: t.name, description: t.description ?? '', serverName: serverName.get(t.serverId) ?? '', endpointSlug: vs.slug, endpointName: vs.name });
+      }
+    }
+    return [...out.values()];
+  }
+
+  private async resolveTools(actor: AuthUser, conv: ChatConversation): Promise<{ tools: any[]; toolIndex: ToolIndex; mcpEndpointId: string | undefined }> {
+    // A project that pins tools takes precedence: the chat offers EXACTLY the project's tools (re-validated
+    // against the CALLER's live entitlement), possibly spanning several endpoints. Falls through to the chat's
+    // own MCP-endpoint selection when the project pins nothing.
+    if (conv.projectId) {
+      const project = await this.repos.chat.getProjectForUser(actor.id, conv.projectId);
+      if (project && project.toolIds.length) return this.resolveProjectTools(actor, project.toolIds);
+    }
+
     const tools: any[] = [];
-    const toolIndex = new Map<string, string>();
-    if (!conv.vserverSlug) return { tools, toolIndex, mcpEndpointId: undefined as string | undefined };
+    const toolIndex: ToolIndex = new Map();
+    if (!conv.vserverSlug) return { tools, toolIndex, mcpEndpointId: undefined };
 
     const vs = await this.repos.mcpEndpoints.getBySlug(conv.vserverSlug);
-    if (!vs || !vs.enabled) return { tools, toolIndex, mcpEndpointId: undefined as string | undefined };
+    if (!vs || !vs.enabled) return { tools, toolIndex, mcpEndpointId: undefined };
 
     // Enforce the MCP endpoint's DATA-PLANE access policy (same rule as the MCP endpoint + chat options):
     // consumption is by team membership — platform role/admin is NOT an axis here.
@@ -363,15 +409,45 @@ export class ChatService {
     for (const t of allTools) {
       if (!set.has(t.id) || !t.enabled) continue;
       if (allowed && !allowed.has(t.id)) continue;
-      toolIndex.set(t.name, t.id);
-      tools.push({
-        type: 'function',
-        function: { name: t.name, description: t.description || undefined, parameters: t.inputSchema ?? { type: 'object', properties: {} } },
-      });
+      if (toolIndex.has(t.name)) continue; // tool names are the model's addressing key + must be unique to the provider
+      toolIndex.set(t.name, { toolId: t.id, endpointId: vs.id });
+      tools.push(this.toolDef(t));
     }
     // Carry the endpoint id so the tool-call path applies this endpoint's per-VS pipeline overlays (e.g. the
     // Human Approval Gate) and per-endpoint usage metering — identical to the MCP data plane. See review F1.
     return { tools, toolIndex, mcpEndpointId: vs.id };
+  }
+
+  /** Build the tool set for a project chat from the pinned tool ids. Entitlement is RE-CHECKED live via
+   *  listAvailableTools (a tool the caller is no longer entitled to is silently dropped — the pin is a filter,
+   *  never a grant). Each tool executes through its own endpoint (per-tool pipeline/metering). Tools span
+   *  endpoints, so there is no single input-DLP endpoint → the global chat-input chain applies (mcpEndpointId
+   *  undefined). */
+  private async resolveProjectTools(actor: AuthUser, pinnedToolIds: string[]): Promise<{ tools: any[]; toolIndex: ToolIndex; mcpEndpointId: string | undefined }> {
+    const tools: any[] = [];
+    const toolIndex: ToolIndex = new Map();
+    const available = await this.listAvailableTools(actor); // entitled tools + their execution endpoint
+    const bySlug = new Map((await this.repos.mcpEndpoints.list()).map((v) => [v.slug, v] as const));
+    const allTools = await this.repos.registry.listTools();
+    const byId = new Map(allTools.map((t) => [t.id, t]));
+    const availableById = new Map(available.map((a) => [a.id, a]));
+    const seen = new Set<string>();
+    for (const toolId of pinnedToolIds) {
+      if (seen.has(toolId)) continue;
+      seen.add(toolId);
+      const a = availableById.get(toolId); // only survives if the caller is CURRENTLY entitled
+      const t = byId.get(toolId);
+      if (!a || !t || !t.enabled) continue;
+      // Tool NAME is the model's addressing key and must be unique to the provider. Two DIFFERENT pinned tools
+      // can share a name across endpoints (e.g. `search`); offering both would duplicate the function name
+      // (provider 400) AND shadow one endpoint's approval gate/metering. First pinned wins — same rule as the
+      // plugin-tool merge. (Colliding names are rare; the picker groups by endpoint so the owner can see them.)
+      if (toolIndex.has(t.name)) continue;
+      const endpointId = bySlug.get(a.endpointSlug)?.id;
+      toolIndex.set(t.name, { toolId: t.id, endpointId });
+      tools.push(this.toolDef(t));
+    }
+    return { tools, toolIndex, mcpEndpointId: undefined };
   }
 
   // ─── LLM call (OpenAI-compatible + Anthropic) ──────────────────────────────────────────────────

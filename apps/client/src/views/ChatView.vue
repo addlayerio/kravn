@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant } from '@kravn/contracts';
+import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant, AvailableTool } from '@kravn/contracts';
 import { api, ApiError } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
@@ -102,6 +102,47 @@ const docBusy = ref(false);
 const showProjectSettings = ref(false);
 // Scheduled tasks that belong to the open project (schedules already carry a projectId).
 const projectSchedules = computed(() => (project.value ? schedules.value.filter((s) => s.projectId === project.value!.project.id) : []));
+
+// Project TOOLS: the flat list of tools the user is entitled to (across every MCP endpoint) — the project pins
+// a subset that its chats/scheduled tasks are limited to. Governance stays server-side; this is just the picker.
+const availableTools = ref<AvailableTool[]>([]);
+const availableToolsLoaded = ref(false);
+const selectedToolIds = ref<string[]>([]);
+const savingTools = ref(false);
+const availableToolsByEndpoint = computed(() => {
+  const groups = new Map<string, { slug: string; name: string; tools: AvailableTool[] }>();
+  for (const t of availableTools.value) {
+    let g = groups.get(t.endpointSlug);
+    if (!g) { g = { slug: t.endpointSlug, name: t.endpointName || t.endpointSlug, tools: [] }; groups.set(t.endpointSlug, g); }
+    g.tools.push(t);
+  }
+  return [...groups.values()];
+});
+async function loadAvailableTools() {
+  if (availableToolsLoaded.value) return;
+  try {
+    availableTools.value = (await api.get<{ tools: AvailableTool[] }>('/api/chat/available-tools')).tools;
+    availableToolsLoaded.value = true;
+  } catch { /* no tools available */ }
+}
+async function saveProjectTools() {
+  if (!project.value) return;
+  savingTools.value = true;
+  try {
+    const res = await api.put<{ project: ChatProject }>(`/api/chat/projects/${project.value.project.id}`, { toolIds: [...selectedToolIds.value] });
+    project.value.project = res.project;
+    selectedToolIds.value = [...res.project.toolIds]; // server may have dropped unentitled ids
+    const idx = projects.value.findIndex((p) => p.id === res.project.id);
+    if (idx >= 0) projects.value[idx] = res.project;
+  } catch { /* keep the form as-is on error */ } finally {
+    savingTools.value = false;
+  }
+}
+// A new chat started in a project that pins tools INHERITS them — the endpoint picker doesn't apply then.
+const newChatUsesProjectTools = computed(() => {
+  if (!nc.projectId) return false;
+  return (projects.value.find((p) => p.id === nc.projectId)?.toolIds.length ?? 0) > 0;
+});
 
 // Sharing — the caller's access to the open project drives what they can do.
 const isOwner = computed(() => project.value?.project.access === 'owner');
@@ -236,8 +277,10 @@ async function openProject(p: ChatProject) {
   showProjectSettings.value = false; // always open CHATS-first
   const res = await api.get<ProjectDetail>(`/api/chat/projects/${p.id}`);
   project.value = res;
+  selectedToolIds.value = [...res.project.toolIds];
   newDoc.name = '';
   newDoc.content = '';
+  void loadAvailableTools();
 }
 function openNewProject() {
   projectError.value = '';
@@ -1006,6 +1049,23 @@ async function logout() {
           </div>
 
           <div class="panel-card">
+            <h3>{{ t('chat.projectTools') }} <span class="muted" style="font-weight: 400">({{ selectedToolIds.length }})</span></h3>
+            <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.projectToolsHint') }}</p>
+            <div v-if="availableToolsByEndpoint.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noToolsAvailable') }}</div>
+            <div v-for="grp in availableToolsByEndpoint" :key="grp.slug" class="tool-group">
+              <div class="tool-group-h">{{ grp.name }}</div>
+              <label v-for="tl in grp.tools" :key="tl.id" class="tool-item">
+                <input type="checkbox" :value="tl.id" v-model="selectedToolIds" :disabled="!canEdit" />
+                <span class="tool-name">{{ tl.name }}</span>
+                <small v-if="tl.description" class="muted tool-desc">{{ tl.description }}</small>
+              </label>
+            </div>
+            <div v-if="canEdit && availableToolsByEndpoint.length" class="btn-row" style="justify-content: flex-end">
+              <button class="btn primary" :disabled="savingTools" @click="saveProjectTools">{{ savingTools ? t('chat.saving') : t('chat.saveTools') }}</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
             <h3>{{ t('chat.documents') }} <span class="muted" style="font-weight: 400">({{ project.documents.length }})</span></h3>
             <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.documentsHint') }}</p>
             <div v-if="project.documents.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noDocuments') }}</div>
@@ -1163,12 +1223,15 @@ async function logout() {
             <option v-for="m in providers.find((p) => p.id === nc.providerId)?.models ?? []" :key="m" :value="m" />
           </datalist>
         </div>
-        <div class="field">
+        <div v-if="!newChatUsesProjectTools" class="field">
           <label>{{ t('chat.toolsOptional') }}</label>
           <select v-model="nc.vserverSlug">
             <option value="">{{ t('chat.noTools') }}</option>
             <option v-for="v in vservers" :key="v.slug" :value="v.slug">{{ v.name }}</option>
           </select>
+        </div>
+        <div v-else class="field">
+          <small class="muted">🔧 {{ t('chat.usesProjectTools') }}</small>
         </div>
         <div class="field">
           <label>{{ t('chat.projectOptional') }}</label>

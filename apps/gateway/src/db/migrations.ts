@@ -933,8 +933,25 @@ const chatConversationWebSearch: Migration = {
   },
 };
 
+const chatProjectTools: Migration = {
+  name: '030_chat_project_tools',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_projects'))) return;
+    if (!(await knex.schema.hasColumn('chat_projects', 'tool_ids'))) {
+      // JSON array of registry tool IDs the project pins. Nullable (existing rows → NULL); the repo coalesces
+      // NULL → []. No TEXT default (MySQL < 8.0.13 rejects DEFAULT on TEXT).
+      await knex.schema.alterTable('chat_projects', (t) => t.text('tool_ids').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_projects')) && (await knex.schema.hasColumn('chat_projects', 'tool_ids'))) {
+      await knex.schema.alterTable('chat_projects', (t) => t.dropColumn('tool_ids'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

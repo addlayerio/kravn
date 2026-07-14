@@ -92,14 +92,28 @@ export type SetTeamServerAccessRequest = z.infer<typeof setTeamServerAccessSchem
 export const createChatProjectSchema = z.object({
   name: z.string().min(1).max(120),
   instructions: z.string().max(20_000).optional(),
+  toolIds: z.array(z.string()).max(200).optional(),
 });
 export type CreateChatProjectRequest = z.infer<typeof createChatProjectSchema>;
 
 export const updateChatProjectSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   instructions: z.string().max(20_000).optional(),
+  toolIds: z.array(z.string()).max(200).optional(),
 });
 export type UpdateChatProjectRequest = z.infer<typeof updateChatProjectSchema>;
+
+/** One tool the caller is entitled to (via some MCP endpoint), for the project tool picker — flat list the UI
+ *  groups by endpoint. `endpointSlug` is a reference/grouping only; execution re-resolves the endpoint. */
+export const availableToolSchema = z.object({
+  id: z.string(), // registry tool DB id (stored in project.toolIds)
+  name: z.string(),
+  description: z.string().default(''),
+  serverName: z.string().default(''), // origin server (for display)
+  endpointSlug: z.string(), // an endpoint the caller can consume this tool through
+  endpointName: z.string().default(''),
+});
+export type AvailableTool = z.infer<typeof availableToolSchema>;
 
 export const addProjectDocumentSchema = z.object({
   name: z.string().min(1).max(200),

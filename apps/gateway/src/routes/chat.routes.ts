@@ -29,6 +29,13 @@ import { parse, sendError } from './_helpers.js';
 // role/admin is not an axis. Keeps "which endpoints show in chat" identical to "which you can actually call".
 const canUseVs = canConsumeMcpEndpoint;
 
+/** Keep only the tool ids the caller is currently entitled to (via some consumable endpoint) — so pinning a
+ *  project's tools can never grant access to a tool the user couldn't already reach. */
+async function filterEntitledTools(s: Services, u: ReturnType<typeof currentUser>, toolIds: string[]): Promise<string[]> {
+  const available = new Set((await s.chat.listAvailableTools(u)).map((a) => a.id));
+  return toolIds.filter((id) => available.has(id));
+}
+
 export function chatRoutes(app: FastifyInstance, s: Services): void {
   const auth = { preHandler: [app.authenticate] };
 
@@ -44,12 +51,19 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return { providers, mcpEndpoints };
   });
 
+  // Flat list of tools the caller is entitled to (union across their consumable MCP endpoints) — for the
+  // project tool picker. A read over the existing MCP governance; it grants nothing.
+  app.get('/api/chat/available-tools', auth, async (req) => ({ tools: await s.chat.listAvailableTools(currentUser(req)) }));
+
   // Projects (Claude-Projects-style: instructions + documents injected as chat context)
   app.get('/api/chat/projects', auth, async (req) => ({ projects: await s.repos.chat.listProjects(currentUser(req).id) }));
   app.post('/api/chat/projects', auth, async (req, reply) => {
     const dto = parse(reply, createChatProjectSchema, req.body);
     if (!dto) return;
-    const project = await s.repos.chat.createProject(currentUser(req).id, newId(), dto.name, dto.instructions ?? '');
+    const u = currentUser(req);
+    // Only pin tools the caller is actually entitled to (a filter, not a grant) — junk/unentitled ids are dropped.
+    const toolIds = dto.toolIds ? await filterEntitledTools(s, u, dto.toolIds) : [];
+    const project = await s.repos.chat.createProject(u.id, newId(), dto.name, dto.instructions ?? '', toolIds);
     return reply.code(201).send({ project });
   });
   app.get('/api/chat/projects/:id', auth, async (req, reply) => {
@@ -73,7 +87,17 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const access = await s.repos.chat.getProjectAccess(u.id, id);
     if (!access) return sendError(reply, 404, 'not_found', 'Project not found.');
     if (access === 'viewer') return sendError(reply, 403, 'forbidden', 'You have read-only access to this project.');
-    await s.repos.chat.updateProject(id, dto);
+    let patch: typeof dto = dto;
+    if (dto.toolIds !== undefined) {
+      // A saver (owner OR editor) may only ADD tools they are entitled to — but must NOT drop existing pins they
+      // simply can't see (an editor's entitlement is narrower than the owner's; those tools aren't in their
+      // picker). So keep an incoming id if it's entitled to the saver OR was already pinned on the project.
+      const current = await s.repos.chat.getProjectForUser(u.id, id);
+      const kept = current ? new Set(current.toolIds) : new Set<string>();
+      const entitled = new Set((await s.chat.listAvailableTools(u)).map((a) => a.id));
+      patch = { ...dto, toolIds: dto.toolIds.filter((tid) => entitled.has(tid) || kept.has(tid)) };
+    }
+    await s.repos.chat.updateProject(id, patch);
     return { project: await s.repos.chat.getProjectForUser(u.id, id) };
   });
   app.delete('/api/chat/projects/:id', auth, async (req, reply) => {

@@ -21,6 +21,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   instructions + documents and its result lands as a chat in the project. Also renamed the confusing "Tools
   (MCP endpoint)" picker to **"MCP Endpoint"** (it selects an endpoint, not individual tools). *(Project-level
   tool selection — pick specific tools across endpoints — is the next step.)*
+- 🧰 **Project-level tool selection (chat client).** A project can pin a **subset of tools** — chosen from **all
+  the tools you have access to, across every MCP endpoint** (the endpoint becomes a grouping reference, not a
+  gate). Every chat and scheduled task in the project is then limited to exactly those tools, so you can build a
+  project around 2–3 specific tools instead of a whole endpoint. Purely a **chat-layer filter over the existing
+  MCP governance** — the pinned set is **re-checked against the running user's live entitlement** on every call
+  (a pin never grants access), each tool executes through **its own endpoint** so the approval gate / DLP
+  overlays / usage metering apply exactly as on the MCP data plane, and the **MCP gateway data plane is
+  unchanged**. New endpoint `GET /api/chat/available-tools`; `chat_projects.tool_ids` (migration 030). New chats
+  started in such a project inherit the tools (no endpoint picker). Hardened after an adversarial review: pinned
+  tools are **de-duplicated by name** so two same-named tools from different endpoints can't duplicate the
+  provider tool list (a 400) or shadow one endpoint's approval gate (first pinned wins); and on a **shared**
+  project an editor saving tools can only **add** tools they're entitled to — it never drops owner-pinned tools
+  the editor can't see.
 - 🐛 **Opening a chat project no longer crashes the client** (white screen, console `SyntaxError: 10`). The
   "share by email" placeholder (`user@company.com`) contained a literal `@`, which vue-i18n parses as
   linked-message syntax and throws on (`INVALID_LINKED_FORMAT`) the first time the project view renders it — so

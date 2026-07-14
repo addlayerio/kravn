@@ -247,6 +247,13 @@ export const chatProjectSchema = z.object({
   name: z.string().min(1).max(120),
   /** Project-level system instructions, prepended to every chat started in the project. */
   instructions: z.string().default(''),
+  /**
+   * Registry tool IDs curated for this project (a subset the owner picked from the tools they are entitled to,
+   * possibly spanning several MCP endpoints). A chat/scheduled task in the project offers EXACTLY these tools —
+   * always re-checked against the caller's live entitlement at run time, so this is a filter, never a grant.
+   * Empty = the project pins no tools (chats fall back to their own MCP-endpoint selection).
+   */
+  toolIds: z.array(z.string()).default([]),
   /** The CALLER's access to this project: `owner` (created it) or `editor`/`viewer` (shared with them). */
   access: projectRoleSchema.optional(),
   /** Email of the owner — set on projects shared WITH the caller, so the UI can show "shared by …". */

@@ -1094,20 +1094,21 @@ export class ChatRepo {
     }
     return p;
   }
-  async createProject(userId: string, id: string, name: string, instructions = ''): Promise<ChatProject> {
+  async createProject(userId: string, id: string, name: string, instructions = '', toolIds: string[] = []): Promise<ChatProject> {
     const ts = now();
     await this.store.run(
-      'INSERT INTO chat_projects (id, user_id, name, instructions, created_at, updated_at) VALUES (?,?,?,?,?,?)',
-      [id, userId, name, instructions, ts, ts],
+      'INSERT INTO chat_projects (id, user_id, name, instructions, tool_ids, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
+      [id, userId, name, instructions, JSON.stringify(toolIds), ts, ts],
     );
-    return { id, name, instructions, access: 'owner', createdAt: ts, updatedAt: ts };
+    return { id, name, instructions, toolIds, access: 'owner', createdAt: ts, updatedAt: ts };
   }
   /** Update by project id — the caller must already be gated to owner/editor at the route. */
-  async updateProject(id: string, patch: { name?: string; instructions?: string }): Promise<void> {
+  async updateProject(id: string, patch: { name?: string; instructions?: string; toolIds?: string[] }): Promise<void> {
     const sets: string[] = [];
     const vals: unknown[] = [];
     if (patch.name !== undefined) { sets.push('name = ?'); vals.push(patch.name); }
     if (patch.instructions !== undefined) { sets.push('instructions = ?'); vals.push(patch.instructions); }
+    if (patch.toolIds !== undefined) { sets.push('tool_ids = ?'); vals.push(JSON.stringify(patch.toolIds)); }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
     vals.push(now(), id);
@@ -1442,7 +1443,18 @@ function mapAttachment(r: any): ChatAttachment {
 }
 
 function mapProject(r: any): ChatProject {
-  return { id: r.id, name: r.name, instructions: r.instructions ?? '', createdAt: r.created_at, updatedAt: r.updated_at };
+  return { id: r.id, name: r.name, instructions: r.instructions ?? '', toolIds: parseStringArray(r.tool_ids), createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+/** A JSON array of strings persisted in a TEXT column; tolerate NULL/blank/legacy. */
+function parseStringArray(v: any): string[] {
+  if (!v) return [];
+  try {
+    const arr = JSON.parse(String(v));
+    return Array.isArray(arr) ? arr.filter((x): x is string => typeof x === 'string') : [];
+  } catch {
+    return [];
+  }
 }
 
 /** Tags are stored as a JSON array of strings; tolerate legacy/blank values. */
