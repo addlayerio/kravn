@@ -58,7 +58,7 @@ export default {
     "sharingHint": "Dale a otro usuario de Kravn acceso a las instrucciones y los documentos de este proyecto.",
     "notSharedYet": "Todavía no se compartió con nadie.",
     "shareWithEmail": "Compartir con (email)",
-    "emailPlaceholder": "usuario@empresa.com",
+    "emailPlaceholder": "usuario{'@'}empresa.com",
     "role": "Rol",
     "viewer": "Lector",
     "editor": "Editor",

@@ -183,6 +183,11 @@ code** (`en`, `es-AR`, `fr-FR`, `pt-PT`, …). Everything keys off that code so 
   feature. When you add/rename a key, update all locale files in the same change.
 - **Interpolate, don't concatenate.** Use `t('x', { name })` with a placeholder; never build a sentence by
   string concatenation (word order differs per language).
+- **Escape vue-i18n special characters in message VALUES.** `@`, `|`, `{`, `}` are message syntax — an
+  unescaped `@` (e.g. an email like `user@company.com`) is read as a linked message and throws at runtime
+  (`INVALID_LINKED_FORMAT`, surfaced as `SyntaxError: 10`), **white-screening the view** where the string is
+  first used (messages compile lazily). Write the literal form: `@` → `{'@'}`, `|` → `{'|'}`, brace → `{'{'}`.
+  The **`pnpm check:i18n`** guard (run in CI) compiles every message and fails the build on any such string.
 - **Stored data defaults** (e.g. a conversation's default title) are not UI copy — don't translate the stored
   value; translate only the display fallback if one is shown.
 - **Server-rendered / API strings**: the gateway's few user-facing HTML pages and any message shown verbatim

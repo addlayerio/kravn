@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **Opening a chat project no longer crashes the client** (white screen, console `SyntaxError: 10`). The
+  "share by email" placeholder (`user@company.com`) contained a literal `@`, which vue-i18n parses as
+  linked-message syntax and throws on (`INVALID_LINKED_FORMAT`) the first time the project view renders it — so
+  every project failed to open. The `@` is now escaped (`{'@'}`) in all locales. A new **`pnpm check:i18n`**
+  guard (wired into CI) compiles every localized message with vue-i18n's own compiler and fails the build on any
+  string that would crash at runtime, so this class of bug can't ship again.
 - 🔌 **MCP clients with a custom callback scheme (Cursor, VS Code, Windsurf, …) can now connect.** Kravn's
   OAuth 2.1 authorization server previously rejected any `redirect_uri` that wasn't `https` or `http` on
   loopback, so a native-app client registering e.g. `cursor://anysphere.cursor-mcp/oauth/callback` failed

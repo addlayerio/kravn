@@ -22,6 +22,9 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      - name: i18n message guard (no string that would crash vue-i18n at runtime)
+        run: pnpm check:i18n
+
       - name: Typecheck + build (all packages/apps)
         run: pnpm build
 
