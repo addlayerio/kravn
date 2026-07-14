@@ -58,6 +58,9 @@ export default {
     "sharingHint": "Donnez à un autre utilisateur Kravn accès aux instructions et documents de ce projet.",
     "notSharedYet": "Pas encore partagé avec personne.",
     "shareWithEmail": "Partager avec (e-mail)",
+    "shareWithUser": "Partager avec",
+    "selectUser": "Choisir un utilisateur…",
+    "noUsersToShare": "Aucun autre utilisateur",
     "emailPlaceholder": "utilisateur{'@'}entreprise.com",
     "role": "Rôle",
     "viewer": "Lecteur",
@@ -181,6 +184,20 @@ export default {
     "none": "Aucun",
     "optional": "facultatif",
     "language": "Langue"
+  },
+  "grouped": {
+    "clearAll": "Tout effacer",
+    "clearAllIn": "Tout effacer dans {name}",
+    "collapseAll": "Tout réduire",
+    "expandAll": "Tout développer",
+    "noItemsAvailable": "Aucun {noun} disponible.",
+    "noMatch": "Aucun {noun} ne correspond à « {q} ».",
+    "nounSelectedSuffix": "{noun} sélectionnés",
+    "nounTools": "outils",
+    "onlySelected": "Sélection uniquement",
+    "searchNoun": "Rechercher des {noun}…",
+    "selectAllIn": "Tout sélectionner dans {name}",
+    "serverCount": "{count} serveur | {count} serveurs"
   },
   "login": {
     "tagline": "Connectez-vous à votre espace de travail IA.",

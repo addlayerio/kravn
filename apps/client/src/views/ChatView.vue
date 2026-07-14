@@ -10,6 +10,7 @@ import { renderMarkdown } from '../lib/markdown';
 import BrandLogo from '../BrandLogo.vue';
 import PoweredByKravn from '../PoweredByKravn.vue';
 import LocaleSwitcher from '../LocaleSwitcher.vue';
+import GroupedSelect, { type GroupedItem, type GroupMeta } from '../GroupedSelect.vue';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
 interface VsOpt { slug: string; name: string }
@@ -109,15 +110,14 @@ const availableTools = ref<AvailableTool[]>([]);
 const availableToolsLoaded = ref(false);
 const selectedToolIds = ref<string[]>([]);
 const savingTools = ref(false);
-const availableToolsByEndpoint = computed(() => {
-  const groups = new Map<string, { slug: string; name: string; tools: AvailableTool[] }>();
-  for (const t of availableTools.value) {
-    let g = groups.get(t.endpointSlug);
-    if (!g) { g = { slug: t.endpointSlug, name: t.endpointName || t.endpointSlug, tools: [] }; groups.set(t.endpointSlug, g); }
-    g.tools.push(t);
-  }
-  return [...groups.values()];
-});
+// Tree grouped by origin MCP SERVER (same shape as the operator's endpoint composer), listing only what the
+// user is entitled to. groupId = serverId (fall back to endpoint when a tool has no server).
+const toolItems = computed<GroupedItem[]>(() =>
+  availableTools.value.map((a) => ({ id: a.id, groupId: a.serverId || a.endpointSlug, label: a.name, sublabel: a.description })),
+);
+const toolServerMeta = computed<Record<string, GroupMeta>>(() =>
+  Object.fromEntries(availableTools.value.map((a) => [a.serverId || a.endpointSlug, { name: a.serverName || a.endpointName || a.endpointSlug }])),
+);
 async function loadAvailableTools() {
   if (availableToolsLoaded.value) return;
   try {
@@ -150,6 +150,21 @@ const canEdit = computed(() => project.value != null && project.value.project.ac
 const share = reactive({ email: '', role: 'viewer' as 'editor' | 'viewer' });
 const sharing = ref(false);
 const shareError = ref('');
+// Directory of other Kravn users, for the share picker (a list to select, not a free-text email box).
+const shareableUsers = ref<{ id: string; email: string; name: string }[]>([]);
+const shareableUsersLoaded = ref(false);
+async function loadShareableUsers() {
+  if (shareableUsersLoaded.value) return;
+  try {
+    shareableUsers.value = (await api.get<{ users: { id: string; email: string; name: string }[] }>('/api/chat/shareable-users')).users;
+    shareableUsersLoaded.value = true;
+  } catch { /* directory unavailable → the picker just shows empty */ }
+}
+// Candidates = everyone not already a member of the open project.
+const shareCandidates = computed(() => {
+  const taken = new Set((project.value?.members ?? []).map((m) => m.email.toLowerCase()));
+  return shareableUsers.value.filter((u) => !taken.has(u.email.toLowerCase()));
+});
 async function shareProject() {
   if (!project.value || !share.email.trim()) return;
   sharing.value = true;
@@ -280,7 +295,9 @@ async function openProject(p: ChatProject) {
   selectedToolIds.value = [...res.project.toolIds];
   newDoc.name = '';
   newDoc.content = '';
+  share.email = '';
   void loadAvailableTools();
+  if (res.project.access === 'owner') void loadShareableUsers();
 }
 function openNewProject() {
   projectError.value = '';
@@ -1051,16 +1068,15 @@ async function logout() {
           <div class="panel-card">
             <h3>{{ t('chat.projectTools') }} <span class="muted" style="font-weight: 400">({{ selectedToolIds.length }})</span></h3>
             <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.projectToolsHint') }}</p>
-            <div v-if="availableToolsByEndpoint.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noToolsAvailable') }}</div>
-            <div v-for="grp in availableToolsByEndpoint" :key="grp.slug" class="tool-group">
-              <div class="tool-group-h">{{ grp.name }}</div>
-              <label v-for="tl in grp.tools" :key="tl.id" class="tool-item">
-                <input type="checkbox" :value="tl.id" v-model="selectedToolIds" :disabled="!canEdit" />
-                <span class="tool-name">{{ tl.name }}</span>
-                <small v-if="tl.description" class="muted tool-desc">{{ tl.description }}</small>
-              </label>
-            </div>
-            <div v-if="canEdit && availableToolsByEndpoint.length" class="btn-row" style="justify-content: flex-end">
+            <GroupedSelect
+              v-model="selectedToolIds"
+              :items="toolItems"
+              :groups="toolServerMeta"
+              :noun="t('grouped.nounTools')"
+              :disabled="!canEdit"
+              :empty-text="t('chat.noToolsAvailable')"
+            />
+            <div v-if="canEdit && toolItems.length" class="btn-row" style="justify-content: flex-end">
               <button class="btn primary" :disabled="savingTools" @click="saveProjectTools">{{ savingTools ? t('chat.saving') : t('chat.saveTools') }}</button>
             </div>
           </div>
@@ -1100,11 +1116,17 @@ async function logout() {
             </div>
             <hr style="border: none; border-top: 1px solid var(--border); margin: 0.4rem 0" />
             <div class="row" style="gap: 0.5rem; align-items: flex-end; flex-wrap: wrap">
-              <div class="field" style="flex: 1; min-width: 180px"><label>{{ t('chat.shareWithEmail') }}</label><input v-model="share.email" :placeholder="t('chat.emailPlaceholder')" @keydown.enter.prevent="shareProject" /></div>
+              <div class="field" style="flex: 1; min-width: 180px">
+                <label>{{ t('chat.shareWithUser') }}</label>
+                <select v-model="share.email">
+                  <option value="">{{ shareCandidates.length ? t('chat.selectUser') : t('chat.noUsersToShare') }}</option>
+                  <option v-for="u in shareCandidates" :key="u.id" :value="u.email">{{ u.name ? `${u.name} · ${u.email}` : u.email }}</option>
+                </select>
+              </div>
               <div class="field"><label>{{ t('chat.role') }}</label>
                 <select v-model="share.role"><option value="viewer">{{ t('chat.viewer') }}</option><option value="editor">{{ t('chat.editor') }}</option></select>
               </div>
-              <button class="btn primary" :disabled="sharing || !share.email.trim()" @click="shareProject">{{ sharing ? t('chat.sharingBtn') : t('chat.share') }}</button>
+              <button class="btn primary" :disabled="sharing || !share.email" @click="shareProject">{{ sharing ? t('chat.sharingBtn') : t('chat.share') }}</button>
             </div>
             <p v-if="shareError" class="muted" style="color: #e5484d; font-size: 12px; margin: 0.3rem 0 0">{{ shareError }}</p>
           </div>

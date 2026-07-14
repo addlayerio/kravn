@@ -376,7 +376,7 @@ export class ChatService {
         const t = byId.get(toolId);
         if (!t || !t.enabled) continue;
         if (allowed && !allowed.has(toolId)) continue;
-        out.set(toolId, { id: t.id, name: t.name, description: t.description ?? '', serverName: serverName.get(t.serverId) ?? '', endpointSlug: vs.slug, endpointName: vs.name });
+        out.set(toolId, { id: t.id, name: t.name, description: t.description ?? '', serverId: t.serverId, serverName: serverName.get(t.serverId) ?? '', endpointSlug: vs.slug, endpointName: vs.name });
       }
     }
     return [...out.values()];

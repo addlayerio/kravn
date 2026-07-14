@@ -55,6 +55,17 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
   // project tool picker. A read over the existing MCP governance; it grants nothing.
   app.get('/api/chat/available-tools', auth, async (req) => ({ tools: await s.chat.listAvailableTools(currentUser(req)) }));
 
+  // Other Kravn users the caller can share a project with — a minimal {id,email} directory for the share picker
+  // (excludes the caller and disabled accounts). Sharing is a collaboration feature, so an end-user may see it.
+  app.get('/api/chat/shareable-users', auth, async (req) => {
+    const meId = currentUser(req).id;
+    const users = (await s.repos.users.list())
+      .filter((u) => u.id !== meId && !u.disabled)
+      .map((u) => ({ id: u.id, email: u.email, name: u.name || '' }))
+      .sort((a, b) => (a.name || a.email).localeCompare(b.name || b.email, undefined, { sensitivity: 'base' }));
+    return { users };
+  });
+
   // Projects (Claude-Projects-style: instructions + documents injected as chat context)
   app.get('/api/chat/projects', auth, async (req) => ({ projects: await s.repos.chat.listProjects(currentUser(req).id) }));
   app.post('/api/chat/projects', auth, async (req, reply) => {

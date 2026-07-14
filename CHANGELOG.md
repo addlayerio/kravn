@@ -33,7 +33,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   tools are **de-duplicated by name** so two same-named tools from different endpoints can't duplicate the
   provider tool list (a 400) or shadow one endpoint's approval gate (first pinned wins); and on a **shared**
   project an editor saving tools can only **add** tools they're entitled to — it never drops owner-pinned tools
-  the editor can't see.
+  the editor can't see. The picker uses the same **server → tools tree** as the operator's MCP-endpoint composer
+  (search, expand/collapse, per-server select-all), listing only what the user is entitled to (grouped by origin
+  server via a new `serverId` on the available-tools response).
+- 👥 **Share a project by picking a user, not typing an email.** The sharing panel now shows a **directory of
+  Kravn users** to select (excluding yourself and existing members) instead of a free-text email box. New
+  endpoint `GET /api/chat/shareable-users` (a minimal `{id,email,name}` directory available to end-users).
 - 🐛 **Opening a chat project no longer crashes the client** (white screen, console `SyntaxError: 10`). The
   "share by email" placeholder (`user@company.com`) contained a literal `@`, which vue-i18n parses as
   linked-message syntax and throws on (`INVALID_LINKED_FORMAT`) the first time the project view renders it — so

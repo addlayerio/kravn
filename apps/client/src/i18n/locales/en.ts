@@ -58,6 +58,9 @@ export default {
     "sharingHint": "Give another Kravn user access to this project's instructions and documents.",
     "notSharedYet": "Not shared with anyone yet.",
     "shareWithEmail": "Share with (email)",
+    "shareWithUser": "Share with",
+    "selectUser": "Select a user…",
+    "noUsersToShare": "No other users",
     "emailPlaceholder": "user{'@'}company.com",
     "role": "Role",
     "viewer": "Viewer",
@@ -181,6 +184,20 @@ export default {
     "none": "None",
     "optional": "optional",
     "language": "Language"
+  },
+  "grouped": {
+    "clearAll": "Clear all",
+    "clearAllIn": "Clear all in {name}",
+    "collapseAll": "Collapse all",
+    "expandAll": "Expand all",
+    "noItemsAvailable": "No {noun} available.",
+    "noMatch": "No {noun} match “{q}”.",
+    "nounSelectedSuffix": "{noun} selected",
+    "nounTools": "tools",
+    "onlySelected": "Only selected",
+    "searchNoun": "Search {noun}…",
+    "selectAllIn": "Select all in {name}",
+    "serverCount": "{count} server | {count} servers"
   },
   "login": {
     "tagline": "Sign in to your AI workspace.",

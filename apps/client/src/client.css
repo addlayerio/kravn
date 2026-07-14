@@ -551,44 +551,6 @@
   font-size: 12px;
 }
 
-/* Project tool picker */
-.tool-group {
-  margin-top: 0.5rem;
-}
-.tool-group-h {
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-  color: var(--text-muted);
-  margin: 0.4rem 0 0.25rem;
-}
-.tool-item {
-  display: flex;
-  align-items: baseline;
-  gap: 0.5rem;
-  padding: 0.3rem 0.4rem;
-  border-radius: 6px;
-  cursor: pointer;
-  font-size: 13px;
-}
-.tool-item:hover {
-  background: var(--bg-elev, rgba(127, 127, 127, 0.08));
-}
-.tool-item input {
-  margin: 0;
-  flex: 0 0 auto;
-}
-.tool-item .tool-name {
-  font-weight: 500;
-  flex: 0 0 auto;
-}
-.tool-item .tool-desc {
-  flex: 1 1 auto;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
 /* Chat attachments */
 .composer-wrap {
   flex: none;

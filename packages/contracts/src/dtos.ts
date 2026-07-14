@@ -109,7 +109,8 @@ export const availableToolSchema = z.object({
   id: z.string(), // registry tool DB id (stored in project.toolIds)
   name: z.string(),
   description: z.string().default(''),
-  serverName: z.string().default(''), // origin server (for display)
+  serverId: z.string().default(''), // origin MCP server (the tree groups tools by this)
+  serverName: z.string().default(''), // origin server display name
   endpointSlug: z.string(), // an endpoint the caller can consume this tool through
   endpointName: z.string().default(''),
 });

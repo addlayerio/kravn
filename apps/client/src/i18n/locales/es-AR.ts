@@ -58,6 +58,9 @@ export default {
     "sharingHint": "Dale a otro usuario de Kravn acceso a las instrucciones y los documentos de este proyecto.",
     "notSharedYet": "Todavía no se compartió con nadie.",
     "shareWithEmail": "Compartir con (email)",
+    "shareWithUser": "Compartir con",
+    "selectUser": "Elegí un usuario…",
+    "noUsersToShare": "No hay otros usuarios",
     "emailPlaceholder": "usuario{'@'}empresa.com",
     "role": "Rol",
     "viewer": "Lector",
@@ -181,6 +184,20 @@ export default {
     "none": "Ninguno",
     "optional": "opcional",
     "language": "Idioma"
+  },
+  "grouped": {
+    "clearAll": "Quitar todo",
+    "clearAllIn": "Quitar todo en {name}",
+    "collapseAll": "Contraer todo",
+    "expandAll": "Expandir todo",
+    "noItemsAvailable": "No hay {noun} disponibles.",
+    "noMatch": "No hay {noun} que coincidan con “{q}”.",
+    "nounSelectedSuffix": "{noun} seleccionadas",
+    "nounTools": "herramientas",
+    "onlySelected": "Solo seleccionadas",
+    "searchNoun": "Buscar {noun}…",
+    "selectAllIn": "Seleccionar todo en {name}",
+    "serverCount": "{count} servidor | {count} servidores"
   },
   "login": {
     "tagline": "Ingresá a tu espacio de trabajo con IA.",
