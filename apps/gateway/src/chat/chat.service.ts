@@ -153,13 +153,13 @@ export class ChatService {
     let finalText = '';
 
     if (!supportsTools || tools.length === 0) {
-      // Plain completion (no tool loop).
-      const msg = await this.complete(actor, provider, key, conv.model, messages, []);
+      // Plain completion (no tool loop). Native web search still applies — it runs server-side at the provider.
+      const msg = await this.complete(actor, provider, key, conv.model, messages, [], conv.webSearch);
       finalText = textOf(msg);
     } else {
       // Provider-agnostic tool loop (complete() normalizes OpenAI / Anthropic tool formats).
       for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
-        const msg = await this.complete(actor, provider, key, conv.model, messages, tools);
+        const msg = await this.complete(actor, provider, key, conv.model, messages, tools, conv.webSearch);
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           finalText = textOf(msg);
           break;
@@ -380,15 +380,15 @@ export class ChatService {
     return (p.baseUrl || DEFAULT_BASE[p.type] || '').replace(/\/$/, '');
   }
 
-  private complete(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+  private complete(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[], webSearch = false): Promise<LlmMessage> {
     return withSpan(
       `llm.chat ${p.type}`,
-      () => this.completeInner(actor, p, key, model, messages, tools),
+      () => this.completeInner(actor, p, key, model, messages, tools, webSearch),
       { 'llm.provider': p.type, 'llm.model': model },
     );
   }
 
-  private async completeInner(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[]): Promise<LlmMessage> {
+  private async completeInner(actor: AuthUser, p: LlmProvider, key: string, model: string, messages: LlmMessage[], tools: any[], webSearch = false): Promise<LlmMessage> {
     const base = this.baseUrl(p);
     if (!base) throw new Error('Provider has no base URL.');
     if (!model) throw new Error('Conversation has no model.');
@@ -405,10 +405,13 @@ export class ChatService {
       if (systemText) {
         body.system = [{ type: 'text', text: systemText, cache_control: { type: 'ephemeral' } }];
       }
-      if (tools.length) {
-        const mapped: any[] = tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
-        mapped[mapped.length - 1].cache_control = { type: 'ephemeral' }; // breakpoint on the last (tools render first)
-        body.tools = mapped;
+      const anthTools: any[] = tools.map((t) => ({ name: t.function.name, description: t.function.description, input_schema: t.function.parameters }));
+      // Native web search: Anthropic's server-side tool. It runs at Anthropic (no Kravn tool loop needed) and
+      // the model weaves cited results into its answer. Requires no provider config beyond the API key.
+      if (webSearch) anthTools.push({ type: 'web_search_20250305', name: 'web_search', max_uses: 5 });
+      if (anthTools.length) {
+        anthTools[anthTools.length - 1].cache_control = { type: 'ephemeral' }; // breakpoint on the last (tools render first)
+        body.tools = anthTools;
       }
       const res = await safeFetch(`${base}/v1/messages`, {
         method: 'POST',
@@ -445,6 +448,9 @@ export class ChatService {
       // visible text, so a small cap can return MAX_TOKENS with no parts.
       const body: Record<string, unknown> = { contents, generationConfig: { maxOutputTokens: 8192 } };
       if (system) body.systemInstruction = { parts: [{ text: system }] };
+      // Native web search = grounding with Google Search (Gemini 2.x). Runs server-side; the answer text
+      // carries the grounded result. (Older 1.5 models use google_search_retrieval; 2.x uses google_search.)
+      if (webSearch) body.tools = [{ google_search: {} }];
       const res = await safeFetch(`${base}/v1beta/models/${encodeURIComponent(model)}:generateContent?key=${encodeURIComponent(key)}`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -476,6 +482,12 @@ export class ChatService {
     if (tools.length > 0) {
       body.tools = tools;
       body.tool_choice = 'auto';
+    }
+    // Native web search via Chat Completions requires a search-enabled model (e.g. gpt-4o-search-preview);
+    // OpenAI runs the search server-side and returns cited results. On a non-search model OpenAI returns a
+    // clear error, which surfaces to the user (only enabled when the user turns web search on for this chat).
+    if (webSearch && (p.type === 'openai' || p.type === 'azure-openai' || p.type === 'openai-compatible')) {
+      body.web_search_options = {};
     }
     const res = await safeFetch(url, { method: 'POST', headers, body: JSON.stringify(body) }, 60_000);
     if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);

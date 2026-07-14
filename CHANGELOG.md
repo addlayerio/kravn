@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🌐 **Native web search in chat (per-chat toggle).** A 🌐 toggle in the composer turns on the LLM
+  provider's own server-side web search for that conversation — **Claude** (Anthropic `web_search` tool,
+  any model), **Gemini** (Google Search grounding, any 2.x model) and **OpenAI** (`web_search_options`,
+  needs a `-search-preview` model). The search runs at the provider and the model weaves cited results into
+  its answer — **no SearXNG/Brave to configure and no bot-detection**. For fetching a specific URL/API,
+  use the `http_request` tool below. Persisted per chat (`chat_conversations.web_search`, migration 029).
 - 🔗 **LinkedIn integration (native `kravn-linkedin`).** A built-in mcp-server plugin over LinkedIn's
   **official** OAuth 2.0 API: **`linkedin_me`** reads the authenticated member's profile (OpenID Connect
   `userinfo`) and **`linkedin_create_post`** publishes a post/share on their behalf (optionally attaching a
@@ -55,15 +61,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   link-local/reserved/metadata targets **regardless** of the `ssrfAllowPrivateNetworks` operator toggle (that
   setting only ever loosens the gateway's own egress to operator-configured upstreams), plus an explicit
   pre-flight that also covers IP-literal URLs (which undici does not run the dispatcher lookup for).
-- 🌐 **Web access for agents — new native `Web` plugin (`kravn-web`).** A built-in mcp-server plugin exposing
-  two read-only tools: **`web_fetch(url)`** fetches a page (or JSON/plain text) and returns it as clean
-  Markdown, and **`web_search(query)`** returns web results via a configured provider. All egress goes through
-  Kravn's **global SSRF guard** — internal/loopback/link-local/cloud-metadata hosts are blocked at the socket
-  level, so `web_fetch` can't be turned into an internal-network probe. **`web_fetch` needs no configuration**
-  (the plugin seeds enabled and works immediately); `web_search` needs one provider — a **Brave Search API
-  key** or a self-hosted **SearXNG** URL (set on the plugin instance; the Brave key is encrypted at rest).
-  Compose it into an endpoint like any other tool. (Appears in the operator catalog + the built-in
-  integrations list.)
+- 🌐 **HTTP Request integration (native `kravn-http`).** A built-in mcp-server plugin with one tool,
+  **`http_request`**, that fires an HTTP request (GET/POST/PUT/PATCH/DELETE) to any **public** URL with
+  custom headers + body, and returns the body **token-efficiently**: a JSON response is rendered as **TOML**
+  and an HTML response as **Markdown** (both strip the payload's structural noise); anything else is capped
+  plain text. Every request + redirect hop goes through Kravn's **strict SSRF guard** (private/loopback/
+  link-local/reserved/metadata hosts always blocked), so it can't probe the internal network. It can send
+  mutating methods, so pair it with the approval gate. No configuration; seeds enabled. (Supersedes the
+  earlier `kravn-web` search/fetch plugin — general web search is now the provider-native chat toggle above.)
 - 🤖 **Assistants (chat client).** Reusable presets — a **persona (system instructions) + default model +
   default tools** — that a user can start a chat from. Picking an assistant in "New chat" pre-fills the model
   and tool endpoint and injects its instructions into every chat started from it; instructions are loaded

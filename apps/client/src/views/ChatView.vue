@@ -547,6 +547,21 @@ function openMemory() {
   memoryDraft.value = '';
   loadMemory();
 }
+
+// Per-chat native web search (Claude/Gemini/OpenAI run the search server-side when this is on).
+async function toggleWebSearch() {
+  if (!current.value) return;
+  const next = !current.value.webSearch;
+  current.value.webSearch = next; // optimistic
+  const c = conversations.value.find((x) => x.id === current.value!.id);
+  if (c) c.webSearch = next;
+  try {
+    await api.put(`/api/chat/conversations/${current.value.id}`, { webSearch: next });
+  } catch {
+    current.value.webSearch = !next; // roll back
+    if (c) c.webSearch = !next;
+  }
+}
 async function addMemory() {
   const content = memoryDraft.value.trim();
   if (!content || savingMemory.value) return;
@@ -934,6 +949,12 @@ async function logout() {
             <button class="btn" :title="t('chat.attachFiles')" :disabled="uploading" @click="triggerPick">📎</button>
             <button class="btn" :title="t('chat.promptLibrary')" @click="openPrompts">📋</button>
             <button class="btn" :title="t('chat.memoryTooltip')" @click="openMemory">🧠</button>
+            <button
+              class="btn web-toggle"
+              :class="{ on: current?.webSearch }"
+              :title="current?.webSearch ? t('chat.webSearchOn') : t('chat.webSearchOff')"
+              @click="toggleWebSearch"
+            >🌐</button>
             <textarea v-model="input" rows="2" :placeholder="t('chat.messagePlaceholder')" @keydown.enter.exact.prevent="send"></textarea>
             <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">{{ t('chat.send') }}</button>
           </div>

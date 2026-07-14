@@ -140,7 +140,9 @@ export default {
     "instructions": "Instructions",
     "assistantNamePlaceholder": "e.g. Compliance analyst",
     "assistantInstructionsPlaceholder": "How this assistant should behave — persona, tone, rules…",
-    "chatDefault": "Chat default"
+    "chatDefault": "Chat default",
+    "webSearchOn": "Web search: on (click to turn off)",
+    "webSearchOff": "Web search: off (click to turn on)"
   },
   "chatMenu": {
     "actions": "Chat actions",

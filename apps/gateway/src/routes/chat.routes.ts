@@ -183,6 +183,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       projectId: dto.projectId,
       pinned: dto.pinned,
       archived: dto.archived,
+      webSearch: dto.webSearch,
     });
     return { conversation: (await s.repos.chat.getConversation(u.id, id)) ?? conv };
   });

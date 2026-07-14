@@ -6,7 +6,7 @@ import { jiraPlugin } from './jira.js';
 import { confluencePlugin } from './confluence.js';
 import { odooPlugin } from './odoo.js';
 import { zohoPlugin } from './zoho.js';
-import { webPlugin } from './web.js';
+import { httpPlugin } from './http.js';
 import { azurePlugin } from './azure.js';
 import { awsPlugin } from './aws.js';
 import { gcpPlugin } from './gcp.js';
@@ -100,5 +100,5 @@ function codeInterpreterPlugin(deps: NativeDeps): McpServerPlugin {
 
 /** Build the native plugin instances (privileged, in-code) with their runtime dependencies. */
 export function nativePlugins(deps: NativeDeps): KravnPlugin[] {
-  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), azurePlugin(), awsPlugin(), gcpPlugin(), gmailPlugin(), outlookPlugin(), linkedinPlugin(), webPlugin(deps.ssrf), approvalGate({ approvals: deps.approvals }), ...nativeHookPlugins()];
+  return [codeInterpreterPlugin(deps), sharepointPlugin(), teamsPlugin(), jiraPlugin(), confluencePlugin(), odooPlugin(), zohoPlugin(), azurePlugin(), awsPlugin(), gcpPlugin(), gmailPlugin(), outlookPlugin(), linkedinPlugin(), httpPlugin(deps.ssrf), approvalGate({ approvals: deps.approvals }), ...nativeHookPlugins()];
 }

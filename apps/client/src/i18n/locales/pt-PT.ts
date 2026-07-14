@@ -140,7 +140,9 @@ export default {
     "instructions": "Instruções",
     "assistantNamePlaceholder": "ex. Analista de conformidade",
     "assistantInstructionsPlaceholder": "Como este assistente se deve comportar — persona, tom, regras…",
-    "chatDefault": "Predefinição do chat"
+    "chatDefault": "Predefinição do chat",
+    "webSearchOn": "Pesquisa web: ativada (clique para desativar)",
+    "webSearchOff": "Pesquisa web: desativada (clique para ativar)"
   },
   "chatMenu": {
     "actions": "Ações da conversa",

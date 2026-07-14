@@ -128,6 +128,7 @@ export const updateConversationSchema = z
     projectId: z.string().nullable().optional(), // null = remove from its project
     pinned: z.boolean().optional(),
     archived: z.boolean().optional(),
+    webSearch: z.boolean().optional(),
   })
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to update' });
 export type UpdateConversationRequest = z.infer<typeof updateConversationSchema>;

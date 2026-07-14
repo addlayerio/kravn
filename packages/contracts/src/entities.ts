@@ -291,6 +291,8 @@ export const chatConversationSchema = z.object({
   pinned: z.boolean().default(false),
   /** Archived chats are hidden from the main list (shown under "Archived"). */
   archived: z.boolean().default(false),
+  /** When on, the provider's native web search is offered to the model (Claude/Gemini/OpenAI search). */
+  webSearch: z.boolean().default(false),
   createdAt: z.string(),
   updatedAt: z.string(),
 });

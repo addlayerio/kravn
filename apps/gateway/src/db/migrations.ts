@@ -918,8 +918,23 @@ const chatConversationFlags: Migration = {
   },
 };
 
+const chatConversationWebSearch: Migration = {
+  name: '029_chat_conversation_web_search',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'web_search'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.integer('web_search').notNullable().defaultTo(0));
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'web_search'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('web_search'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

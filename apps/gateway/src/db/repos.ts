@@ -1191,7 +1191,7 @@ export class ChatRepo {
   async updateConversation(
     userId: string,
     id: string,
-    patch: { title?: string; tags?: string[]; projectId?: string | null; pinned?: boolean; archived?: boolean },
+    patch: { title?: string; tags?: string[]; projectId?: string | null; pinned?: boolean; archived?: boolean; webSearch?: boolean },
   ): Promise<void> {
     const sets: string[] = [];
     const args: any[] = [];
@@ -1205,6 +1205,7 @@ export class ChatRepo {
     if (patch.projectId !== undefined) { sets.push('project_id = ?'); args.push(patch.projectId); }
     if (patch.pinned !== undefined) { sets.push('pinned = ?'); args.push(intify(patch.pinned)); }
     if (patch.archived !== undefined) { sets.push('archived = ?'); args.push(intify(patch.archived)); }
+    if (patch.webSearch !== undefined) { sets.push('web_search = ?'); args.push(intify(patch.webSearch)); }
     if (!sets.length) return;
     // Bump updated_at only on content-ish changes, so a pin/archive toggle keeps the chat's place in the list.
     if (patch.title !== undefined || patch.tags !== undefined || patch.projectId !== undefined) { sets.push('updated_at = ?'); args.push(now()); }
@@ -1480,6 +1481,7 @@ function mapConversation(r: any): ChatConversation {
     assistantId: r.assistant_id ?? null,
     pinned: bool(r.pinned),
     archived: bool(r.archived),
+    webSearch: bool(r.web_search),
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
