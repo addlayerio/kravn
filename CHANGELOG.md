@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- ⚙️ **The chat agent's tool-round limit is now configurable (and higher by default).** The chat runs an
+  agentic loop where the model calls tools, gets results, and calls more — capped per message so it can't run
+  away on cost/latency. That cap was a hard-coded **6**, which cut off deep multi-source agents (a research/
+  support agent querying Jira → GitHub → Azure → Datadog → … in sequence) with *"the assistant kept requesting
+  tools past the limit"*. It's now an operator setting — **Settings → Governance → "Chat: max tool rounds per
+  message"** (`governance.chatMaxToolRounds`, 1–40) — with the default raised to **12**. The cut-off message is
+  also clearer and says how to raise it.
 - 📁 **Projects (chat client): chats-first view + scheduled tasks inside a project.** Opening a project now
   shows its **chats** (and its scheduled tasks) as the main view instead of dropping straight into edit mode;
   project instructions / documents / sharing moved behind a **⚙️ settings** toggle. A project has a **"+

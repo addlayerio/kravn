@@ -76,6 +76,9 @@ export const appSettingsSchema = z
         dailyTokenBudget: z.number().int().min(0).default(0),
         dailyCallBudget: z.number().int().min(0).default(0),
         budgetAction: z.enum(BUDGET_ACTIONS).default('warn'),
+        /** Chat agentic loop: max tool-call ROUNDS per message (each round can call several tools in parallel).
+         *  A safety ceiling on runaway loops + cost/latency. Higher suits deep multi-source agents. */
+        chatMaxToolRounds: z.number().int().min(1).max(40).default(12),
       })
       .default({}),
 
@@ -278,6 +281,12 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'governance.dailyCallBudget', label: 'Daily tool-call budget (0 = off)', control: 'number' },
       { path: 'governance.dailyTokenBudget', label: 'Daily LLM token budget (0 = off)', control: 'number' },
       { path: 'governance.budgetAction', label: 'When a budget is exceeded', control: 'enum', options: BUDGET_ACTIONS },
+      {
+        path: 'governance.chatMaxToolRounds',
+        label: 'Chat: max tool rounds per message',
+        control: 'number',
+        help: 'How many back-and-forth tool-call rounds the chat agent may run for a single message (each round can call several tools at once). Higher suits deep multi-source agents; lower caps cost/latency. 1–40, default 12.',
+      },
     ],
   },
   {

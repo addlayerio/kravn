@@ -709,6 +709,8 @@ export default {
     "governance_dailyCallBudget": "Budget quotidien d'appels d'outils (0 = désactivé)",
     "governance_dailyTokenBudget": "Budget quotidien de tokens LLM (0 = désactivé)",
     "governance_budgetAction": "Lorsqu'un budget est dépassé",
+    "governance_chatMaxToolRounds": "Chat : nombre max de tours d'outils par message",
+    "governance_chatMaxToolRounds_help": "Combien de tours d'allers-retours d'appels d'outils l'agent de chat peut exécuter pour un seul message (chaque tour peut appeler plusieurs outils à la fois). Plus élevé convient aux agents multi-sources approfondis ; plus bas limite le coût/la latence. 1–40, par défaut 12.",
     "mcp_enableStreamableHttp": "HTTP en streaming",
     "mcp_enableSse": "SSE (hérité)",
     "mcp_enableStdio": "stdio (serveurs locaux)",

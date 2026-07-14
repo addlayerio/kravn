@@ -38,7 +38,8 @@ const DEFAULT_BASE: Record<string, string> = {
   'openai-compatible': '',
 };
 
-const MAX_TOOL_ROUNDS = 6;
+/** Fallback for the chat agentic-loop round cap when the setting is unavailable (settings.governance.chatMaxToolRounds). */
+const DEFAULT_MAX_TOOL_ROUNDS = 12;
 
 /** A message's content is usually a plain string; a user turn with image attachments is a block array. */
 type LlmContentBlock = { type: 'text'; text: string } | { type: 'image'; mime: string; b64: string };
@@ -161,16 +162,18 @@ export class ChatService {
       const msg = await this.complete(actor, provider, key, conv.model, messages, [], conv.webSearch);
       finalText = textOf(msg);
     } else {
-      // Provider-agnostic tool loop (complete() normalizes OpenAI / Anthropic tool formats).
-      for (let round = 0; round < MAX_TOOL_ROUNDS; round++) {
+      // Provider-agnostic tool loop (complete() normalizes OpenAI / Anthropic tool formats). The round cap is an
+      // operator setting (settings.governance.chatMaxToolRounds) — higher suits deep multi-source agents.
+      const maxRounds = this.settings.get().governance.chatMaxToolRounds || DEFAULT_MAX_TOOL_ROUNDS;
+      for (let round = 0; round < maxRounds; round++) {
         const msg = await this.complete(actor, provider, key, conv.model, messages, tools, conv.webSearch);
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           finalText = textOf(msg);
           break;
         }
         // Don't execute the final round's tools — their results could never be fed back to the model.
-        if (round === MAX_TOOL_ROUNDS - 1) {
-          finalText = textOf(msg).trim() || '(stopped: the assistant kept requesting tools past the limit)';
+        if (round === maxRounds - 1) {
+          finalText = textOf(msg).trim() || `⚠️ Stopped after ${maxRounds} tool rounds for this message (the safety limit). Ask me to continue, or an operator can raise "Chat: max tool rounds per message" in Settings → Governance.`;
           break;
         }
         messages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls });

@@ -709,6 +709,8 @@ export default {
     "governance_dailyCallBudget": "Presupuesto diario de llamadas a herramientas (0 = desactivado)",
     "governance_dailyTokenBudget": "Presupuesto diario de tokens LLM (0 = desactivado)",
     "governance_budgetAction": "Cuando se supera un presupuesto",
+    "governance_chatMaxToolRounds": "Chat: máximo de rondas de tools por mensaje",
+    "governance_chatMaxToolRounds_help": "Cuántas rondas de ida y vuelta de llamadas a tools puede hacer el agente del chat para un solo mensaje (cada ronda puede llamar varias tools a la vez). Más alto sirve para agentes que consultan muchas fuentes; más bajo limita costo/latencia. 1–40, default 12.",
     "mcp_enableStreamableHttp": "HTTP en streaming",
     "mcp_enableSse": "SSE (heredado)",
     "mcp_enableStdio": "stdio (servidores locales)",

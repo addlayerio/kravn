@@ -709,6 +709,8 @@ export default {
     "governance_dailyCallBudget": "Daily tool-call budget (0 = off)",
     "governance_dailyTokenBudget": "Daily LLM token budget (0 = off)",
     "governance_budgetAction": "When a budget is exceeded",
+    "governance_chatMaxToolRounds": "Chat: max tool rounds per message",
+    "governance_chatMaxToolRounds_help": "How many back-and-forth tool-call rounds the chat agent may run for a single message (each round can call several tools at once). Higher suits deep multi-source agents; lower caps cost/latency. 1–40, default 12.",
     "mcp_enableStreamableHttp": "Streamable HTTP",
     "mcp_enableSse": "SSE (legacy)",
     "mcp_enableStdio": "stdio (local servers)",
