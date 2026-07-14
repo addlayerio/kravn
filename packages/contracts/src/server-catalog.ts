@@ -937,7 +937,7 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   },
   {
     id: 'kravn-http', name: 'HTTP Request', category: 'Developer Tools',
-    description: 'Fire an HTTP request (GET/POST/…) with custom headers to retrieve information from any public API or page. JSON responses are returned as TOML and HTML as Markdown to save tokens. SSRF-guarded (internal hosts blocked); can send mutating methods.',
+    description: 'A configurable API connector — an admin points it at ONE API (base URL + auth headers, encrypted) and clients call it (read-only or read-write); the model can only reach paths under that API, never another host. JSON responses come back as TOML and HTML as Markdown to save tokens. SSRF-guarded. Add it again per API.',
   },
   {
     id: 'kravn-linkedin', name: 'LinkedIn', category: 'Social',

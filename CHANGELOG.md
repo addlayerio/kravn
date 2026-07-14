@@ -61,14 +61,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   link-local/reserved/metadata targets **regardless** of the `ssrfAllowPrivateNetworks` operator toggle (that
   setting only ever loosens the gateway's own egress to operator-configured upstreams), plus an explicit
   pre-flight that also covers IP-literal URLs (which undici does not run the dispatcher lookup for).
-- 🌐 **HTTP Request integration (native `kravn-http`).** A built-in mcp-server plugin with one tool,
-  **`http_request`**, that fires an HTTP request (GET/POST/PUT/PATCH/DELETE) to any **public** URL with
-  custom headers + body, and returns the body **token-efficiently**: a JSON response is rendered as **TOML**
-  and an HTML response as **Markdown** (both strip the payload's structural noise); anything else is capped
-  plain text. Every request + redirect hop goes through Kravn's **strict SSRF guard** (private/loopback/
-  link-local/reserved/metadata hosts always blocked), so it can't probe the internal network. It can send
-  mutating methods, so pair it with the approval gate. No configuration; seeds enabled. (Supersedes the
-  earlier `kravn-web` search/fetch plugin — general web search is now the provider-native chat toggle above.)
+- 🌐 **HTTP Request integration (native `kravn-http`) — a configurable API connector.** An admin points a
+  connector at **one API** (a **base URL** + **default headers**, e.g. `Authorization: Bearer …`, which are
+  encrypted at rest and never shown to the model or the chat) and clients call it via the **`http_request`**
+  tool with a method + **path** + optional body. The model can only reach **paths under that base URL** — it
+  cannot escape to another host — and a **read-only** toggle blocks POST/PUT/PATCH/DELETE. **Safe by default:**
+  an unconfigured connector refuses every request; an explicit **"Allow any host"** opt-in turns it into an
+  open HTTP tool (strict SSRF: private/internal/metadata always blocked). Add it once per API (each with its
+  own credentials). Responses come back **token-efficiently** — JSON as **TOML**, HTML as **Markdown**, else
+  capped text. (Replaces the earlier `kravn-web` search/fetch plugin — general web search is now the
+  provider-native chat toggle above.)
 - 🤖 **Assistants (chat client).** Reusable presets — a **persona (system instructions) + default model +
   default tools** — that a user can start a chat from. Picking an assistant in "New chat" pre-fills the model
   and tool endpoint and injects its instructions into every chat started from it; instructions are loaded

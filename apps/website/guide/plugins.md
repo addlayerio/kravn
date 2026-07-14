@@ -46,7 +46,7 @@ reaches the service:
 | **Azure** | Read-only diagnostics & cost — Resource Graph (KQL over any resource), Log Analytics (KQL), Cost Management (spend by service), and Azure Monitor metrics. |
 | **AWS** | Read-only cost & diagnostics — Cost Explorer (spend by service), CloudWatch Logs Insights, and resource inventory. Requests signed with SigV4. |
 | **Google Cloud** | Read-only diagnostics & cost — Cloud Asset (any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. |
-| **HTTP Request** | Fire an HTTP request (GET/POST/…) with custom headers to retrieve information from any public API or page. JSON responses are returned as **TOML** and HTML as **Markdown** to save tokens. SSRF-guarded (internal/private hosts blocked); can send mutating methods, so pair it with the approval gate. |
+| **HTTP Request** | A configurable **API connector**: an admin points it at one API (base URL + auth headers, encrypted) and clients call it with a method + path — the model can only reach paths under that API, never another host, and a read-only toggle blocks writes. JSON responses come back as **TOML** and HTML as **Markdown** to save tokens. SSRF-guarded; add it again per API. |
 | **LinkedIn** | Read the authenticated member's profile and **publish posts/shares** on their behalf, over LinkedIn's official OAuth 2.0 API (OpenID Connect + Share on LinkedIn). Standard-app scope only — profile search, messaging and jobs need LinkedIn partner programs. Includes a mutating action (posting). |
 | **Code Interpreter** | Runs Python in a Pyodide/WASM sandbox (no host filesystem or network) to read and transform attached files — e.g. complete an Excel and return it as a download. |
 
