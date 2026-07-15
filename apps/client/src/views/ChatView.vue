@@ -698,6 +698,13 @@ async function deleteAssistant(a: ChatAssistant) {
   assistants.value = assistants.value.filter((x) => x.id !== a.id);
 }
 
+/** The models a provider offers, for a real <select>. `current` is kept in the list even when the provider no
+ *  longer advertises it (a custom/legacy model an assistant set), so selecting never silently blanks it. */
+function modelsFor(providerId: string, current?: string): string[] {
+  const list = providers.value.find((p) => p.id === providerId)?.models ?? [];
+  return current && !list.includes(current) ? [current, ...list] : list;
+}
+
 function openNew(projectId = '') {
   newError.value = '';
   nc.assistantId = '';
@@ -990,7 +997,13 @@ async function logout() {
               </div>
             </div>
           </div>
-          <div v-if="sending" class="msg assistant"><div class="bubble muted">{{ t('chat.thinking') }}</div></div>
+          <!-- Live "working" indicator: animated dots, so a long tool-using turn never looks frozen. -->
+          <div v-if="sending" class="msg assistant">
+            <div class="bubble thinking">
+              <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+              <span class="muted">{{ t('chat.thinking') }}</span>
+            </div>
+          </div>
         </div>
         <div
           class="composer-wrap"
@@ -1150,8 +1163,10 @@ async function logout() {
               </select>
             </div>
             <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.model') }}</label>
-              <input v-model="sf.model" list="sched-models" :placeholder="t('chat.modelPlaceholder')" />
-              <datalist id="sched-models"><option v-for="m in (providers.find((p) => p.id === sf.providerId)?.models ?? [])" :key="m" :value="m" /></datalist>
+              <select v-if="modelsFor(sf.providerId, sf.model).length" v-model="sf.model">
+                <option v-for="m in modelsFor(sf.providerId, sf.model)" :key="m" :value="m">{{ m }}</option>
+              </select>
+              <input v-else v-model="sf.model" :placeholder="t('chat.modelPlaceholder')" />
             </div>
           </div>
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
@@ -1240,10 +1255,10 @@ async function logout() {
         </div>
         <div class="field">
           <label>{{ t('chat.model') }}</label>
-          <input v-model="nc.model" list="model-list" placeholder="gpt-4o-mini" />
-          <datalist id="model-list">
-            <option v-for="m in providers.find((p) => p.id === nc.providerId)?.models ?? []" :key="m" :value="m" />
-          </datalist>
+          <select v-if="modelsFor(nc.providerId, nc.model).length" v-model="nc.model">
+            <option v-for="m in modelsFor(nc.providerId, nc.model)" :key="m" :value="m">{{ m }}</option>
+          </select>
+          <input v-else v-model="nc.model" :placeholder="t('chat.modelPlaceholder')" />
         </div>
         <div v-if="!newChatUsesProjectTools" class="field">
           <label>{{ t('chat.toolsOptional') }}</label>
@@ -1376,10 +1391,10 @@ async function logout() {
           </div>
           <div class="field" v-if="af.providerId">
             <label>{{ t('chat.model') }}</label>
-            <input v-model="af.model" list="assistant-model-list" placeholder="gpt-4o-mini" />
-            <datalist id="assistant-model-list">
-              <option v-for="m in providers.find((p) => p.id === af.providerId)?.models ?? []" :key="m" :value="m" />
-            </datalist>
+            <select v-if="modelsFor(af.providerId, af.model).length" v-model="af.model">
+              <option v-for="m in modelsFor(af.providerId, af.model)" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <input v-else v-model="af.model" :placeholder="t('chat.modelPlaceholder')" />
           </div>
           <div class="field">
             <label>{{ t('chat.toolsOptional') }}</label>

@@ -375,24 +375,42 @@ textarea:focus {
 .btn {
   display: inline-flex;
   align-items: center;
+  justify-content: center;
   gap: 0.4rem;
   background: var(--bg-surface);
   border: 1px solid var(--border-strong);
   color: var(--text);
   border-radius: var(--radius-md);
-  padding: 0.5rem 0.9rem;
+  /* Tighter than body text: a control should read as a control, not as a paragraph in a box. */
+  padding: 0.4rem 0.8rem;
   font: inherit;
+  font-size: 0.875rem;
   font-weight: 500;
+  line-height: 1.25;
+  white-space: nowrap;
   cursor: pointer;
-  transition: background 0.12s ease, border-color 0.12s ease;
+  /* A hairline lift gives depth without the chunky bevel of a legacy widget. */
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+  transition: background 0.15s ease, border-color 0.15s ease, box-shadow 0.15s ease, transform 0.06s ease;
 }
 .btn:hover {
   background: var(--hover);
+  border-color: var(--border-strong);
+}
+/* Tactile press — the button reacts, so a click always feels acknowledged. */
+.btn:active {
+  transform: translateY(0.5px);
+  box-shadow: none;
+}
+.btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 .btn.primary {
   background: var(--brand);
   border-color: var(--brand);
   color: var(--brand-fg);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.1);
 }
 .btn.primary:hover {
   background: var(--brand-hover);
@@ -402,13 +420,27 @@ textarea:focus {
   background: transparent;
   border-color: var(--danger);
   color: var(--danger);
+  box-shadow: none;
 }
 .btn.danger:hover {
   background: var(--danger-bg);
 }
 .btn:disabled {
-  opacity: 0.5;
+  opacity: 0.45;
   cursor: not-allowed;
+  box-shadow: none;
+}
+/* A disabled control must not answer the pointer — hover/press feedback on it reads as broken. */
+.btn:disabled:hover {
+  background: var(--bg-surface);
+  border-color: var(--border-strong);
+}
+.btn.primary:disabled:hover {
+  background: var(--brand);
+  border-color: var(--brand);
+}
+.btn:disabled:active {
+  transform: none;
 }
 .btn-row {
   display: flex;

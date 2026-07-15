@@ -172,8 +172,16 @@ export class ChatService {
           break;
         }
         // Don't execute the final round's tools — their results could never be fed back to the model.
+        // Whatever text came with them is a PREAMBLE ("let me fetch X…"), never the answer, so ALWAYS say the
+        // turn was cut: otherwise that preamble is persisted as if it were a complete reply and the run looks
+        // like it silently died. (This is the visible symptom of hitting the cap.)
         if (round === maxRounds - 1) {
-          finalText = textOf(msg).trim() || `⚠️ Stopped after ${maxRounds} tool rounds for this message (the safety limit). Ask me to continue, or an operator can raise "Chat: max tool rounds per message" in Settings → Governance.`;
+          const partial = textOf(msg).trim();
+          const notice =
+            `⚠️ **Incomplete** — stopped after ${maxRounds} tool rounds for this message (the safety limit), ` +
+            'so the analysis above is unfinished. Ask me to continue, or an operator can raise ' +
+            '"Chat: max tool rounds per message" in Settings → Governance.';
+          finalText = partial ? `${partial}\n\n---\n\n${notice}` : notice;
           break;
         }
         messages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls });

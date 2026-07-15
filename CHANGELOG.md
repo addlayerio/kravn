@@ -14,13 +14,28 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🎨 **Chat client UI fixes.** Three papercuts:
+  - **The model picker now lists every model.** It was a text input backed by a `<datalist>`, which filters its
+    suggestions by what's already typed — since the field is pre-filled with the provider's default, you only
+    ever saw that one. It's a real **`<select>`** now (new chat, scheduled task, assistant), keeping any custom
+    model the value already had, and falling back to a text field only when a provider advertises no models.
+  - **A live "working" indicator.** While a turn is in flight the placeholder was static text, so a long
+    tool-using turn looked frozen. It's now animated (pulsing dots, `prefers-reduced-motion` respected).
+  - **Polished buttons** (shared `@kravn/ui`, so the operator gets it too): control-sized type, a hairline lift
+    instead of a chunky border, a tactile press state, a proper `:focus-visible` ring, and disabled buttons no
+    longer answer the pointer.
 - ⚙️ **The chat agent's tool-round limit is now configurable (and higher by default).** The chat runs an
   agentic loop where the model calls tools, gets results, and calls more — capped per message so it can't run
   away on cost/latency. That cap was a hard-coded **6**, which cut off deep multi-source agents (a research/
   support agent querying Jira → GitHub → Azure → Datadog → … in sequence) with *"the assistant kept requesting
   tools past the limit"*. It's now an operator setting — **Settings → Governance → "Chat: max tool rounds per
-  message"** (`governance.chatMaxToolRounds`, 1–40) — with the default raised to **12**. The cut-off message is
-  also clearer and says how to raise it.
+  message"** (`governance.chatMaxToolRounds`, 1–40) — with the default raised to **12**.
+- 🐛 **A chat turn cut off by the tool-round limit no longer looks like it silently died.** When the cap was hit,
+  the model's last message is a *preamble* ("Let me fetch the controller code and check the DB metrics:")
+  emitted alongside the tool calls we can no longer run — and that preamble was persisted **as if it were the
+  finished answer**, with no warning (the notice only appeared when the text happened to be empty). The
+  truncation notice is now **always** shown, appended to whatever partial text there was, so an unfinished
+  analysis is unmistakable and tells you to raise the limit.
 - 📁 **Projects (chat client): chats-first view + scheduled tasks inside a project.** Opening a project now
   shows its **chats** (and its scheduled tasks) as the main view instead of dropping straight into edit mode;
   project instructions / documents / sharing moved behind a **⚙️ settings** toggle. A project has a **"+
