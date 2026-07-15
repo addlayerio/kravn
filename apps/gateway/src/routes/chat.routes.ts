@@ -24,6 +24,7 @@ import type { Services } from '../services.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { computeNextRun } from '../schedules/scheduler.service.js';
 import { parse, sendError } from './_helpers.js';
+import { openSse } from './_sse.js';
 
 // Same data-plane rule as the MCP endpoint (endpoint-access.ts): consumption is by team membership; platform
 // role/admin is not an axis. Keeps "which endpoints show in chat" identical to "which you can actually call".
@@ -414,6 +415,35 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       return { message, attachments };
     } catch (err) {
       return sendError(reply, 400, 'chat_failed', err instanceof Error ? err.message : 'Chat failed.');
+    }
+  });
+
+  // Same turn as the POST above, delivered as a stream — this is what the web client uses.
+  //
+  // Not an optimization: a turn is an agentic loop that can legitimately run for many minutes, and the plain
+  // POST stays silent for all of it, so any proxy in front of Kravn (Cloudflare cuts at ~100s with a 524)
+  // gives up long before the reply exists. Here the response starts immediately and emits progress —
+  // heartbeats included — so the connection is never idle, however long the loop takes.
+  //
+  // The stream is a VIEW of the turn, not the turn itself: `send` runs to completion and persists its reply
+  // regardless of this socket, so a drop costs the user their live view, never their answer (the client
+  // reconciles by refetching). That is also why a failure is reported as a `failed` EVENT, not an HTTP status
+  // — by the time the loop can fail, the 200 and its headers are long gone.
+  app.post('/api/chat/conversations/:id/messages/stream', auth, async (req, reply) => {
+    const dto = parse(reply, postChatMessageSchema, req.body); // must precede hijack(): it replies on its own
+    if (!dto) return;
+    const u = currentUser(req);
+    const convId = (req.params as { id: string }).id;
+    const sse = openSse(reply);
+    try {
+      const message = await s.chat.send(u, convId, dto.content, dto.attachmentIds, (p) => sse.send('progress', p));
+      const attachments = (await s.repos.chat.listAttachmentsByMessage(convId)).filter((a) => a.messageId === message.id);
+      sse.send('done', { message, attachments });
+    } catch (err) {
+      // Mirrors the JSON route's envelope so the client can surface it the same way.
+      sse.send('failed', { error: { code: 'chat_failed', message: err instanceof Error ? err.message : 'Chat failed.' } });
+    } finally {
+      sse.close();
     }
   });
 }

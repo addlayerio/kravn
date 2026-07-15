@@ -41,6 +41,25 @@ const DEFAULT_BASE: Record<string, string> = {
 /** Fallback for the chat agentic-loop round cap when the setting is unavailable (settings.governance.chatMaxToolRounds). */
 const DEFAULT_MAX_TOOL_ROUNDS = 12;
 
+/** Output ceiling for Anthropic. Thinking tokens are drawn from THIS budget, so a low cap truncates the answer
+ *  (or spends the whole cap reasoning) — 4096 cut long structured reports short. Anthropic's own ceiling is 128K,
+ *  but that requires streaming; ~16K is the documented safe cap for a non-streaming request. */
+const ANTHROPIC_MAX_TOKENS = 16_000;
+/** …and a 16K non-streaming answer takes minutes to generate, so the shared 60s budget no longer fits. */
+const ANTHROPIC_TIMEOUT_MS = 180_000;
+
+/**
+ * What a chat turn reports while it runs, so the caller can show the work instead of a frozen spinner.
+ * A turn is a loop — think, call a tool, read the result, think again — and until now none of that was
+ * visible: the browser waited in silence for minutes. `thinking` carries Claude's own reasoning summary
+ * for the round (only where the provider returns one); `tool`/`tool_result` bracket each call.
+ */
+export type ChatProgress =
+  | { type: 'round'; round: number; maxRounds: number }
+  | { type: 'thinking'; text: string }
+  | { type: 'tool'; name: string }
+  | { type: 'tool_result'; name: string; ok: boolean };
+
 /** A message's content is usually a plain string; a user turn with image attachments is a block array. */
 type LlmContentBlock = { type: 'text'; text: string } | { type: 'image'; mime: string; b64: string };
 interface LlmMessage {
@@ -49,6 +68,10 @@ interface LlmMessage {
   tool_calls?: any[];
   tool_call_id?: string;
   name?: string;
+  /** Anthropic thinking blocks, kept verbatim. When thinking is on, an assistant turn carrying `tool_use` must
+   *  replay them UNCHANGED (they are signed) or the next request 400s — so the tool loop threads them back
+   *  through toAnthropicMessages. Opaque to every other provider. */
+  reasoning?: unknown[];
 }
 
 /** Image MIME from a filename extension (only what the vision APIs accept). null = not an image. */
@@ -92,8 +115,19 @@ export class ChatService {
     if (!ok) throw new Error(`Model "${model}" is not allowed by policy. Allowed: ${allowed.join(', ')}.`);
   }
 
-  /** Send a user message and produce the assistant reply (running tools when the model asks). */
-  async send(actor: AuthUser, conversationId: string, content: string, attachmentIds: string[] = []): Promise<ChatMessage> {
+  /** Send a user message and produce the assistant reply (running tools when the model asks).
+   *
+   *  `onProgress` is optional and purely observational: it reports the turn as it runs (see ChatProgress) so a
+   *  streaming caller can show the work. The turn does NOT depend on it — a caller that omits it (the
+   *  scheduler) is unaffected, and a caller whose connection dies mid-turn still gets the reply persisted,
+   *  because the loop below never consults the callback. */
+  async send(
+    actor: AuthUser,
+    conversationId: string,
+    content: string,
+    attachmentIds: string[] = [],
+    onProgress?: (p: ChatProgress) => void,
+  ): Promise<ChatMessage> {
     const conv = await this.repos.chat.getConversation(actor.id, conversationId);
     if (!conv) throw new Error('Conversation not found.');
 
@@ -157,16 +191,30 @@ export class ChatService {
     const producedAttachmentIds: string[] = [];
     let finalText = '';
 
+    // Best-effort and never load-bearing: a throwing/closed reporter must not fail the turn.
+    const report = (p: ChatProgress) => {
+      try {
+        onProgress?.(p);
+      } catch {
+        /* a broken reporter is not the turn's problem */
+      }
+    };
+
     if (!supportsTools || tools.length === 0) {
       // Plain completion (no tool loop). Native web search still applies — it runs server-side at the provider.
       const msg = await this.complete(actor, provider, key, conv.model, messages, [], conv.webSearch);
+      const think = thinkingTextOf(msg);
+      if (think) report({ type: 'thinking', text: think });
       finalText = textOf(msg);
     } else {
       // Provider-agnostic tool loop (complete() normalizes OpenAI / Anthropic tool formats). The round cap is an
       // operator setting (settings.governance.chatMaxToolRounds) — higher suits deep multi-source agents.
       const maxRounds = this.settings.get().governance.chatMaxToolRounds || DEFAULT_MAX_TOOL_ROUNDS;
       for (let round = 0; round < maxRounds; round++) {
+        report({ type: 'round', round: round + 1, maxRounds });
         const msg = await this.complete(actor, provider, key, conv.model, messages, tools, conv.webSearch);
+        const think = thinkingTextOf(msg);
+        if (think) report({ type: 'thinking', text: think });
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
           finalText = textOf(msg);
           break;
@@ -184,7 +232,7 @@ export class ChatService {
           finalText = partial ? `${partial}\n\n---\n\n${notice}` : notice;
           break;
         }
-        messages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls });
+        messages.push({ role: 'assistant', content: msg.content ?? '', tool_calls: msg.tool_calls, reasoning: msg.reasoning });
         for (const call of msg.tool_calls) {
           const name = call.function?.name;
           let args: Record<string, unknown> = {};
@@ -194,6 +242,8 @@ export class ChatService {
             /* ignore bad args */
           }
           let resultText: string;
+          report({ type: 'tool', name });
+          let ok = true;
           try {
             const entry = toolIndex.get(name);
             if (!entry) throw new Error(`unknown tool ${name}`);
@@ -216,8 +266,10 @@ export class ChatService {
               }
             }
           } catch (err) {
+            ok = false;
             resultText = `Error: ${err instanceof Error ? err.message : String(err)}`;
           }
+          report({ type: 'tool_result', name, ok });
           messages.push({ role: 'tool', tool_call_id: call.id, name, content: resultText });
         }
       }
@@ -486,7 +538,12 @@ export class ChatService {
 
     if (p.type === 'anthropic') {
       const systemText = textFromContent(messages.find((m) => m.role === 'system')?.content);
-      const body: Record<string, unknown> = { model, max_tokens: 4096, messages: toAnthropicMessages(messages) };
+      const body: Record<string, unknown> = { model, max_tokens: ANTHROPIC_MAX_TOKENS, messages: toAnthropicMessages(messages) };
+      // Let Claude reason before it answers. This is the single biggest difference between a Kravn chat and
+      // claude.ai on the same model: without it the model answers from its first guess (e.g. inventing a
+      // service name instead of listing what exists), and between tool rounds it never revises its plan.
+      const thinking = anthropicThinking(model, ANTHROPIC_MAX_TOKENS);
+      if (thinking) body.thinking = thinking;
       // Prompt caching: cache the STABLE prefix — the system prompt (which for a Project carries the injected
       // instructions + documents) and the tool schemas. Anthropic caching is NOT automatic (unlike OpenAI), so
       // without this Kravn pays full input price on every turn AND on every iteration of the tool-call loop
@@ -508,7 +565,7 @@ export class ChatService {
         method: 'POST',
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify(body),
-      }, 60_000);
+      }, ANTHROPIC_TIMEOUT_MS);
       if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
       const data: any = await res.json();
       const u = data.usage ?? {};
@@ -525,7 +582,10 @@ export class ChatService {
       const tool_calls = toolUses.length
         ? toolUses.map((b) => ({ id: b.id, type: 'function', function: { name: b.name, arguments: JSON.stringify(b.input ?? {}) } }))
         : undefined;
-      return { role: 'assistant', content: text, tool_calls };
+      // Carried back verbatim, never read: we don't render the reasoning, but the tool loop must replay these
+      // exact blocks (signature included, empty text included) on the next round. See LlmMessage.reasoning.
+      const reasoning = blocks.filter((b) => b.type === 'thinking' || b.type === 'redacted_thinking');
+      return { role: 'assistant', content: text, tool_calls, reasoning: reasoning.length ? reasoning : undefined };
     }
 
     if (p.type === 'gemini') {
@@ -595,6 +655,16 @@ function textOf(msg: LlmMessage): string {
   return typeof msg.content === 'string' ? msg.content : '';
 }
 
+/** The model's own reasoning for a round, as readable text — what a streaming client shows while it waits.
+ *  Empty unless the provider returned it: only Anthropic populates `reasoning`, and only a summary (the raw
+ *  chain of thought is never exposed), so this is a progress signal, never part of the answer. */
+function thinkingTextOf(msg: LlmMessage): string {
+  return (msg.reasoning ?? [])
+    .map((b) => (typeof (b as { thinking?: unknown }).thinking === 'string' ? (b as { thinking: string }).thinking : ''))
+    .join('')
+    .trim();
+}
+
 function safeParseArgs(s: string | undefined): unknown {
   try {
     return s ? JSON.parse(s) : {};
@@ -627,6 +697,36 @@ function toOpenAiMessages(messages: LlmMessage[]): unknown[] {
 }
 
 /**
+ * The `thinking` parameter for a Claude model — the switch that lets it reason before answering (what makes
+ * claude.ai visibly "work through" a problem instead of replying from the first thing it sees).
+ *
+ * The shape is model-dependent and a WRONG shape is a hard 400, not a downgrade. Since the operator types the
+ * model id free-form, this is an ALLOWLIST: an id we can't place gets no `thinking` at all (today's behavior)
+ * rather than a guess that would break the chat.
+ *  - Claude 4.6 and later (including Sonnet 5 and Fable/Mythos 5): `adaptive` is the only accepted "on" mode —
+ *    Claude sizes its own reasoning per turn. The older `budget_tokens` form is REJECTED on Opus 4.8/4.7,
+ *    Sonnet 5 and Fable 5, and deprecated on 4.6, so it must never be sent here.
+ *  - Claude 3.7 through 4.5: only the older fixed-budget form exists. `budget_tokens` must be under
+ *    `max_tokens` (minimum 1024); it is not a floor, so half the output budget leaves room for the answer.
+ *  - Claude 3.5 and older: no thinking support at all.
+ */
+function anthropicThinking(model: string, maxTokens: number): Record<string, unknown> | undefined {
+  const m = model.toLowerCase();
+  if (/(opus|sonnet)-4-[678]|sonnet-5|fable-5|mythos/.test(m)) {
+    // We SHOW the reasoning while the turn runs, so it has to come back readable. `display` defaults to
+    // 'omitted' on Opus 4.7+/Sonnet 5/Fable 5 (the blocks arrive with empty text) but already defaults to
+    // 'summarized' on 4.6 — where the field is newer than the model and may not be accepted. So ask for it
+    // only where the default is wrong, and let 4.6 alone.
+    const omitsByDefault = /opus-4-[78]|sonnet-5|fable-5|mythos/.test(m);
+    return omitsByDefault ? { type: 'adaptive', display: 'summarized' } : { type: 'adaptive' };
+  }
+  if (/(opus|sonnet|haiku)-4-[015]|(opus|sonnet)-4-2025|3-7-sonnet/.test(m)) {
+    return { type: 'enabled', budget_tokens: Math.max(1024, Math.floor(maxTokens / 2)) };
+  }
+  return undefined;
+}
+
+/**
  * Translate the internal OpenAI-shaped message array into Anthropic's content-block format,
  * mapping assistant tool_calls → tool_use blocks and tool results → tool_result blocks (grouped
  * into the user turn that must immediately follow an assistant tool_use).
@@ -638,7 +738,9 @@ function toAnthropicMessages(messages: LlmMessage[]): { role: string; content: u
     if (m.role === 'user') {
       out.push({ role: 'user', content: toAnthropicUserContent(m.content) });
     } else if (m.role === 'assistant') {
-      const content: any[] = [];
+      // Thinking blocks first — Anthropic requires an assistant turn to LEAD with them (they precede the
+      // lastmost tool_use/tool_result set), and requires them byte-identical to what it sent.
+      const content: any[] = [...(m.reasoning ?? [])];
       if (m.content) content.push({ type: 'text', text: m.content });
       for (const tc of m.tool_calls ?? []) {
         content.push({ type: 'tool_use', id: tc.id, name: tc.function?.name, input: safeParseArgs(tc.function?.arguments) });

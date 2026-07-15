@@ -234,6 +234,15 @@ async function sendJson(
 
 // ─── Tools (all read-only) ──────────────────────────────────────────────────────────────────────────
 
+/** Closed value sets for azure_cost_by_service. These feed BOTH the tool schema the model reads and the
+ *  handler's validation, so the two can never drift apart (they had: the description advertised four
+ *  dimensions while the handler accepted six, leaving two reachable but undiscoverable). */
+const COST_TIMEFRAMES = ['MonthToDate', 'BillingMonthToDate', 'TheLastMonth', 'TheLastBillingMonth', 'WeekToDate', 'Custom'];
+const COST_DIMENSIONS = ['ServiceName', 'ResourceGroupName', 'ResourceLocation', 'MeterCategory', 'MeterSubcategory', 'ResourceType'];
+/** Azure Monitor aggregations (azure_metrics_query). Per-metric support varies — azure_metric_definitions
+ *  reports each metric's own `supportedAggregations`; this is the outer set of spellings Azure accepts. */
+const METRIC_AGGREGATIONS = ['Average', 'Minimum', 'Maximum', 'Total', 'Count'];
+
 const TOOLS: McpToolDef[] = [
   {
     name: 'azure_list_subscriptions',
@@ -289,16 +298,15 @@ const TOOLS: McpToolDef[] = [
     name: 'azure_cost_by_service',
     description:
       'Total Azure cost grouped by a dimension (default **ServiceName** — "cost by service type"). ' +
-      '`timeframe`: MonthToDate (default), TheLastMonth, BillingMonthToDate, TheLastBillingMonth, WeekToDate, or Custom ' +
-      '(then pass `from`/`to` as ISO dates). `groupBy`: ServiceName (default), ResourceGroupName, ResourceLocation, MeterCategory. ' +
-      'Optional `subscriptionId` overrides the default.',
+      '`timeframe` defaults to MonthToDate; use Custom with `from`/`to` for an arbitrary window. ' +
+      '`groupBy` defaults to ServiceName. Optional `subscriptionId` overrides the default.',
     inputSchema: {
       type: 'object',
       properties: {
-        timeframe: { type: 'string', description: 'MonthToDate | TheLastMonth | BillingMonthToDate | TheLastBillingMonth | WeekToDate | Custom.' },
-        groupBy: { type: 'string', description: 'Dimension to group by (default ServiceName).' },
+        timeframe: { type: 'string', enum: COST_TIMEFRAMES, description: 'Time window (default MonthToDate).' },
+        groupBy: { type: 'string', enum: COST_DIMENSIONS, description: 'Dimension to group by (default ServiceName).' },
         from: { type: 'string', description: 'For Custom timeframe: start date (ISO, e.g. 2026-07-01).' },
-        to: { type: 'string', description: 'For Custom timeframe: end date (ISO).' },
+        to: { type: 'string', description: 'For Custom timeframe: end date (ISO); the whole day is included.' },
         subscriptionId: { type: 'string', description: 'Optional subscription GUID; defaults to the configured one.' },
       },
     },
@@ -325,7 +333,7 @@ const TOOLS: McpToolDef[] = [
         metricNames: { type: 'string', description: 'Comma-separated metric names.' },
         timespan: { type: 'string', description: 'Optional ISO-8601 timespan; defaults to the last hour.' },
         interval: { type: 'string', description: 'Optional aggregation interval, e.g. PT1M, PT5M, PT1H.' },
-        aggregation: { type: 'string', description: 'Average | Minimum | Maximum | Total | Count (default Average).' },
+        aggregation: { type: 'string', enum: METRIC_AGGREGATIONS, description: 'Default Average. The metric must support it — see azure_metric_definitions.' },
       },
       required: ['resourceId', 'metricNames'],
     },
@@ -396,8 +404,41 @@ async function logsQuery(cfg: AzureConfig, args: Record<string, unknown>): Promi
   return text(`${objs.length} row(s):\n\n${clip(JSON.stringify(objs, null, 2))}`);
 }
 
-const COST_TIMEFRAMES = ['MonthToDate', 'BillingMonthToDate', 'TheLastMonth', 'TheLastBillingMonth', 'WeekToDate', 'Custom'];
-const COST_DIMENSIONS = ['ServiceName', 'ResourceGroupName', 'ResourceLocation', 'MeterCategory', 'MeterSubcategory', 'ResourceType'];
+/**
+ * Azure ADVERTISES `TheLastMonth` on the Query API and then rejects it: "Invalid query definition, timeframe
+ * TheLastMonth is currently not supported." The field reuses the shared EXPORT timeframe enum, and the Query
+ * service never implemented that member — open since 2024 (Azure/azure-rest-api-specs#27650), and Microsoft's
+ * own Query samples fail the same way. It is also the timeframe people ask for most ("what did we spend last
+ * month"), so we serve it instead of dropping it: the previous CALENDAR month is unambiguous, so we express it
+ * as an explicit Custom range and Azure never sees the value it dislikes.
+ *
+ * This is deliberately narrow. Only TheLastMonth is known broken — the same issue reports the other timeframes
+ * work — and the billing-cycle ones could not be translated anyway, since only Azure knows the billing cycle.
+ */
+function lastCalendarMonthUtc(now: Date): { from: string; to: string } {
+  const y = now.getUTCFullYear();
+  const m = now.getUTCMonth();
+  // Day 0 of this month == the last day of the previous one; the month rolls the year over for us.
+  return {
+    from: isoInstant(new Date(Date.UTC(y, m - 1, 1, 0, 0, 0))),
+    to: isoInstant(new Date(Date.UTC(y, m, 0, 23, 59, 59))),
+  };
+}
+
+/** Azure's timePeriod wants a full RFC 3339 instant, not the bare date a model naturally writes. */
+function isoInstant(d: Date): string {
+  return d.toISOString().replace(/\.\d{3}Z$/, 'Z');
+}
+
+/** Expand a user-supplied date to an instant: `from` to the start of its day, `to` to the END of its day — so
+ *  a range that names one day means that whole day rather than a zero-width window that returns nothing. */
+function costInstant(value: unknown, field: 'from' | 'to'): string {
+  const s = String(value ?? '').trim();
+  if (/^\d{4}-\d{2}-\d{2}$/.test(s)) return `${s}T${field === 'to' ? '23:59:59' : '00:00:00'}Z`;
+  const d = new Date(s);
+  if (Number.isNaN(d.getTime())) throw new AzureError(`\`${field}\` is not a valid date: "${s}". Use ISO, e.g. 2026-07-01.`);
+  return isoInstant(d);
+}
 
 async function costByService(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
   const subId = guid(args.subscriptionId || cfg.subscriptionId, 'subscriptionId (configure a default or pass one)');
@@ -405,21 +446,29 @@ async function costByService(cfg: AzureConfig, args: Record<string, unknown>): P
   if (!COST_TIMEFRAMES.includes(timeframe)) throw new AzureError(`timeframe must be one of: ${COST_TIMEFRAMES.join(', ')}.`);
   const groupBy = String(args.groupBy ?? 'ServiceName');
   if (!COST_DIMENSIONS.includes(groupBy)) throw new AzureError(`groupBy must be one of: ${COST_DIMENSIONS.join(', ')}.`);
+
+  // What we ASK Azure for — not always what the caller asked us for (see lastCalendarMonthUtc).
+  let sent = timeframe;
+  let timePeriod: { from: string; to: string } | undefined;
+  if (timeframe === 'TheLastMonth') {
+    sent = 'Custom';
+    timePeriod = lastCalendarMonthUtc(new Date());
+  } else if (timeframe === 'Custom') {
+    if (!args.from || !args.to) throw new AzureError('Custom timeframe requires `from` and `to` (ISO dates).');
+    timePeriod = { from: costInstant(args.from, 'from'), to: costInstant(args.to, 'to') };
+    if (timePeriod.from > timePeriod.to) throw new AzureError('`from` must not be after `to`.');
+  }
+
   const body: Record<string, unknown> = {
     type: 'ActualCost',
-    timeframe,
+    timeframe: sent,
     dataset: {
       granularity: 'None',
       aggregation: { totalCost: { name: 'Cost', function: 'Sum' } },
       grouping: [{ type: 'Dimension', name: groupBy }],
     },
   };
-  if (timeframe === 'Custom') {
-    const from = String(args.from ?? '').trim();
-    const to = String(args.to ?? '').trim();
-    if (!from || !to) throw new AzureError('Custom timeframe requires `from` and `to` (ISO dates).');
-    body.timePeriod = { from, to };
-  }
+  if (timePeriod) body.timePeriod = timePeriod;
   const data = await armApi(cfg, 'POST', `/subscriptions/${subId}/providers/Microsoft.CostManagement/query`, {
     apiVersion: '2023-11-01',
     body,
@@ -427,7 +476,10 @@ async function costByService(cfg: AzureConfig, args: Record<string, unknown>): P
   const cols = ((data.properties?.columns ?? []) as any[]).map((c) => c.name);
   const rows = (data.properties?.rows ?? []) as unknown[][];
   const objs = rows.map((r) => Object.fromEntries(cols.map((c: string, i: number) => [c, r[i]])));
-  return text(`Cost by ${groupBy} (${timeframe}) — ${objs.length} row(s):\n\n${clip(JSON.stringify(objs, null, 2))}`);
+  // Report the window we actually queried, dates and all — the model is writing a cost report from this, and
+  // it must never have to infer which period the numbers cover.
+  const window = timePeriod ? `${timeframe}: ${timePeriod.from.slice(0, 10)} to ${timePeriod.to.slice(0, 10)}` : timeframe;
+  return text(`Cost by ${groupBy} (${window}) — ${objs.length} row(s):\n\n${clip(JSON.stringify(objs, null, 2))}`);
 }
 
 async function metricDefinitions(cfg: AzureConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -449,11 +501,11 @@ async function metricsQuery(cfg: AzureConfig, args: Record<string, unknown>): Pr
   const timespan = args.timespan
     ? String(args.timespan)
     : `${new Date(now - 3600_000).toISOString()}/${new Date(now).toISOString()}`;
-  const query: Record<string, unknown> = {
-    metricnames: metricNames,
-    timespan,
-    aggregation: String(args.aggregation ?? 'Average'),
-  };
+  // Validated here, not just declared in the schema: a bad value would otherwise reach Azure Monitor and come
+  // back as an opaque 400 that tells the model nothing about which spellings are legal.
+  const aggregation = String(args.aggregation ?? 'Average');
+  if (!METRIC_AGGREGATIONS.includes(aggregation)) throw new AzureError(`aggregation must be one of: ${METRIC_AGGREGATIONS.join(', ')}.`);
+  const query: Record<string, unknown> = { metricnames: metricNames, timespan, aggregation };
   if (args.interval) query.interval = String(args.interval);
   const data = await armApi(cfg, 'GET', `${rid}/providers/Microsoft.Insights/metrics`, {
     apiVersion: '2018-01-01',

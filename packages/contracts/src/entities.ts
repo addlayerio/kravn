@@ -154,13 +154,16 @@ export const llmProviderTypeSchema = z.enum(LLM_PROVIDER_TYPES);
  */
 export const LLM_MODEL_CATALOG: Record<LlmProviderType, string[]> = {
   openai: ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1', 'gpt-4.1-mini', 'gpt-4.1-nano', 'o3', 'o4-mini'],
+  // Best-first, and every one of these is current: the previous list had four models Anthropic has since
+  // RETIRED (they answer 404, not a downgrade) and not one from the 4.6+ family, which is the only place
+  // adaptive thinking works — so the catalog was steering people onto dead or thinking-less models.
   anthropic: [
-    'claude-opus-4-1',
-    'claude-opus-4',
-    'claude-sonnet-4-5',
-    'claude-sonnet-4',
-    'claude-3-7-sonnet-latest',
-    'claude-3-5-haiku-latest',
+    'claude-opus-4-8',
+    'claude-opus-4-7',
+    'claude-opus-4-6',
+    'claude-sonnet-5',
+    'claude-sonnet-4-6',
+    'claude-haiku-4-5',
   ],
   gemini: ['gemini-2.5-pro', 'gemini-2.5-flash', 'gemini-2.5-flash-lite', 'gemini-2.0-flash', 'gemini-1.5-pro', 'gemini-1.5-flash'],
   'azure-openai': ['gpt-4o', 'gpt-4o-mini', 'gpt-4.1'],

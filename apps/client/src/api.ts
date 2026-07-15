@@ -45,6 +45,60 @@ async function request<T>(method: string, path: string, body?: unknown): Promise
   return handle<T>(res);
 }
 
+/**
+ * POST an endpoint that answers with Server-Sent Events instead of one JSON body — for work that takes
+ * minutes (a chat turn) and would otherwise be cut off by a proxy while the socket sits silent.
+ *
+ * Uses fetch + a reader rather than the native EventSource, which is GET-only and cannot carry the
+ * Authorization header. Resolves when the server closes the stream — which is NOT by itself a verdict: a
+ * dropped connection also ends the loop, so the caller must decide based on the events it actually saw.
+ * Heartbeat comments are skipped; their only job is keeping the connection alive on the way here.
+ */
+export async function postSse(
+  path: string,
+  body: unknown,
+  onEvent: (event: string, data: any) => void,
+  signal?: AbortSignal,
+): Promise<void> {
+  const res = await fetch(path, {
+    method: 'POST',
+    headers: authHeaders({ 'Content-Type': 'application/json', Accept: 'text/event-stream' }),
+    body: JSON.stringify(body),
+    signal,
+  });
+  if (!res.ok) await handle<void>(res); // stream never started — always throws the server's error envelope
+  if (!res.body) throw new ApiError(res.status, 'stream', 'The server did not return a stream.');
+
+  const reader = res.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = '';
+  for (;;) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += decoder.decode(value, { stream: true });
+    let sep: number;
+    while ((sep = buffer.indexOf('\n\n')) >= 0) {
+      const frame = buffer.slice(0, sep);
+      buffer = buffer.slice(sep + 2);
+      let event = 'message';
+      const data: string[] = [];
+      for (const line of frame.split('\n')) {
+        if (line.startsWith(':')) continue; // comment — the heartbeat lands here
+        if (line.startsWith('event:')) event = line.slice(6).trim();
+        else if (line.startsWith('data:')) data.push(line.slice(5).trim());
+      }
+      if (!data.length) continue;
+      let payload: unknown;
+      try {
+        payload = JSON.parse(data.join('\n'));
+      } catch {
+        continue; // malformed frame — skip it rather than kill the stream
+      }
+      onEvent(event, payload); // outside the try: a bug in the consumer must surface, not look like bad JSON
+    }
+  }
+}
+
 export const api = {
   get: <T>(p: string) => request<T>('GET', p),
   post: <T>(p: string, b?: unknown) => request<T>('POST', p, b),

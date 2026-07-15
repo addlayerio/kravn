@@ -30,6 +30,8 @@ export default {
     "tagPlaceholder": "+ etiqueta",
     "downloadFile": "Descargar {name}",
     "thinking": "Pensando…",
+    "usingTool": "Usando {tool}…",
+    "streamDropped": "Se cortó la conexión, pero el asistente sigue trabajando en la respuesta. Va a aparecer acá cuando termine — volvé a abrir este chat en un momento.",
     "dropFiles": "Soltá los archivos para adjuntarlos",
     "noTextSuffix": " · sin texto",
     "remove": "Quitar",

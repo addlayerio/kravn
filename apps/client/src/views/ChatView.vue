@@ -3,7 +3,7 @@ import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
 import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant, AvailableTool } from '@kravn/contracts';
-import { api, ApiError } from '../api';
+import { api, ApiError, postSse } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
 import { renderMarkdown } from '../lib/markdown';
@@ -57,6 +57,11 @@ const attachments = ref<ChatAttachment[]>([]); // sent attachments, linked to me
 const input = ref('');
 const sending = ref(false);
 const thread = ref<HTMLElement | null>(null);
+
+/** What the assistant is doing right now, streamed from the turn: its reasoning between rounds, and each tool
+ *  as it runs (`ok` undefined = still running). Lives only while `sending` — the reply itself is the answer. */
+type LiveStep = { kind: 'thinking' | 'tool'; text: string; ok?: boolean };
+const liveSteps = ref<LiveStep[]>([]);
 
 // Files staged in the composer (uploaded, not yet sent).
 const pending = ref<ChatAttachment[]>([]);
@@ -806,20 +811,81 @@ async function send() {
   for (const a of pending.value) attachments.value.push({ ...a, messageId: tmpId });
   pending.value = [];
   sending.value = true;
+  liveSteps.value = [];
   scrollDown();
+  // The stream ending is not a verdict — a dropped connection ends it too. Only a `done`/`failed` event is.
+  let settled = false;
   try {
-    const res = await api.post<{ message: ChatMessage; attachments?: ChatAttachment[] }>(`/api/chat/conversations/${conv.id}/messages`, { content: text, attachmentIds: attIds });
-    if (current.value?.id === conv.id) {
-      messages.value.push(res.message);
-      for (const a of res.attachments ?? []) attachments.value.push(a); // show interpreter-produced downloads immediately
-    }
+    await postSse(`/api/chat/conversations/${conv.id}/messages/stream`, { content: text, attachmentIds: attIds }, (event, data) => {
+      if (current.value?.id !== conv.id) return; // user switched conversation mid-turn
+      if (event === 'progress') {
+        applyProgress(data);
+      } else if (event === 'done') {
+        settled = true;
+        messages.value.push(data.message);
+        for (const a of data.attachments ?? []) attachments.value.push(a); // interpreter-produced downloads
+        scrollDown();
+      } else if (event === 'failed') {
+        settled = true;
+        pushNotice(conv.id, `⚠️ ${data?.error?.message ?? t('chat.failedReply')}`);
+      }
+    });
+    // Closed with no verdict: the connection dropped, but the turn keeps running server-side and persists its
+    // reply on its own — so go look for it rather than declaring a failure that didn't happen.
+    if (!settled && current.value?.id === conv.id) await reconcile(conv.id);
   } catch (e) {
-    if (current.value?.id === conv.id) {
-      messages.value.push({ id: 'err-' + Date.now(), conversationId: conv.id, role: 'assistant', content: `⚠️ ${e instanceof ApiError ? e.message : t('chat.failedReply')}`, createdAt: new Date().toISOString() });
+    if (settled || current.value?.id !== conv.id) {
+      /* already resolved, or the user moved on */
+    } else if (e instanceof ApiError) {
+      // The server refused before the stream began (unknown conversation, no provider, blocked by policy).
+      // Nothing is running, so this IS the verdict.
+      pushNotice(conv.id, `⚠️ ${e.message}`);
+    } else {
+      // The transport died mid-turn — the turn did not die with it. Reporting a failure here would be a lie
+      // that costs the user a whole second turn; go look for the reply instead.
+      await reconcile(conv.id);
     }
   } finally {
     sending.value = false;
+    liveSteps.value = [];
     scrollDown();
+  }
+}
+
+/** Fold one progress event into the live view. */
+function applyProgress(p: { type: string; text?: string; name?: string; ok?: boolean }) {
+  if (p.type === 'thinking' && p.text) {
+    liveSteps.value.push({ kind: 'thinking', text: p.text });
+  } else if (p.type === 'tool' && p.name) {
+    liveSteps.value.push({ kind: 'tool', text: p.name });
+  } else if (p.type === 'tool_result' && p.name) {
+    // Settle the most recent still-running call of that tool (the same tool can be called more than once).
+    for (let i = liveSteps.value.length - 1; i >= 0; i--) {
+      const s = liveSteps.value[i];
+      if (s.kind === 'tool' && s.text === p.name && s.ok === undefined) {
+        s.ok = p.ok;
+        break;
+      }
+    }
+  }
+  scrollDown();
+}
+
+function pushNotice(convId: string, content: string) {
+  messages.value.push({ id: 'note-' + Date.now(), conversationId: convId, role: 'assistant', content, createdAt: new Date().toISOString() });
+}
+
+/** Re-read the thread after losing the live view, to pick up a reply the turn persisted without us. */
+async function reconcile(convId: string) {
+  try {
+    const res = await api.get<{ messages: ChatMessage[]; attachments: ChatAttachment[] }>(`/api/chat/conversations/${convId}`);
+    if (current.value?.id !== convId) return;
+    messages.value = res.messages;
+    attachments.value = res.attachments ?? [];
+    // Last word still the user's ⇒ the turn is genuinely still running. Say so — don't imply it failed.
+    if (res.messages[res.messages.length - 1]?.role !== 'assistant') pushNotice(convId, t('chat.streamDropped'));
+  } catch {
+    pushNotice(convId, t('chat.streamDropped'));
   }
 }
 
@@ -997,11 +1063,20 @@ async function logout() {
               </div>
             </div>
           </div>
-          <!-- Live "working" indicator: animated dots, so a long tool-using turn never looks frozen. -->
+          <!-- The turn, live: the assistant's reasoning between rounds and each tool as it runs, streamed in
+               while it works. Replaced by the real reply when it lands. -->
           <div v-if="sending" class="msg assistant">
             <div class="bubble thinking">
-              <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
-              <span class="muted">{{ t('chat.thinking') }}</span>
+              <div v-for="(s, i) in liveSteps" :key="i" class="live-step">
+                <p v-if="s.kind === 'thinking'" class="live-think">{{ s.text }}</p>
+                <span v-else class="live-tool" :class="s.ok === undefined ? 'run' : s.ok ? 'ok' : 'err'">
+                  <i class="live-dot" aria-hidden="true"></i>{{ t('chat.usingTool', { tool: s.text }) }}
+                </span>
+              </div>
+              <div class="live-now">
+                <span class="thinking-dots" aria-hidden="true"><i></i><i></i><i></i></span>
+                <span class="muted">{{ t('chat.thinking') }}</span>
+              </div>
             </div>
           </div>
         </div>

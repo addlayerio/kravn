@@ -14,6 +14,49 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **Azure cost "last month" failed — fixed by asking Azure a question it can answer.** `azure_cost_by_service`
+  offered `TheLastMonth` and Azure rejected it: *"Invalid query definition, timeframe TheLastMonth is currently
+  not supported."* The value is not ours to fix — Azure's Query API reuses the **Export** timeframe enum and never
+  implemented that member (open since 2024: `Azure/azure-rest-api-specs#27650`; Microsoft's own Query samples fail
+  the same way). Since "what did we spend last month" is the question people actually ask, Kravn now answers it
+  instead of dropping it: the previous calendar month is unambiguous, so it is sent as an explicit date range and
+  Azure never sees the value it dislikes. The other timeframes are reported to work and are untouched. Results now
+  also state the exact window queried, so a cost report can't misattribute its own numbers.
+- 🧩 **The cloud tools now declare their legal values instead of describing them.** Not one of Azure's tools used a
+  JSON Schema `enum`: every closed set (timeframe, groupBy, aggregation) was a free-form string whose options lived
+  in prose, so a model had to guess the exact spelling and nothing caught a wrong guess until the cloud API
+  rejected it. Those sets are now real enums, generated from the same constants the server validates against — so
+  the contract and the check cannot drift apart, as they had (the description advertised four `groupBy` dimensions
+  while six were accepted, leaving two working dimensions no model could discover). `azure_metrics_query`'s
+  `aggregation` is now validated rather than forwarded blind, and Custom `from`/`to` dates are checked and expanded
+  to the full-day range Azure expects instead of being passed through raw.
+- 📣 **The chat streams, and shows its work.** A chat turn is an agentic loop — the model thinks, calls a tool,
+  reads the result, thinks again — and it all ran inside one blocking HTTP request that stayed silent until the
+  last round finished. Any proxy in front of Kravn gives up long before that (Cloudflare cuts at ~100s with a
+  **524**), so a deep investigation failed with *"Request failed (524)"* even though the gateway was still
+  working. The web client now uses a streaming endpoint that answers immediately and keeps the connection alive
+  for as long as the turn takes, so **the turn's length no longer has a ceiling**. While it works you see it
+  work: Claude's own reasoning between rounds, and each tool as it runs, succeeds or fails.
+  - **A dropped connection no longer loses the answer.** The stream is a *view* of the turn, not the turn
+    itself — the reply is produced and saved regardless. If the connection drops, the client goes and finds it
+    rather than claiming the turn failed (which previously cost you a full re-run).
+  - The old JSON endpoint is unchanged, so scheduled tasks and API callers are unaffected.
+- 🐛 **The model picker offered four retired Claude models.** Four of the six suggested Anthropic models
+  (`claude-3-7-sonnet-latest`, `claude-3-5-haiku-latest`, `claude-opus-4`, `claude-sonnet-4`) have been retired
+  by Anthropic and answer 404, and not one of the six was from the 4.6+ family — the only models where the
+  extended thinking below actually applies. The list is now current and best-first (Opus 4.8/4.7/4.6, Sonnet
+  5/4.6, Haiku 4.5). This only affects the offline suggestions; a provider with a key still discovers its own.
+- 📣 **Claude now thinks before it answers (Anthropic extended thinking).** A Kravn chat on Claude used to
+  answer straight from its first guess and never revise its plan between tool calls — the same model on
+  claude.ai reasons first, which is why the same question against the same tools gave a visibly worse analysis
+  here. Kravn now turns thinking on, picking the shape each model actually accepts: **adaptive** for Claude 4.6
+  and later (Opus 4.8/4.7/4.6, Sonnet 5/4.6, Fable/Mythos 5), where Claude sizes its own reasoning per turn;
+  the **legacy fixed budget** for Claude 3.7–4.5, which is all those models support; and **nothing at all** for
+  a model id Kravn can't place, so an unknown or proxied model behaves exactly as before instead of failing.
+  Thinking blocks are replayed verbatim across the agentic loop, so the model keeps its reasoning as it works
+  through a multi-tool investigation. Also raises the answer ceiling from **4096 to 16000 tokens** (thinking is
+  drawn from the same budget, and long structured reports were being cut short), with the request timeout
+  widened to match. Nothing to configure — it applies to every Anthropic provider.
 - 🎨 **Chat client UI fixes.** Three papercuts:
   - **The model picker now lists every model.** It was a text input backed by a `<datalist>`, which filters its
     suggestions by what's already typed — since the field is pre-filled with the provider's default, you only

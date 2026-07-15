@@ -30,6 +30,8 @@ export default {
     "tagPlaceholder": "+ tag",
     "downloadFile": "Download {name}",
     "thinking": "Thinking…",
+    "usingTool": "Using {tool}…",
+    "streamDropped": "The connection dropped, but the assistant is still working on this reply. It will appear here once it finishes — reopen this chat in a moment.",
     "dropFiles": "Drop files to attach",
     "noTextSuffix": " · no text",
     "remove": "Remove",

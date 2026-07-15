@@ -30,6 +30,8 @@ export default {
     "tagPlaceholder": "+ étiquette",
     "downloadFile": "Télécharger {name}",
     "thinking": "Réflexion en cours…",
+    "usingTool": "Utilisation de {tool}…",
+    "streamDropped": "La connexion a été interrompue, mais l'assistant continue de travailler sur cette réponse. Elle apparaîtra ici une fois terminée — rouvrez cette conversation dans un instant.",
     "dropFiles": "Déposez les fichiers pour les joindre",
     "noTextSuffix": " · pas de texte",
     "remove": "Retirer",

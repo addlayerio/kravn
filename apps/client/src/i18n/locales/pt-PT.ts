@@ -30,6 +30,8 @@ export default {
     "tagPlaceholder": "+ etiqueta",
     "downloadFile": "Transferir {name}",
     "thinking": "A pensar…",
+    "usingTool": "A usar {tool}…",
+    "streamDropped": "A ligação caiu, mas o assistente continua a trabalhar nesta resposta. Vai aparecer aqui quando terminar — reabra este chat dentro de momentos.",
     "dropFiles": "Largue os ficheiros para anexar",
     "noTextSuffix": " · sem texto",
     "remove": "Remover",

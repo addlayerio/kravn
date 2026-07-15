@@ -551,8 +551,49 @@
   font-size: 12px;
 }
 
-/* "Working" indicator — animated so a long tool-using turn never reads as frozen. */
+/* "Working" indicator — the turn as it happens: the assistant's reasoning between rounds and each tool as it
+   fires, stacked oldest-first, with the animated dots pinned at the bottom as the "still going" cue. */
 .bubble.thinking {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 0.4rem;
+  max-width: 100%;
+}
+.live-step {
+  max-width: 100%;
+}
+.live-think {
+  margin: 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+  font-size: 0.85rem;
+  line-height: 1.5;
+  color: var(--text-muted);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.live-tool {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  font-size: 0.8rem;
+  color: var(--text-muted);
+}
+.live-dot {
+  flex: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-muted);
+}
+.live-tool.run .live-dot {
+  background: var(--accent);
+  animation: thinking-pulse 1.2s ease-in-out infinite;
+}
+.live-tool.ok .live-dot { background: var(--success); }
+.live-tool.err .live-dot { background: var(--danger); }
+.live-now {
   display: inline-flex;
   align-items: center;
   gap: 0.55rem;
@@ -578,6 +619,7 @@
 }
 @media (prefers-reduced-motion: reduce) {
   .thinking-dots i { animation: none; opacity: 0.6; }
+  .live-tool.run .live-dot { animation: none; }
 }
 
 /* Chat attachments */
