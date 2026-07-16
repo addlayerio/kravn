@@ -195,6 +195,7 @@ code {
   height: 56px;
   box-sizing: border-box;
   border-bottom: 1px solid var(--border);
+  flex-shrink: 0; /* fixed header — never squeeze it when the viewport is short */
 }
 .sidebar.collapsed .brand {
   justify-content: center;
@@ -207,6 +208,9 @@ code {
 }
 .nav {
   flex: 1;
+  /* min-height:0 lets this flex child shrink below its content height so overflow-y actually scrolls — without
+     it a short viewport compresses the whole column (brand/footer) instead of scrolling just the nav. */
+  min-height: 0;
   padding: 12px 8px;
   display: flex;
   flex-direction: column;
@@ -249,6 +253,7 @@ code {
   display: flex;
   flex-direction: column;
   gap: 2px;
+  flex-shrink: 0; /* pinned to the bottom — the nav above it scrolls, this stays put */
 }
 .sidebar-user {
   padding: 8px 10px;

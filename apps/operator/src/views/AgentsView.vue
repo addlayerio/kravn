@@ -52,6 +52,28 @@ function onProvider() {
   form.model = p?.defaultModel || p?.models[0] || '';
 }
 
+// Access lists — "pick from a combo, add to a table" (mirrors TeamsView member management), not a wall of checkboxes.
+const addTeamId = ref('');
+const addUserId = ref('');
+const selectedTeams = computed(() => form.allowedTeams.map((id) => teams.value.find((tm) => tm.id === id)).filter((tm): tm is Team => !!tm));
+const selectedUsers = computed(() => form.allowedUsers.map((id) => users.value.find((u) => u.id === id)).filter((u): u is User => !!u));
+const addableTeams = computed(() => teams.value.filter((tm) => !form.allowedTeams.includes(tm.id)));
+const addableUsers = computed(() => users.value.filter((u) => !form.allowedUsers.includes(u.id)));
+function addTeam() {
+  if (addTeamId.value && !form.allowedTeams.includes(addTeamId.value)) form.allowedTeams.push(addTeamId.value);
+  addTeamId.value = '';
+}
+function removeTeam(id: string) {
+  form.allowedTeams = form.allowedTeams.filter((x) => x !== id);
+}
+function addUser() {
+  if (addUserId.value && !form.allowedUsers.includes(addUserId.value)) form.allowedUsers.push(addUserId.value);
+  addUserId.value = '';
+}
+function removeUser(id: string) {
+  form.allowedUsers = form.allowedUsers.filter((x) => x !== id);
+}
+
 async function load(): Promise<void> {
   loading.value = true;
   try {
@@ -214,23 +236,43 @@ function accessLabel(a: ChatAgent): string {
         <small class="muted">{{ t('agentsView.accessNote') }}</small>
       </div>
 
-      <div v-if="form.access === 'restricted'" class="row" style="gap: 1rem">
+      <div v-if="form.access === 'restricted'" class="row" style="gap: 1rem; align-items: flex-start">
         <div class="field" style="flex: 1">
           <label>{{ t('agentsView.allowedTeams') }}</label>
-          <div class="card picker">
-            <div v-if="teams.length === 0" class="muted">{{ t('agentsView.noTeams') }}</div>
-            <label v-for="tm in teams" :key="tm.id" class="checkbox" style="font-weight: 400">
-              <input type="checkbox" :value="tm.id" v-model="form.allowedTeams" /> {{ tm.name }}
-            </label>
+          <table v-if="selectedTeams.length">
+            <tbody>
+              <tr v-for="tm in selectedTeams" :key="tm.id">
+                <td style="font-weight: 600">{{ tm.name }}</td>
+                <td style="text-align: right"><button class="btn danger" @click="removeTeam(tm.id)">{{ t('agentsView.remove') }}</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="muted" style="font-size: 13px; padding: 0.25rem 0">{{ t('agentsView.noTeamsSelected') }}</div>
+          <div v-if="addableTeams.length" class="row" style="gap: 0.5rem; margin-top: 0.4rem">
+            <select v-model="addTeamId" style="flex: 1">
+              <option value="">{{ t('agentsView.selectTeam') }}</option>
+              <option v-for="tm in addableTeams" :key="tm.id" :value="tm.id">{{ tm.name }}</option>
+            </select>
+            <button class="btn" :disabled="!addTeamId" @click="addTeam">{{ t('agentsView.add') }}</button>
           </div>
         </div>
         <div class="field" style="flex: 1">
           <label>{{ t('agentsView.allowedUsers') }}</label>
-          <div class="card picker">
-            <div v-if="users.length === 0" class="muted">{{ t('agentsView.noUsers') }}</div>
-            <label v-for="us in users" :key="us.id" class="checkbox" style="font-weight: 400">
-              <input type="checkbox" :value="us.id" v-model="form.allowedUsers" /> {{ us.name || us.email }}
-            </label>
+          <table v-if="selectedUsers.length">
+            <tbody>
+              <tr v-for="us in selectedUsers" :key="us.id">
+                <td><div style="font-weight: 600">{{ us.name || us.email }}</div><small v-if="us.name" class="muted">{{ us.email }}</small></td>
+                <td style="text-align: right"><button class="btn danger" @click="removeUser(us.id)">{{ t('agentsView.remove') }}</button></td>
+              </tr>
+            </tbody>
+          </table>
+          <div v-else class="muted" style="font-size: 13px; padding: 0.25rem 0">{{ t('agentsView.noUsersSelected') }}</div>
+          <div v-if="addableUsers.length" class="row" style="gap: 0.5rem; margin-top: 0.4rem">
+            <select v-model="addUserId" style="flex: 1">
+              <option value="">{{ t('agentsView.selectUser') }}</option>
+              <option v-for="us in addableUsers" :key="us.id" :value="us.id">{{ us.name || us.email }}</option>
+            </select>
+            <button class="btn" :disabled="!addUserId" @click="addUser">{{ t('agentsView.add') }}</button>
           </div>
         </div>
       </div>
