@@ -14,6 +14,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **Jira now returns custom fields and pages past 50 results.** The Jira connector requested a fixed handful
+  of fields (summary/status/assignee/type/priority/dates), so **custom fields never came back** — Story Points,
+  Sprint, a "Module" select, a "Target UAT" date, anything your team added — and search capped at 50 issues with
+  no paging. That silently starved any report that needs those fields. Now: **`jira_get_issue` returns every
+  populated field**, each labelled by its display name (so `customfield_10050` shows as "Story Points Global").
+  **`jira_search` takes a `fields` argument** — name the extra fields you want, by display name or id
+  (`"Story Points Global, Sprint, Módulo"`) — and **pages automatically up to 200 results** (was a hard 50).
+  Values are flattened sensibly whatever their shape (a number, a select, a sprint, a user, a date, a list).
 - 📣 **Agents: reusable, org-defined chat presets (replacing the personal Assistant).** An **Agent** is a named
   chat preset — instructions, a model, and a set of tools — that an **admin defines once in the operator** and
   shares with specific users or teams. Anyone entitled to it starts a chat from it in the chat app and inherits
