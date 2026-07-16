@@ -137,32 +137,32 @@ function fmtField(v: any): string {
   return String(v);
 }
 
-/** Resolve a caller-supplied field token (a display name OR an id) to the field id present on the issue. */
-function resolveFieldId(token: string, fields: Record<string, any>, names: Record<string, string>): string | undefined {
-  if (token in fields) return token; // already an id like customfield_10001 or a base key
-  const lower = token.toLowerCase();
-  for (const [id, nm] of Object.entries(names)) if (String(nm).toLowerCase() === lower) return id;
-  return undefined;
+/**
+ * Fetch the field catalog once and resolve caller-supplied column tokens (display NAMES or ids) to Jira field
+ * ids. Resolving up front lets the search request exactly those fields — no `*all`, no `expand` (both of which
+ * the enhanced `/search/jql` endpoint rejects with "Invalid request payload"). Returns, per requested token,
+ * the id to fetch (or undefined if the name didn't match any field). Case-insensitive name match.
+ */
+async function resolveColumns(cfg: AtlassianConfig, cols: string[]): Promise<{ label: string; id: string | undefined }[]> {
+  const list: any[] = await atlassianFetch(cfg, 'GET', '/rest/api/3/field');
+  const byName = new Map<string, string>();
+  for (const fld of Array.isArray(list) ? list : []) {
+    if (!fld?.id) continue;
+    byName.set(String(fld.id).toLowerCase(), fld.id); // allow requesting by id
+    if (fld.name) byName.set(String(fld.name).toLowerCase(), fld.id);
+  }
+  return cols.map((label) => ({ label, id: byName.get(label.toLowerCase()) }));
 }
 
 /**
  * JQL search. Tries the enhanced Cloud endpoint (`/search/jql`, cursor-paged) first and falls back to the
  * classic one (`/search`, offset-paged; Server/DC). Pages internally until it has collected `startAt + count`
  * issues, then returns the window `[startAt, startAt+count)` — so a single call assembles up to `count` issues
- * regardless of Jira's 100/page ceiling. `expand=names` gives the fieldId → display-name map for custom fields.
+ * regardless of Jira's 100/page ceiling. Requests exactly `reqFields` (specific ids) — no `*all`, no `expand`.
  */
-async function searchIssues(
-  cfg: AtlassianConfig,
-  jql: string,
-  startAt: number,
-  count: number,
-  reqFields: string[],
-  withNames: boolean,
-): Promise<{ issues: any[]; names: Record<string, string> }> {
+async function searchIssues(cfg: AtlassianConfig, jql: string, startAt: number, count: number, reqFields: string[]): Promise<any[]> {
   const target = startAt + count; // how many we must collect from the top before slicing the window
   const issues: any[] = [];
-  let names: Record<string, string> = {};
-  const expand = withNames ? ['names'] : undefined;
   let classic = false;
   let cursor: string | undefined;
   let offset = 0;
@@ -174,7 +174,6 @@ async function searchIssues(
     if (!classic) {
       try {
         const body: Record<string, unknown> = { jql, maxResults: want, fields: reqFields };
-        if (expand) body.expand = expand;
         if (cursor) body.nextPageToken = cursor;
         data = await atlassianFetch(cfg, 'POST', '/rest/api/3/search/jql', body);
       } catch (err) {
@@ -186,12 +185,9 @@ async function searchIssues(
       }
     }
     if (classic) {
-      const body: Record<string, unknown> = { jql, maxResults: want, startAt: offset, fields: reqFields };
-      if (expand) body.expand = expand;
-      data = await atlassianFetch(cfg, 'POST', '/rest/api/3/search', body);
+      data = await atlassianFetch(cfg, 'POST', '/rest/api/3/search', { jql, maxResults: want, startAt: offset, fields: reqFields });
     }
     const page: any[] = data?.issues ?? [];
-    if (data?.names) names = { ...names, ...data.names };
     issues.push(...page);
     if (page.length === 0) break;
     if (!classic) {
@@ -203,7 +199,7 @@ async function searchIssues(
       if (page.length < want || (total && offset >= total)) break;
     }
   }
-  return { issues: issues.slice(startAt, startAt + count), names };
+  return issues.slice(startAt, startAt + count);
 }
 
 async function search(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -211,23 +207,25 @@ async function search(cfg: AtlassianConfig, args: Record<string, unknown>): Prom
   if (!jql) return text('Error: jql is required.', true);
   const maxResults = Math.min(200, Math.max(1, Number(args.maxResults) || 25));
   const startAt = Math.max(0, Number(args.startAt) || 0);
-  // `fields` = the exact columns to return, base or custom, given as an array (preferred) or a comma string.
-  // Naming any field switches the fetch to `*all` + `expand=names` so both the VALUE and its display name are
-  // available; with no `fields`, keep the lean base-field fetch and the default line.
+  // `fields` = the exact columns to return, base or custom, as an array (preferred) or a comma string.
   const raw = args.fields;
   const cols: string[] = Array.isArray(raw)
     ? raw.map((s) => String(s).trim()).filter(Boolean)
     : String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
-  const { issues, names } = await searchIssues(cfg, jql, startAt, maxResults, cols.length ? ['*all'] : SEARCH_FIELDS, cols.length > 0);
+
+  // Resolve the requested columns to field ids up front, then ask Jira for exactly those (base fields resolve
+  // to themselves; a "Story Points Global" resolves to customfield_10xxx). No `*all`/`expand` → valid payload.
+  const resolved = cols.length ? await resolveColumns(cfg, cols) : [];
+  const reqFields = cols.length ? [...new Set(resolved.map((c) => c.id).filter((x): x is string => !!x))] : SEARCH_FIELDS;
+  const missing = resolved.filter((c) => !c.id).map((c) => c.label);
+
+  const issues = await searchIssues(cfg, jql, startAt, maxResults, reqFields.length ? reqFields : SEARCH_FIELDS);
   if (!issues.length) return text(startAt > 0 ? `No more issues past offset ${startAt} for: ${jql}` : `No issues matched: ${jql}`);
   const lines = issues.map((it: any) => {
     const f = it.fields ?? {};
     if (cols.length) {
-      // Table row: the key + exactly the requested columns (each resolved as a base or custom field).
-      const vals = cols.map((name) => {
-        const id = resolveFieldId(name, f, names);
-        return `${name}: ${(id && fmtField(f[id])) || '—'}`;
-      });
+      // Table row: the key + exactly the requested columns (by their resolved id).
+      const vals = resolved.map((c) => `${c.label}: ${(c.id && fmtField(f[c.id])) || '—'}`);
       return `• ${it.key}  ${vals.join('  |  ')}`;
     }
     const status = f.status?.name ?? '—';
@@ -236,7 +234,8 @@ async function search(cfg: AtlassianConfig, args: Record<string, unknown>): Prom
     return `• ${it.key}  [${type}/${status}]  ${f.summary ?? ''}  —  ${assignee}`;
   });
   const window = startAt > 0 ? ` (from offset ${startAt})` : '';
-  return text(`${issues.length} issue(s) for \`${jql}\`${window}:\n\n${lines.join('\n')}`);
+  const note = missing.length ? `\n\n(no field matched: ${missing.join(', ')} — run jira_get_issue on one issue to see exact names)` : '';
+  return text(`${issues.length} issue(s) for \`${jql}\`${window}:\n\n${lines.join('\n')}${note}`);
 }
 
 async function getIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
