@@ -14,6 +14,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Teams now shows iPhone (HEIC) photos, and blank images say why.** The native Teams connector fetched an
+  image's bytes and handed them to the model without checking what they were, so two kinds of image arrived
+  blank: an **HEIC** photo (an iPhone's default format, which vision models can't render) whose type was passed
+  through verbatim, and a `200` response that wasn't an image at all — an empty body, or a SharePoint
+  auth/redirect page — which got mislabeled `image/png`. Now Kravn identifies the real format from the bytes
+  themselves (magic number, not the claimed type or file extension). **HEIC/HEIF photos are transcoded to JPEG**
+  so they actually display — the conversion is pure-WASM, adding no native dependency to the image. png/jpeg/webp/
+  gif pass through with the correct type. Anything still not displayable (TIFF, BMP, an auth page, an empty body)
+  becomes a plain-language note (*"got a web page, likely a permission redirect"*) instead of a silently blank
+  image, so you can see which failed and why. (The MCP gateway was never at fault — it proxies image results
+  untouched; this was the connector.)
 - 🐛 **Azure cost "last month" failed — fixed by asking Azure a question it can answer.** `azure_cost_by_service`
   offered `TheLastMonth` and Azure rejected it: *"Invalid query definition, timeframe TheLastMonth is currently
   not supported."* The value is not ours to fix — Azure's Query API reuses the **Export** timeframe enum and never

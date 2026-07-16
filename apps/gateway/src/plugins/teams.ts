@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import heicConvert from 'heic-convert';
 import type { McpServerPlugin, McpToolResult, McpToolDef, McpContent } from '@kravn/plugin-sdk';
 import { htmlToMarkdown } from '../lib/html.js';
 
@@ -133,6 +134,67 @@ async function graphBytes(cfg: TeamsConfig, pathOrUrl: string): Promise<{ buf: B
 }
 
 const IMG_EXT = /\.(png|jpe?g|gif|webp|bmp|heic|tiff?)$/i;
+
+/**
+ * The MIME a vision model can actually display, decided by the bytes' MAGIC NUMBER — not by the content-type
+ * Graph claimed or the file extension. Two failures made this necessary, both of which used to reach the model
+ * as a blank image:
+ *  - A real image in a format vision APIs reject (HEIC from an iPhone photo, TIFF, BMP). The old code forwarded
+ *    `image/heic` verbatim and the model rendered nothing.
+ *  - A 200 response whose body is NOT an image — an empty body, or a SharePoint auth/redirect HTML page — which
+ *    the old code base64'd and mislabeled `image/png`.
+ * Returns the correct png/jpeg/webp/gif MIME, or null when the bytes are empty, not an image, or an image the
+ * model can't show. A null tells the caller to surface a note instead of a broken block.
+ */
+function displayableImageMime(buf: Buffer): string | null {
+  if (buf.length >= 8 && buf[0] === 0x89 && buf[1] === 0x50 && buf[2] === 0x4e && buf[3] === 0x47) return 'image/png';
+  if (buf.length >= 3 && buf[0] === 0xff && buf[1] === 0xd8 && buf[2] === 0xff) return 'image/jpeg';
+  if (buf.length >= 6 && (buf.toString('ascii', 0, 6) === 'GIF87a' || buf.toString('ascii', 0, 6) === 'GIF89a')) return 'image/gif';
+  if (buf.length >= 12 && buf.toString('ascii', 0, 4) === 'RIFF' && buf.toString('ascii', 8, 12) === 'WEBP') return 'image/webp';
+  return null;
+}
+
+/** HEIC/HEIF: an ISO-BMFF file whose major brand is one of the HEIF image brands (iPhone photos are `heic`).
+ *  Distinguishes a real HEIF image — which we CAN transcode — from other `ftyp` boxes (MP4 video, etc.). */
+function isHeic(buf: Buffer): boolean {
+  if (buf.length < 12 || buf.toString('ascii', 4, 8) !== 'ftyp') return false;
+  return ['heic', 'heix', 'heim', 'heis', 'hevc', 'hevx', 'mif1', 'msf1', 'heif'].includes(buf.toString('ascii', 8, 12));
+}
+
+/**
+ * Turn fetched bytes into an image block the model can actually render, or a note explaining why it can't.
+ * Order: already-displayable (png/jpeg/webp/gif) → pass through; HEIC (iPhone photos) → transcode to JPEG so
+ * it becomes viewable instead of blank; anything else → a note. Transcoding is pure-WASM (heic-convert), so it
+ * adds no native dependency to the image. A converted JPEG that somehow exceeds the size cap is refused rather
+ * than sent (an oversized image renders blank at the provider — the exact failure we're removing).
+ */
+async function imageBlockFor(buf: Buffer): Promise<{ block?: McpContent; note?: string }> {
+  const direct = displayableImageMime(buf);
+  if (direct) return { block: { type: 'image', data: buf.toString('base64'), mimeType: direct } };
+  if (isHeic(buf)) {
+    try {
+      const jpeg = Buffer.from(await heicConvert({ buffer: buf, format: 'JPEG', quality: 0.85 }));
+      if (jpeg.length > MAX_IMAGE_BYTES) return { note: 'converted from HEIC but the JPEG exceeds 5 MB' };
+      return { block: { type: 'image', data: jpeg.toString('base64'), mimeType: 'image/jpeg' } };
+    } catch (e) {
+      return { note: `HEIC could not be converted: ${(e as Error).message}` };
+    }
+  }
+  return { note: undisplayableReason(buf) };
+}
+
+/** Describe what came back instead of a displayable image, so the note tells the user WHY (HEIC vs empty vs an
+ *  HTML error page) rather than a bare failure. */
+function undisplayableReason(buf: Buffer): string {
+  if (buf.length === 0) return 'empty response';
+  // HEIC/HEIF: an ISO-BMFF box whose brand is heic/heix/mif1 — common for iPhone photos, unsupported by vision.
+  if (buf.length >= 12 && buf.toString('ascii', 4, 8) === 'ftyp') return `unsupported format (${buf.toString('ascii', 8, 12).trim()}), not displayable`;
+  if (buf.length >= 2 && buf[0] === 0x49 && buf[1] === 0x49) return 'TIFF, not a displayable format';
+  if (buf.length >= 2 && buf[0] === 0x42 && buf[1] === 0x4d) return 'BMP, not a displayable format';
+  const head = buf.toString('utf8', 0, 64).trimStart().toLowerCase();
+  if (head.startsWith('<!doctype') || head.startsWith('<html')) return 'got a web page, not an image (likely an auth/permission redirect)';
+  return `not a recognisable image (${buf.length} bytes)`;
+}
 
 /** Encode a sharing URL as a Graph `shares` id, to resolve a shared file (a Teams file attachment's contentUrl)
  *  to its driveItem. Per the shares API: `u!` + base64url(url). */
@@ -517,12 +579,14 @@ async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>)
   for (const id of hostedImageIds(msg)) {
     if (content.length >= limit) break;
     try {
-      const { buf, contentType } = await graphBytes(cfg, `${base}/hostedContents/${encodeURIComponent(id)}/$value`);
+      const { buf } = await graphBytes(cfg, `${base}/hostedContents/${encodeURIComponent(id)}/$value`);
       if (buf.length > MAX_IMAGE_BYTES) {
         notes.push('skipped a large inline image (>5 MB)');
         continue;
       }
-      content.push({ type: 'image', data: buf.toString('base64'), mimeType: contentType.startsWith('image/') ? contentType : 'image/png' });
+      const r = await imageBlockFor(buf);
+      if (r.block) content.push(r.block);
+      else notes.push(`inline image: ${r.note}`);
     } catch (e) {
       notes.push(`inline image: ${(e as Error).message}`);
     }
@@ -539,7 +603,6 @@ async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>)
     try {
       const item = await graphGet(cfg, `/shares/${encodeShareId(url)}/driveItem`);
       const dl = item?.['@microsoft.graph.downloadUrl'];
-      const mime = String(item?.file?.mimeType ?? '');
       if (!dl) {
         notes.push(`no download URL for "${name}"`);
         continue;
@@ -549,7 +612,11 @@ async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>)
         continue;
       }
       const buf = await downloadUrlBytes(String(dl));
-      content.push({ type: 'image', data: buf.toString('base64'), mimeType: mime.startsWith('image/') ? mime : 'image/png' });
+      // Trust the bytes, not the driveItem's declared mime: the download URL can resolve to an auth page, and
+      // the attachment may be HEIC/TIFF the model can't show — either way, don't emit a block that renders blank.
+      const r = await imageBlockFor(buf);
+      if (r.block) content.push(r.block);
+      else notes.push(`attachment "${name}": ${r.note}`);
     } catch (e) {
       notes.push(`attachment "${name}": ${(e as Error).message}`);
     }
