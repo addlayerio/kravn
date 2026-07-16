@@ -32,22 +32,26 @@ const TOOLS: McpToolDef[] = [
     name: 'jira_search',
     description:
       'Search Jira issues with a JQL query (e.g. `project = ABC AND status = "In Progress" ORDER BY updated DESC`). ' +
-      'Returns each matching issue key, summary, type, status and assignee. ' +
-      'By default only those base fields are shown — CUSTOM FIELDS (Story Points, Sprint, a select like "Módulo", ' +
-      'a date like "Target UAT", etc.) are only included if you name them in `fields`. Paginates automatically ' +
-      'up to `maxResults` (max 200).',
+      'Pass `fields` to return exactly the columns you need per issue — base OR custom fields — e.g. ' +
+      '`["assignee","status","Story Points Global","Sprint","Team","Fecha Target UAT"]`. Without `fields` you get ' +
+      'the default key/type/status/summary/assignee line. CUSTOM FIELDS (Story Points, Sprint, a "Módulo" select, ' +
+      'a "Target UAT" date, …) appear ONLY when named in `fields`. Paginates automatically up to `maxResults` ' +
+      '(max 200) in one call; use `startAt` to window into a larger result set. This is the efficient way to pull ' +
+      'many issues for a report — one call, no descriptions, columns only.',
     inputSchema: {
       type: 'object',
       properties: {
         jql: { type: 'string', description: 'A JQL query string.' },
-        maxResults: { type: 'number', description: 'Max issues to return (default 25, max 200; assembled by paging).' },
         fields: {
-          type: 'string',
+          type: 'array',
+          items: { type: 'string' },
           description:
-            'Optional comma-separated EXTRA fields to include per issue, by display name or id — e.g. ' +
-            '"Story Points Global, Sprint, Módulo, Target UAT" (or "customfield_10001"). Needed for any custom field. ' +
-            'To see every field name an issue has, call jira_get_issue on one issue first.',
+            'Columns to return per issue, by display name or id — base fields ("assignee","status","summary") and ' +
+            'custom fields ("Story Points Global","Sprint","Módulo","Fecha Target UAT", or "customfield_10001") alike. ' +
+            'To discover a custom field\'s exact name, run jira_get_issue on one issue first.',
         },
+        maxResults: { type: 'number', description: 'Issues to return in this call (default 25, max 200; assembled by paging).' },
+        startAt: { type: 'number', description: 'Offset into the result set (default 0) — for windowing past `maxResults` in a large set.' },
       },
       required: ['jql'],
     },
@@ -142,27 +146,30 @@ function resolveFieldId(token: string, fields: Record<string, any>, names: Recor
 }
 
 /**
- * JQL search, paginated to `maxResults`. Tries the enhanced Cloud endpoint (`/search/jql`, cursor-paged) first
- * and falls back to the classic one (`/search`, offset-paged; Server/DC). Returns the issues plus the
- * fieldId → display-name map (from `expand=names`) so custom fields can be labelled.
+ * JQL search. Tries the enhanced Cloud endpoint (`/search/jql`, cursor-paged) first and falls back to the
+ * classic one (`/search`, offset-paged; Server/DC). Pages internally until it has collected `startAt + count`
+ * issues, then returns the window `[startAt, startAt+count)` — so a single call assembles up to `count` issues
+ * regardless of Jira's 100/page ceiling. `expand=names` gives the fieldId → display-name map for custom fields.
  */
 async function searchIssues(
   cfg: AtlassianConfig,
   jql: string,
-  maxResults: number,
+  startAt: number,
+  count: number,
   reqFields: string[],
   withNames: boolean,
 ): Promise<{ issues: any[]; names: Record<string, string> }> {
+  const target = startAt + count; // how many we must collect from the top before slicing the window
   const issues: any[] = [];
   let names: Record<string, string> = {};
   const expand = withNames ? ['names'] : undefined;
   let classic = false;
   let cursor: string | undefined;
-  let startAt = 0;
+  let offset = 0;
 
   // First page decides the endpoint: /search/jql, or fall back to classic /search on 400/404 (Server/DC).
-  while (issues.length < maxResults) {
-    const want = Math.min(PAGE_SIZE, maxResults - issues.length);
+  while (issues.length < target) {
+    const want = Math.min(PAGE_SIZE, target - issues.length);
     let data: any;
     if (!classic) {
       try {
@@ -179,7 +186,7 @@ async function searchIssues(
       }
     }
     if (classic) {
-      const body: Record<string, unknown> = { jql, maxResults: want, startAt, fields: reqFields };
+      const body: Record<string, unknown> = { jql, maxResults: want, startAt: offset, fields: reqFields };
       if (expand) body.expand = expand;
       data = await atlassianFetch(cfg, 'POST', '/rest/api/3/search', body);
     }
@@ -191,42 +198,45 @@ async function searchIssues(
       cursor = data?.nextPageToken;
       if (!cursor || data?.isLast) break;
     } else {
-      startAt += page.length;
+      offset += page.length;
       const total = Number(data?.total ?? 0);
-      if (page.length < want || (total && startAt >= total)) break;
+      if (page.length < want || (total && offset >= total)) break;
     }
   }
-  return { issues: issues.slice(0, maxResults), names };
+  return { issues: issues.slice(startAt, startAt + count), names };
 }
 
 async function search(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
   const jql = String(args.jql ?? '').trim();
   if (!jql) return text('Error: jql is required.', true);
   const maxResults = Math.min(200, Math.max(1, Number(args.maxResults) || 25));
-  // Extra fields the caller asked for (by display name or id). Requesting any of them switches to `*all` +
-  // `expand=names` so the value AND its label are available; otherwise we keep the lean base-field fetch.
-  const extra = String(args.fields ?? '')
-    .split(',')
-    .map((s) => s.trim())
-    .filter(Boolean);
-  const { issues, names } = await searchIssues(cfg, jql, maxResults, extra.length ? ['*all'] : SEARCH_FIELDS, extra.length > 0);
-  if (!issues.length) return text(`No issues matched: ${jql}`);
+  const startAt = Math.max(0, Number(args.startAt) || 0);
+  // `fields` = the exact columns to return, base or custom, given as an array (preferred) or a comma string.
+  // Naming any field switches the fetch to `*all` + `expand=names` so both the VALUE and its display name are
+  // available; with no `fields`, keep the lean base-field fetch and the default line.
+  const raw = args.fields;
+  const cols: string[] = Array.isArray(raw)
+    ? raw.map((s) => String(s).trim()).filter(Boolean)
+    : String(raw ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+  const { issues, names } = await searchIssues(cfg, jql, startAt, maxResults, cols.length ? ['*all'] : SEARCH_FIELDS, cols.length > 0);
+  if (!issues.length) return text(startAt > 0 ? `No more issues past offset ${startAt} for: ${jql}` : `No issues matched: ${jql}`);
   const lines = issues.map((it: any) => {
     const f = it.fields ?? {};
-    const status = f.status?.name ?? '—';
-    const type = f.issuetype?.name ?? '—';
-    const assignee = f.assignee?.displayName ?? 'Unassigned';
-    let line = `• ${it.key}  [${type}/${status}]  ${f.summary ?? ''}  —  ${assignee}`;
-    if (extra.length) {
-      const cols = extra.map((name) => {
+    if (cols.length) {
+      // Table row: the key + exactly the requested columns (each resolved as a base or custom field).
+      const vals = cols.map((name) => {
         const id = resolveFieldId(name, f, names);
         return `${name}: ${(id && fmtField(f[id])) || '—'}`;
       });
-      line += `\n    ${cols.join('  |  ')}`;
+      return `• ${it.key}  ${vals.join('  |  ')}`;
     }
-    return line;
+    const status = f.status?.name ?? '—';
+    const type = f.issuetype?.name ?? '—';
+    const assignee = f.assignee?.displayName ?? 'Unassigned';
+    return `• ${it.key}  [${type}/${status}]  ${f.summary ?? ''}  —  ${assignee}`;
   });
-  return text(`${issues.length} issue(s) for \`${jql}\`:\n\n${lines.join('\n')}`);
+  const window = startAt > 0 ? ` (from offset ${startAt})` : '';
+  return text(`${issues.length} issue(s) for \`${jql}\`${window}:\n\n${lines.join('\n')}`);
 }
 
 async function getIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
