@@ -1,6 +1,7 @@
 import { type ChatConversation, type ChatMessage, type ChatAttachmentKind, type LlmProvider, type AvailableTool } from '@kravn/contracts';
 import { newId, type Encryptor } from '../crypto.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
+import { canUseAgent } from './agent-access.js';
 import { safeFetch } from '../http/client.js';
 import { withSpan } from '../otel.js';
 import type { Repos } from '../db/repos.js';
@@ -370,11 +371,11 @@ export class ChatService {
   private async buildSystemPrompt(actor: AuthUser, conv: ChatConversation, canRunCode = false): Promise<string> {
     const parts = ['You are Kravn, a helpful corporate AI assistant. Use the available tools when relevant.'];
 
-    // Assistant preset — the persona the chat was started from. Loaded live + owner-scoped, so editing
-    // the assistant updates its chats, and it never leaks another user's preset.
-    if (conv.assistantId) {
-      const assistant = await this.repos.chat.getAssistant(actor.id, conv.assistantId);
-      if (assistant?.instructions?.trim()) parts.push(`Assistant instructions:\n${assistant.instructions.trim()}`);
+    // Org Agent — like the assistant, but org-defined. Re-validated LIVE against the caller's entitlement
+    // (fail-closed): if the agent was disabled or un-shared since the chat started, its instructions drop.
+    if (conv.agentId) {
+      const agent = await this.repos.chat.getAgent(conv.agentId);
+      if (agent && canUseAgent(agent, actor) && agent.instructions.trim()) parts.push(`Agent instructions:\n${agent.instructions.trim()}`);
     }
 
     // Persistent memory — durable facts the user chose to keep. User-curated (not model-extracted),
@@ -453,6 +454,14 @@ export class ChatService {
     if (conv.projectId) {
       const project = await this.repos.chat.getProjectForUser(actor.id, conv.projectId);
       if (project && project.toolIds.length) return this.resolveProjectTools(actor, project.toolIds);
+    }
+
+    // An org Agent's tools resolve the same endpoint-independent way as a project's — a FILTER over the
+    // caller's live entitlement, never a grant — but only if the caller is still entitled to the agent
+    // (fail-closed). resolveProjectTools re-checks each tool id against listAvailableTools(actor).
+    if (conv.agentId) {
+      const agent = await this.repos.chat.getAgent(conv.agentId);
+      if (agent && canUseAgent(agent, actor) && agent.toolIds.length) return this.resolveProjectTools(actor, agent.toolIds);
     }
 
     const tools: any[] = [];

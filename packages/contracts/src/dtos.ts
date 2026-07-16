@@ -8,6 +8,7 @@ import {
   localPromptArgumentSchema,
   promptRoleSchema,
   vsAccessSchema,
+  agentAccessSchema,
   llmProviderTypeSchema,
   teamRoleSchema,
 } from './entities.js';
@@ -92,6 +93,7 @@ export type SetTeamServerAccessRequest = z.infer<typeof setTeamServerAccessSchem
 export const createChatProjectSchema = z.object({
   name: z.string().min(1).max(120),
   instructions: z.string().max(20_000).optional(),
+  defaultModel: z.string().max(200).optional(),
   toolIds: z.array(z.string()).max(200).optional(),
 });
 export type CreateChatProjectRequest = z.infer<typeof createChatProjectSchema>;
@@ -99,6 +101,7 @@ export type CreateChatProjectRequest = z.infer<typeof createChatProjectSchema>;
 export const updateChatProjectSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   instructions: z.string().max(20_000).optional(),
+  defaultModel: z.string().max(200).optional(),
   toolIds: z.array(z.string()).max(200).optional(),
 });
 export type UpdateChatProjectRequest = z.infer<typeof updateChatProjectSchema>;
@@ -189,22 +192,28 @@ export const createConversationSchema = z.object({
   providerId: z.string().min(1),
   model: z.string().min(1),
   vserverSlug: z.string().default(''),
-  /** Optional: start this chat from a saved assistant preset (its instructions apply live). */
-  assistantId: z.string().optional(),
+  /** Optional: start this chat from an org Agent (its instructions + tools apply live, entitlement re-checked). */
+  agentId: z.string().optional(),
 });
 export type CreateConversationRequest = z.infer<typeof createConversationSchema>;
 
-/** Create/update an assistant preset. */
-export const createAssistantSchema = z.object({
+/** Create/update an org **Agent** (operator, admin). Sharing is set inline (access + allowedTeams/allowedUsers),
+ *  the same way an MCP endpoint's access policy is edited — no separate share route. */
+export const createAgentSchema = z.object({
   name: z.string().min(1).max(120),
-  instructions: z.string().max(20_000).default(''),
-  providerId: z.string().default(''),
-  model: z.string().default(''),
-  vserverSlug: z.string().default(''),
+  description: z.string().max(500).optional(),
+  instructions: z.string().max(20_000).optional(),
+  providerId: z.string().optional(),
+  model: z.string().optional(),
+  toolIds: z.array(z.string()).max(200).optional(),
+  access: agentAccessSchema.optional(),
+  allowedTeams: z.array(z.string()).max(200).optional(),
+  allowedUsers: z.array(z.string()).max(1000).optional(),
+  enabled: z.boolean().optional(),
 });
-export type CreateAssistantRequest = z.infer<typeof createAssistantSchema>;
-export const updateAssistantSchema = createAssistantSchema.partial();
-export type UpdateAssistantRequest = z.infer<typeof updateAssistantSchema>;
+export type CreateAgentRequest = z.infer<typeof createAgentSchema>;
+export const updateAgentSchema = createAgentSchema.partial();
+export type UpdateAgentRequest = z.infer<typeof updateAgentSchema>;
 
 export const postChatMessageSchema = z.object({
   content: z.string().min(1).max(100_000),

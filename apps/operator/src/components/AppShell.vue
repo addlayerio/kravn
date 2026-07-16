@@ -8,6 +8,7 @@ import {
   FileText,
   MessageSquare,
   Layers,
+  Bot,
   Cpu,
   Users,
   UsersRound,
@@ -46,7 +47,7 @@ const collapsed = computed(() => theme.sidebarCollapsed);
 // Map each nav route to its i18n key; falls back to the static English label if unmapped.
 const NAV_KEY: Record<string, string> = {
   '/': 'dashboard', '/servers': 'servers', '/tools': 'tools', '/resources': 'resources',
-  '/prompts': 'prompts', '/mcp-endpoints': 'endpoints', '/users': 'users', '/teams': 'teams',
+  '/prompts': 'prompts', '/mcp-endpoints': 'endpoints', '/agents': 'agents', '/users': 'users', '/teams': 'teams',
   '/authentication': 'authentication', '/plugins': 'plugins', '/pipelines': 'pipelines',
   '/llm-models': 'llmModels', '/settings': 'settings', '/appearance': 'appearance',
   '/governance': 'governance', '/logs': 'logs',
@@ -74,6 +75,7 @@ const items: NavItem[] = [
   { to: '/resources', label: 'Resources', icon: FileText, perm: 'registry.read', section: 'main', tour: 'resources' },
   { to: '/prompts', label: 'Prompts', icon: MessageSquare, perm: 'registry.read', section: 'main', tour: 'prompts' },
   { to: '/mcp-endpoints', label: 'MCP Endpoints', icon: Layers, perm: 'endpoints.read', section: 'main', tour: 'endpoints' },
+  { to: '/agents', label: 'Agents', icon: Bot, perm: 'settings.read', section: 'main' },
   // Administration — identity → processing → platform.
   { to: '/users', label: 'Users', icon: Users, perm: 'users.read', section: 'admin' },
   { to: '/teams', label: 'Teams', icon: UsersRound, perm: 'teams.read', section: 'admin', tour: 'teams' },

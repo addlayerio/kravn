@@ -950,8 +950,67 @@ const chatProjectTools: Migration = {
   },
 };
 
+const chatAgents: Migration = {
+  name: '031_chat_agents',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_agents', (t) => {
+      t.string('id').primary();
+      t.string('name').notNullable();
+      // 500 to match createAgentSchema's description max(500) — default varchar(255) would reject 256–500 chars
+      // on Postgres/MySQL. varchar(500) still permits a DEFAULT (unlike TEXT), so keep the empty default.
+      t.string('description', 500).notNullable().defaultTo('');
+      // No DB default on TEXT (MySQL < 8.0.13 rejects DEFAULT on TEXT); the repo always writes it.
+      t.text('instructions').notNullable();
+      t.string('provider_id').notNullable().defaultTo('');
+      t.string('model').notNullable().defaultTo('');
+      // JSON arrays; nullable (the repo coalesces NULL → []). No TEXT default, same reason as above.
+      t.text('tool_ids').nullable();
+      t.string('access').notNullable().defaultTo('restricted');
+      t.text('allowed_teams').nullable();
+      t.text('allowed_users').nullable();
+      t.boolean('enabled').notNullable().defaultTo(true);
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_agents')) await knex.schema.dropTable('chat_agents');
+  },
+};
+
+const chatProjectDefaultModel: Migration = {
+  name: '032_chat_project_default_model',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_projects'))) return;
+    if (!(await knex.schema.hasColumn('chat_projects', 'default_model'))) {
+      // Nullable (existing rows → NULL; repo coalesces NULL → '').
+      await knex.schema.alterTable('chat_projects', (t) => t.string('default_model').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_projects')) && (await knex.schema.hasColumn('chat_projects', 'default_model'))) {
+      await knex.schema.alterTable('chat_projects', (t) => t.dropColumn('default_model'));
+    }
+  },
+};
+
+const chatConversationAgent: Migration = {
+  name: '033_chat_conversation_agent',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'agent_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.string('agent_id').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'agent_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('agent_id'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

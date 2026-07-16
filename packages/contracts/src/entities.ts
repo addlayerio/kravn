@@ -250,6 +250,9 @@ export const chatProjectSchema = z.object({
   name: z.string().min(1).max(120),
   /** Project-level system instructions, prepended to every chat started in the project. */
   instructions: z.string().default(''),
+  /** Optional model a new chat in this project starts on (empty = the user picks per chat). Provider comes with
+   *  it via the chat's provider selection; this only pre-fills the model. */
+  defaultModel: z.string().default(''),
   /**
    * Registry tool IDs curated for this project (a subset the owner picked from the tools they are entitled to,
    * possibly spanning several MCP endpoints). A chat/scheduled task in the project offers EXACTLY these tools —
@@ -295,8 +298,9 @@ export const chatConversationSchema = z.object({
   vserverSlug: z.string().default(''),
   /** Free-form labels used to organise / filter chats (folders & tags). */
   tags: z.array(z.string()).default([]),
-  /** Optional: the assistant preset this chat was started from (its instructions are injected live). */
-  assistantId: z.string().nullable().default(null),
+  /** Optional: the org Agent this chat was started from (its instructions + tools resolve live per turn,
+   *  re-validated against the caller's entitlement). */
+  agentId: z.string().nullable().default(null),
   /** Pinned chats sort to the top of the list. */
   pinned: z.boolean().default(false),
   /** Archived chats are hidden from the main list (shown under "Archived"). */
@@ -356,20 +360,38 @@ export const chatMemorySchema = z.object({
 });
 export type ChatMemory = z.infer<typeof chatMemorySchema>;
 
-/** A reusable assistant preset: a named persona + default model + tools a chat can be started from. */
-export const chatAssistantSchema = z.object({
+/** How an org Agent is exposed to users. Mirrors the MCP-endpoint access model (no `public` — an Agent is
+ *  always used by a signed-in Kravn user). `restricted` limits use to `allowedTeams` ∪ `allowedUsers`. */
+export const AGENT_ACCESS = ['authenticated', 'restricted'] as const;
+export type AgentAccess = (typeof AGENT_ACCESS)[number];
+export const agentAccessSchema = z.enum(AGENT_ACCESS);
+
+/**
+ * An organization-level **Agent**: a named, reusable chat preset (instructions + model + a cross-endpoint set
+ * of tools) defined by an admin in the operator and made available to chosen users/teams. It is the org-scoped
+ * successor to the personal assistant preset. Like a project's tools, `toolIds` is a FILTER over what the
+ * consuming user is already entitled to — never a grant; entitlement is re-checked live at chat time, and the
+ * tool always executes against its own origin server under the global pipeline (never the MCP data plane).
+ */
+export const chatAgentSchema = z.object({
   id: z.string(),
-  name: z.string(),
-  /** System instructions injected (live) into every chat started from this assistant. */
+  name: z.string().min(1).max(120),
+  description: z.string().default(''),
+  /** System instructions injected (live) into every chat started from this agent. */
   instructions: z.string().default(''),
   providerId: z.string().default(''),
   model: z.string().default(''),
-  /** Which virtual server's tools chats from this assistant default to. */
-  vserverSlug: z.string().default(''),
+  toolIds: z.array(z.string()).default([]),
+  access: agentAccessSchema.default('restricted'),
+  /** When access='restricted', members of these teams may use the agent. */
+  allowedTeams: z.array(z.string()).default([]),
+  /** When access='restricted', these specific users (by id) may use the agent. */
+  allowedUsers: z.array(z.string()).default([]),
+  enabled: z.boolean().default(true),
   createdAt: z.string(),
   updatedAt: z.string(),
 });
-export type ChatAssistant = z.infer<typeof chatAssistantSchema>;
+export type ChatAgent = z.infer<typeof chatAgentSchema>;
 
 export const chatMessageSchema = z.object({
   id: z.string(),

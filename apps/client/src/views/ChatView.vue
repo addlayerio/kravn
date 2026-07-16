@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter } from 'vue-router';
-import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAssistant, AvailableTool } from '@kravn/contracts';
+import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
 import { api, ApiError, postSse } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
@@ -92,7 +92,7 @@ function fmtSize(n: number): string {
 // New-chat modal
 const showNew = ref(false);
 const showSettings = ref(false);
-const nc = reactive({ assistantId: '', providerId: '', model: '', vserverSlug: '', projectId: '' });
+const nc = reactive({ agentId: '', providerId: '', model: '', vserverSlug: '', projectId: '' });
 const newError = ref('');
 
 // New-project modal
@@ -194,19 +194,19 @@ async function unshareMember(m: ProjectMember) {
 }
 
 async function load() {
-  const [opts, convs, projs, scheds, assts] = await Promise.all([
+  const [opts, convs, projs, scheds, ags] = await Promise.all([
     api.get<{ providers: ProviderOpt[]; mcpEndpoints: VsOpt[] }>('/api/chat/options'),
     api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations'),
     api.get<{ projects: ChatProject[] }>('/api/chat/projects'),
     api.get<{ schedules: ChatSchedule[] }>('/api/chat/schedules'),
-    api.get<{ assistants: ChatAssistant[] }>('/api/chat/assistants'),
+    api.get<{ agents: ClientAgent[] }>('/api/chat/agents'),
   ]);
   providers.value = opts.providers;
   vservers.value = opts.mcpEndpoints;
   conversations.value = convs.conversations;
   projects.value = projs.projects;
   schedules.value = scheds.schedules;
-  assistants.value = assts.assistants;
+  agents.value = ags.agents;
 }
 async function loadSchedules() {
   schedules.value = (await api.get<{ schedules: ChatSchedule[] }>('/api/chat/schedules')).schedules;
@@ -337,6 +337,30 @@ async function saveInstructions() {
     if (idx >= 0) projects.value[idx] = res.project;
   } finally {
     savingInstr.value = false;
+  }
+}
+/** Every model across all providers (deduped) — a project isn't tied to one provider, so its default model is
+ *  a plain model id that pre-fills a new chat's model regardless of which provider that chat picks. */
+const allModels = computed<string[]>(() => {
+  const set = new Set<string>();
+  for (const p of providers.value) for (const m of p.models) set.add(m);
+  const cur = project.value?.project.defaultModel;
+  if (cur && !set.has(cur)) set.add(cur); // keep a custom/legacy value
+  return [...set].sort();
+});
+const savingModel = ref(false);
+async function saveDefaultModel() {
+  if (!project.value) return;
+  savingModel.value = true;
+  try {
+    const res = await api.put<{ project: ChatProject }>(`/api/chat/projects/${project.value.project.id}`, {
+      defaultModel: project.value.project.defaultModel,
+    });
+    project.value.project = res.project;
+    const idx = projects.value.findIndex((p) => p.id === res.project.id);
+    if (idx >= 0) projects.value[idx] = res.project;
+  } finally {
+    savingModel.value = false;
   }
 }
 async function addDocument() {
@@ -649,62 +673,31 @@ async function deleteMemory(m: ChatMemory) {
   memory.value = memory.value.filter((x) => x.id !== m.id);
 }
 
-// ── Assistant presets ─────────────────────────────────────────────────────
-const assistants = ref<ChatAssistant[]>([]);
-const currentAssistant = computed(() =>
-  current.value?.assistantId ? assistants.value.find((a) => a.id === current.value!.assistantId) : undefined,
+// ── Org Agents (read-only presets defined by an admin; the user starts a chat from one) ──────────
+// The client only sees a safe projection — the server never sends the sharing ACL or raw instructions.
+type ClientAgent = Pick<ChatAgent, 'id' | 'name' | 'description' | 'providerId' | 'model'>;
+const agents = ref<ClientAgent[]>([]);
+const currentAgent = computed(() =>
+  current.value?.agentId ? agents.value.find((a) => a.id === current.value!.agentId) : undefined,
 );
-const showAssistants = ref(false);
-const assistantEditing = ref(false);
-const editingAssistantId = ref<string | null>(null);
-const af = reactive({ name: '', instructions: '', providerId: '', model: '', vserverSlug: '' });
-async function loadAssistants() {
-  assistants.value = (await api.get<{ assistants: ChatAssistant[] }>('/api/chat/assistants')).assistants;
+/** Picking an agent pre-fills the chat's provider + model; its tools + instructions apply server-side. */
+function onAgentChange() {
+  const a = agents.value.find((x) => x.id === nc.agentId);
+  if (!a) return;
+  if (a.providerId && providers.value.some((p) => p.id === a.providerId)) {
+    nc.providerId = a.providerId;
+    nc.model = a.model || providers.value.find((p) => p.id === a.providerId)?.defaultModel || nc.model;
+  }
 }
-function openAssistants() {
-  assistantEditing.value = false;
-  editingAssistantId.value = null;
-  showAssistants.value = true;
-  loadAssistants();
-}
-function newAssistant() {
-  editingAssistantId.value = null;
-  af.name = '';
-  af.instructions = '';
-  af.providerId = providers.value[0]?.id ?? '';
-  af.model = providers.value[0]?.defaultModel ?? providers.value[0]?.models[0] ?? '';
-  af.vserverSlug = '';
-  assistantEditing.value = true;
-}
-function editAssistant(a: ChatAssistant) {
-  editingAssistantId.value = a.id;
-  af.name = a.name;
-  af.instructions = a.instructions;
-  af.providerId = a.providerId;
-  af.model = a.model;
-  af.vserverSlug = a.vserverSlug;
-  assistantEditing.value = true;
-}
-function onAssistantFormProvider() {
-  const p = providers.value.find((x) => x.id === af.providerId);
-  af.model = p?.defaultModel ?? p?.models[0] ?? '';
-}
-async function saveAssistant() {
-  if (!af.name.trim()) return;
-  const body = { name: af.name.trim(), instructions: af.instructions, providerId: af.providerId, model: af.model, vserverSlug: af.vserverSlug };
-  if (editingAssistantId.value) await api.put(`/api/chat/assistants/${editingAssistantId.value}`, body);
-  else await api.post('/api/chat/assistants', body);
-  await loadAssistants();
-  assistantEditing.value = false;
-}
-async function deleteAssistant(a: ChatAssistant) {
-  if (!confirm(t('chat.confirmDeleteAssistant', { name: a.name }))) return;
-  await api.del(`/api/chat/assistants/${a.id}`);
-  assistants.value = assistants.value.filter((x) => x.id !== a.id);
+/** Sidebar shortcut: open the new-chat modal already bound to this agent. */
+function startFromAgent(a: ClientAgent) {
+  openNew();
+  nc.agentId = a.id;
+  onAgentChange();
 }
 
 /** The models a provider offers, for a real <select>. `current` is kept in the list even when the provider no
- *  longer advertises it (a custom/legacy model an assistant set), so selecting never silently blanks it. */
+ *  longer advertises it (a custom/legacy model a preset set), so selecting never silently blanks it. */
 function modelsFor(providerId: string, current?: string): string[] {
   const list = providers.value.find((p) => p.id === providerId)?.models ?? [];
   return current && !list.includes(current) ? [current, ...list] : list;
@@ -712,26 +705,19 @@ function modelsFor(providerId: string, current?: string): string[] {
 
 function openNew(projectId = '') {
   newError.value = '';
-  nc.assistantId = '';
+  nc.agentId = '';
   nc.providerId = providers.value[0]?.id ?? '';
   nc.model = providers.value[0]?.defaultModel ?? providers.value[0]?.models[0] ?? '';
   nc.vserverSlug = '';
   nc.projectId = projectId;
+  // A project can pin a default model — pre-fill it when starting a chat there.
+  const dm = projectId ? projects.value.find((p) => p.id === projectId)?.defaultModel : '';
+  if (dm) nc.model = dm;
   showNew.value = true;
 }
 function onProviderChange() {
   const p = providers.value.find((x) => x.id === nc.providerId);
   nc.model = p?.defaultModel ?? p?.models[0] ?? '';
-}
-// Picking an assistant pre-fills the chat's model + tools from the preset (the user can still tweak them).
-function onAssistantChange() {
-  const a = assistants.value.find((x) => x.id === nc.assistantId);
-  if (!a) return;
-  if (a.providerId && providers.value.some((p) => p.id === a.providerId)) {
-    nc.providerId = a.providerId;
-    nc.model = a.model || providers.value.find((p) => p.id === a.providerId)?.defaultModel || nc.model;
-  }
-  if (a.vserverSlug) nc.vserverSlug = a.vserverSlug;
 }
 async function createConversation() {
   newError.value = '';
@@ -745,7 +731,7 @@ async function createConversation() {
       providerId: nc.providerId,
       model: nc.model,
       vserverSlug: nc.vserverSlug,
-      ...(nc.assistantId ? { assistantId: nc.assistantId } : {}),
+      ...(nc.agentId ? { agentId: nc.agentId } : {}),
       ...(nc.projectId ? { projectId: nc.projectId } : {}),
     });
     showNew.value = false;
@@ -923,6 +909,14 @@ async function logout() {
           <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">{{ t('nav.shared') }} · {{ p.ownerEmail }}</small>
         </div>
 
+        <template v-if="agents.length">
+          <div class="side-section" style="margin-top: 6px"><span>{{ t('nav.agents') }}</span></div>
+          <div v-for="a in agents" :key="a.id" class="conv-item" :title="a.description || a.name" @click="startFromAgent(a)">
+            🤖 {{ a.name }}
+            <small class="muted" style="display: block; font-size: 11px">{{ t('nav.agentOrg') }}</small>
+          </div>
+        </template>
+
         <div class="side-section" style="margin-top: 6px"><span>{{ t('nav.chats') }}</span></div>
         <div v-if="allTags.length" class="tag-bar">
           <button
@@ -1025,7 +1019,7 @@ async function logout() {
           />
           <span v-else class="chat-title" :title="t('chat.clickToRename')" @click="startRenameTitle">{{ current.title || t('chat.newChat') }}</span>
           <span class="chat-head-right">
-            <small v-if="currentAssistant" class="muted">🤖 {{ currentAssistant.name }} · </small>
+            <small v-if="currentAgent" class="muted">🤖 {{ currentAgent.name }} · </small>
             <small class="muted">{{ current.model }}<span v-if="current.vserverSlug"> · {{ t('chat.toolsInline', { slug: current.vserverSlug }) }}</span></small>
             <button class="conv-del head-del" :title="t('chat.deleteChat')" @click="deleteConversation(current)">🗑</button>
           </span>
@@ -1150,6 +1144,18 @@ async function logout() {
             <textarea v-model="project.project.instructions" rows="5" :readonly="!canEdit" :placeholder="t('chat.instructionsPlaceholder')"></textarea>
             <div v-if="canEdit" class="btn-row" style="justify-content: flex-end">
               <button class="btn primary" :disabled="savingInstr" @click="saveInstructions">{{ savingInstr ? t('chat.saving') : t('chat.saveInstructions') }}</button>
+            </div>
+          </div>
+
+          <div class="panel-card">
+            <h3>{{ t('chat.projectDefaultModel') }}</h3>
+            <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.projectDefaultModelHint') }}</p>
+            <select v-model="project.project.defaultModel" :disabled="!canEdit">
+              <option value="">{{ t('chat.projectDefaultModelNone') }}</option>
+              <option v-for="m in allModels" :key="m" :value="m">{{ m }}</option>
+            </select>
+            <div v-if="canEdit" class="btn-row" style="justify-content: flex-end">
+              <button class="btn primary" :disabled="savingModel" @click="saveDefaultModel">{{ savingModel ? t('chat.saving') : t('chat.save') }}</button>
             </div>
           </div>
 
@@ -1311,16 +1317,13 @@ async function logout() {
         <div v-if="providers.length === 0" class="alert error">
           {{ t('chat.noProvidersConfigured') }}
         </div>
-        <div class="field">
-          <label style="display: flex; justify-content: space-between; align-items: center">
-            <span>{{ t('chat.assistantOptional') }}</span>
-            <a href="#" style="font-size: 12px" @click.prevent="openAssistants">{{ t('chat.manage') }}</a>
-          </label>
-          <select v-model="nc.assistantId" @change="onAssistantChange">
-            <option value="">{{ t('chat.noAssistant') }}</option>
-            <option v-for="a in assistants" :key="a.id" :value="a.id">{{ a.name }}</option>
+        <div v-if="agents.length" class="field">
+          <label>{{ t('chat.agentOptional') }}</label>
+          <select v-model="nc.agentId" @change="onAgentChange">
+            <option value="">{{ t('chat.noAgent') }}</option>
+            <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.name }}</option>
           </select>
-          <small class="muted">{{ t('chat.assistantHint') }}</small>
+          <small class="muted">{{ t('chat.agentHint') }}</small>
         </div>
         <div class="field">
           <label>{{ t('chat.modelProvider') }}</label>
@@ -1430,59 +1433,6 @@ async function logout() {
           <button class="btn" @click="showMemory = false">{{ t('chat.close') }}</button>
           <button class="btn primary" :disabled="!memoryDraft.trim() || savingMemory" @click="addMemory">{{ t('chat.add') }}</button>
         </div>
-      </div>
-    </div>
-
-    <!-- Assistants -->
-    <div v-if="showAssistants" class="modal-backdrop" @click.self="showAssistants = false">
-      <div class="modal">
-        <div class="btn-row" style="justify-content: space-between; align-items: center">
-          <h2 style="margin: 0">{{ assistantEditing ? (editingAssistantId ? t('chat.editAssistant') : t('chat.newAssistant')) : t('chat.assistants') }}</h2>
-          <button v-if="!assistantEditing" class="btn primary" @click="newAssistant">{{ t('chat.addNew') }}</button>
-        </div>
-        <template v-if="!assistantEditing">
-          <p class="muted" style="font-size: 12px; margin: 0.2rem 0">{{ t('chat.assistantsHint') }}</p>
-          <div v-if="assistants.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noAssistantsYet') }}</div>
-          <div v-for="a in assistants" :key="a.id" class="doc-item">
-            <span class="conv-item-title">🤖 {{ a.name }}</span>
-            <span class="row" style="gap: 0.4rem; align-items: center">
-              <button class="btn" @click="editAssistant(a)">{{ t('chat.edit') }}</button>
-              <button class="btn" :title="t('chat.delete')" @click="deleteAssistant(a)">🗑</button>
-            </span>
-          </div>
-          <div class="btn-row" style="justify-content: flex-end; margin-top: 0.5rem">
-            <button class="btn" @click="showAssistants = false">{{ t('chat.close') }}</button>
-          </div>
-        </template>
-        <template v-else>
-          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="af.name" :placeholder="t('chat.assistantNamePlaceholder')" autofocus /></div>
-          <div class="field"><label>{{ t('chat.instructions') }}</label><textarea v-model="af.instructions" rows="5" :placeholder="t('chat.assistantInstructionsPlaceholder')"></textarea></div>
-          <div class="field">
-            <label>{{ t('chat.modelProvider') }}</label>
-            <select v-model="af.providerId" @change="onAssistantFormProvider">
-              <option value="">{{ t('chat.chatDefault') }}</option>
-              <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
-            </select>
-          </div>
-          <div class="field" v-if="af.providerId">
-            <label>{{ t('chat.model') }}</label>
-            <select v-if="modelsFor(af.providerId, af.model).length" v-model="af.model">
-              <option v-for="m in modelsFor(af.providerId, af.model)" :key="m" :value="m">{{ m }}</option>
-            </select>
-            <input v-else v-model="af.model" :placeholder="t('chat.modelPlaceholder')" />
-          </div>
-          <div class="field">
-            <label>{{ t('chat.toolsOptional') }}</label>
-            <select v-model="af.vserverSlug">
-              <option value="">{{ t('chat.noTools') }}</option>
-              <option v-for="v in vservers" :key="v.slug" :value="v.slug">{{ v.name }}</option>
-            </select>
-          </div>
-          <div class="btn-row" style="justify-content: flex-end">
-            <button class="btn" @click="assistantEditing = false">{{ t('chat.back') }}</button>
-            <button class="btn primary" :disabled="!af.name.trim()" @click="saveAssistant">{{ t('chat.save') }}</button>
-          </div>
-        </template>
       </div>
     </div>
 

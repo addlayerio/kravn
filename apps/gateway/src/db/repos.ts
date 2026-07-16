@@ -22,7 +22,8 @@ import type {
   ScheduleKind,
   ChatUserPrompt,
   ChatMemory,
-  ChatAssistant,
+  ChatAgent,
+  AgentAccess,
   ChatConversation,
   ChatMessage,
   ChatRole,
@@ -1094,20 +1095,21 @@ export class ChatRepo {
     }
     return p;
   }
-  async createProject(userId: string, id: string, name: string, instructions = '', toolIds: string[] = []): Promise<ChatProject> {
+  async createProject(userId: string, id: string, name: string, instructions = '', toolIds: string[] = [], defaultModel = ''): Promise<ChatProject> {
     const ts = now();
     await this.store.run(
-      'INSERT INTO chat_projects (id, user_id, name, instructions, tool_ids, created_at, updated_at) VALUES (?,?,?,?,?,?,?)',
-      [id, userId, name, instructions, JSON.stringify(toolIds), ts, ts],
+      'INSERT INTO chat_projects (id, user_id, name, instructions, default_model, tool_ids, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?)',
+      [id, userId, name, instructions, defaultModel, JSON.stringify(toolIds), ts, ts],
     );
-    return { id, name, instructions, toolIds, access: 'owner', createdAt: ts, updatedAt: ts };
+    return { id, name, instructions, defaultModel, toolIds, access: 'owner', createdAt: ts, updatedAt: ts };
   }
   /** Update by project id — the caller must already be gated to owner/editor at the route. */
-  async updateProject(id: string, patch: { name?: string; instructions?: string; toolIds?: string[] }): Promise<void> {
+  async updateProject(id: string, patch: { name?: string; instructions?: string; defaultModel?: string; toolIds?: string[] }): Promise<void> {
     const sets: string[] = [];
     const vals: unknown[] = [];
     if (patch.name !== undefined) { sets.push('name = ?'); vals.push(patch.name); }
     if (patch.instructions !== undefined) { sets.push('instructions = ?'); vals.push(patch.instructions); }
+    if (patch.defaultModel !== undefined) { sets.push('default_model = ?'); vals.push(patch.defaultModel); }
     if (patch.toolIds !== undefined) { sets.push('tool_ids = ?'); vals.push(JSON.stringify(patch.toolIds)); }
     if (sets.length === 0) return;
     sets.push('updated_at = ?');
@@ -1174,13 +1176,13 @@ export class ChatRepo {
     return r ? mapConversation(r) : undefined;
   }
   async createConversation(userId: string, c: {
-    id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string; assistantId?: string | null;
+    id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string; agentId?: string | null;
   }): Promise<ChatConversation> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, assistant_id, created_at, updated_at)
+      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, agent_id, created_at, updated_at)
        VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.assistantId ?? null, ts, ts],
+      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.agentId ?? null, ts, ts],
     );
     return (await this.getConversation(userId, c.id))!;
   }
@@ -1342,38 +1344,44 @@ export class ChatRepo {
     await this.store.run('DELETE FROM chat_memory WHERE id = ? AND user_id = ?', [id, userId]);
   }
 
-  // Assistant presets (per-user, owner-scoped). A chat can be started from one; its instructions inject live.
-  async listAssistants(userId: string): Promise<ChatAssistant[]> {
-    const rows = await this.store.all<any>('SELECT * FROM chat_assistants WHERE user_id = ? ORDER BY name ASC, id ASC', [userId]);
-    return rows.map(mapAssistant);
+  // Org-level Agents. Not user-scoped: management is gated by permission at the operator route, and the right
+  // to USE one is decided by canUseAgent(agent, actor) (see agent-access.ts), never by ownership here.
+  async listAgents(): Promise<ChatAgent[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_agents ORDER BY name ASC, id ASC', []);
+    return rows.map(mapAgent);
   }
-  async getAssistant(userId: string, id: string): Promise<ChatAssistant | undefined> {
-    const r = await this.store.get<any>('SELECT * FROM chat_assistants WHERE id = ? AND user_id = ?', [id, userId]);
-    return r ? mapAssistant(r) : undefined;
+  async getAgent(id: string): Promise<ChatAgent | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM chat_agents WHERE id = ?', [id]);
+    return r ? mapAgent(r) : undefined;
   }
-  async createAssistant(userId: string, id: string, a: { name: string; instructions: string; providerId: string; model: string; vserverSlug: string }): Promise<ChatAssistant> {
+  async createAgent(id: string, a: Omit<ChatAgent, 'id' | 'createdAt' | 'updatedAt'>): Promise<ChatAgent> {
     const ts = now();
     await this.store.run(
-      'INSERT INTO chat_assistants (id, user_id, name, instructions, provider_id, model, vserver_slug, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?)',
-      [id, userId, a.name, a.instructions, a.providerId, a.model, a.vserverSlug, ts, ts],
+      'INSERT INTO chat_agents (id, name, description, instructions, provider_id, model, tool_ids, access, allowed_teams, allowed_users, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)',
+      [id, a.name, a.description, a.instructions, a.providerId, a.model, JSON.stringify(a.toolIds), a.access, JSON.stringify(a.allowedTeams), JSON.stringify(a.allowedUsers), a.enabled, ts, ts],
     );
-    return { id, name: a.name, instructions: a.instructions, providerId: a.providerId, model: a.model, vserverSlug: a.vserverSlug, createdAt: ts, updatedAt: ts };
+    return { id, ...a, createdAt: ts, updatedAt: ts };
   }
-  async updateAssistant(userId: string, id: string, patch: { name?: string; instructions?: string; providerId?: string; model?: string; vserverSlug?: string }): Promise<void> {
-    const cols: Record<string, string> = { name: 'name', instructions: 'instructions', providerId: 'provider_id', model: 'model', vserverSlug: 'vserver_slug' };
+  async updateAgent(id: string, patch: Partial<Omit<ChatAgent, 'id' | 'createdAt' | 'updatedAt'>>): Promise<void> {
+    const scalar: Record<string, string> = { name: 'name', description: 'description', instructions: 'instructions', providerId: 'provider_id', model: 'model', access: 'access', enabled: 'enabled' };
+    const arrays: Record<string, string> = { toolIds: 'tool_ids', allowedTeams: 'allowed_teams', allowedUsers: 'allowed_users' };
     const sets: string[] = [];
     const vals: unknown[] = [];
-    for (const [k, col] of Object.entries(cols)) {
+    for (const [k, col] of Object.entries(scalar)) {
       const v = (patch as Record<string, unknown>)[k];
       if (v !== undefined) { sets.push(`${col} = ?`); vals.push(v); }
     }
+    for (const [k, col] of Object.entries(arrays)) {
+      const v = (patch as Record<string, unknown>)[k];
+      if (v !== undefined) { sets.push(`${col} = ?`); vals.push(JSON.stringify(v)); }
+    }
     if (!sets.length) return;
     sets.push('updated_at = ?');
-    vals.push(now(), id, userId);
-    await this.store.run(`UPDATE chat_assistants SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+    vals.push(now(), id);
+    await this.store.run(`UPDATE chat_agents SET ${sets.join(', ')} WHERE id = ?`, vals);
   }
-  async deleteAssistant(userId: string, id: string): Promise<void> {
-    await this.store.run('DELETE FROM chat_assistants WHERE id = ? AND user_id = ?', [id, userId]);
+  async deleteAgent(id: string): Promise<void> {
+    await this.store.run('DELETE FROM chat_agents WHERE id = ?', [id]);
   }
 
   /** Bytes of a single attachment for download, owner-scoped. */
@@ -1443,7 +1451,25 @@ function mapAttachment(r: any): ChatAttachment {
 }
 
 function mapProject(r: any): ChatProject {
-  return { id: r.id, name: r.name, instructions: r.instructions ?? '', toolIds: parseStringArray(r.tool_ids), createdAt: r.created_at, updatedAt: r.updated_at };
+  return { id: r.id, name: r.name, instructions: r.instructions ?? '', defaultModel: r.default_model ?? '', toolIds: parseStringArray(r.tool_ids), createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+function mapAgent(r: any): ChatAgent {
+  return {
+    id: r.id,
+    name: r.name,
+    description: r.description ?? '',
+    instructions: r.instructions ?? '',
+    providerId: r.provider_id ?? '',
+    model: r.model ?? '',
+    toolIds: parseStringArray(r.tool_ids),
+    access: (r.access === 'authenticated' ? 'authenticated' : 'restricted') as AgentAccess,
+    allowedTeams: parseStringArray(r.allowed_teams),
+    allowedUsers: parseStringArray(r.allowed_users),
+    enabled: !!r.enabled,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
 }
 
 /** A JSON array of strings persisted in a TEXT column; tolerate NULL/blank/legacy. */
@@ -1468,18 +1494,6 @@ function parseTags(v: any): string[] {
   }
 }
 
-function mapAssistant(r: any): ChatAssistant {
-  return {
-    id: r.id,
-    name: r.name,
-    instructions: r.instructions ?? '',
-    providerId: r.provider_id ?? '',
-    model: r.model ?? '',
-    vserverSlug: r.vserver_slug ?? '',
-    createdAt: r.created_at,
-    updatedAt: r.updated_at,
-  };
-}
 
 function mapConversation(r: any): ChatConversation {
   return {
@@ -1490,7 +1504,7 @@ function mapConversation(r: any): ChatConversation {
     model: r.model ?? '',
     vserverSlug: r.vserver_slug ?? '',
     tags: parseTags(r.tags),
-    assistantId: r.assistant_id ?? null,
+    agentId: r.agent_id ?? null,
     pinned: bool(r.pinned),
     archived: bool(r.archived),
     webSearch: bool(r.web_search),

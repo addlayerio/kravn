@@ -24,6 +24,7 @@ import { pluginRoutes } from './routes/plugins.routes.js';
 import { pipelineRoutes } from './routes/pipeline.routes.js';
 import { llmRoutes } from './routes/llm.routes.js';
 import { teamRoutes } from './routes/teams.routes.js';
+import { agentRoutes } from './routes/agents.routes.js';
 import { chatRoutes } from './routes/chat.routes.js';
 import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
@@ -233,6 +234,7 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     pipelineRoutes(app, services);
     llmRoutes(app, services);
     teamRoutes(app, services);
+    agentRoutes(app, services);
     userRoutes(app, services);
     scimRoutes(app, services);
     logRoutes(app, services);

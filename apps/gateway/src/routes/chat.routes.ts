@@ -12,8 +12,6 @@ import {
   updateUserPromptSchema,
   createMemorySchema,
   updateMemorySchema,
-  createAssistantSchema,
-  updateAssistantSchema,
   postChatMessageSchema,
   type McpEndpoint,
 } from '@kravn/contracts';
@@ -22,6 +20,7 @@ import { currentUser } from '../auth/plugin.js';
 import { extractText } from '../chat/extract.js';
 import type { Services } from '../services.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
+import { canUseAgent } from '../chat/agent-access.js';
 import { computeNextRun } from '../schedules/scheduler.service.js';
 import { parse, sendError } from './_helpers.js';
 import { openSse } from './_sse.js';
@@ -75,7 +74,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const u = currentUser(req);
     // Only pin tools the caller is actually entitled to (a filter, not a grant) — junk/unentitled ids are dropped.
     const toolIds = dto.toolIds ? await filterEntitledTools(s, u, dto.toolIds) : [];
-    const project = await s.repos.chat.createProject(u.id, newId(), dto.name, dto.instructions ?? '', toolIds);
+    const project = await s.repos.chat.createProject(u.id, newId(), dto.name, dto.instructions ?? '', toolIds, dto.defaultModel ?? '');
     return reply.code(201).send({ project });
   });
   app.get('/api/chat/projects/:id', auth, async (req, reply) => {
@@ -179,9 +178,11 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
     }
-    // An assistant preset may only be one the caller owns (getAssistant is owner-scoped, fail-closed).
-    if (dto.assistantId && !(await s.repos.chat.getAssistant(u.id, dto.assistantId))) {
-      return sendError(reply, 404, 'not_found', 'Assistant not found.');
+    // An org Agent may only be one the caller is ENTITLED to use (org access, fail-closed). This is the first
+    // enforcement point; buildSystemPrompt + resolveTools re-check it live on every turn.
+    if (dto.agentId) {
+      const agent = await s.repos.chat.getAgent(dto.agentId);
+      if (!agent || !canUseAgent(agent, u)) return sendError(reply, 404, 'not_found', 'Agent not found.');
     }
     const conversation = await s.repos.chat.createConversation(u.id, {
       id: newId(),
@@ -190,7 +191,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       providerId: dto.providerId,
       model: dto.model,
       vserverSlug: dto.vserverSlug,
-      assistantId: dto.assistantId ?? null,
+      agentId: dto.agentId ?? null,
     });
     return reply.code(201).send({ conversation });
   });
@@ -316,28 +317,14 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return reply.code(204).send();
   });
 
-  // Assistant presets — reusable persona + default model + tools a chat can be started from.
-  app.get('/api/chat/assistants', auth, async (req) => ({ assistants: await s.repos.chat.listAssistants(currentUser(req).id) }));
-  app.post('/api/chat/assistants', auth, async (req, reply) => {
-    const dto = parse(reply, createAssistantSchema, req.body);
-    if (!dto) return;
-    const assistant = await s.repos.chat.createAssistant(currentUser(req).id, newId(), {
-      name: dto.name.trim(), instructions: dto.instructions, providerId: dto.providerId, model: dto.model, vserverSlug: dto.vserverSlug,
-    });
-    return reply.code(201).send({ assistant });
-  });
-  app.put('/api/chat/assistants/:id', auth, async (req, reply) => {
-    const dto = parse(reply, updateAssistantSchema, req.body);
-    if (!dto) return;
+  // Org Agents the caller may USE (read-only; admins define them in the operator). Filtered by canUseAgent —
+  // the same entitlement the chat re-checks live per turn. Projected to a client-safe shape: the sharing ACL
+  // (allowedUsers/allowedTeams — who ELSE is entitled) and the raw instructions/toolIds are admin data the UI
+  // never reads, so they never leave the operator.
+  app.get('/api/chat/agents', auth, async (req) => {
     const u = currentUser(req);
-    const id = (req.params as { id: string }).id;
-    if (!(await s.repos.chat.getAssistant(u.id, id))) return sendError(reply, 404, 'not_found', 'Assistant not found.');
-    await s.repos.chat.updateAssistant(u.id, id, dto);
-    return { assistant: await s.repos.chat.getAssistant(u.id, id) };
-  });
-  app.delete('/api/chat/assistants/:id', auth, async (req, reply) => {
-    await s.repos.chat.deleteAssistant(currentUser(req).id, (req.params as { id: string }).id);
-    return reply.code(204).send();
+    const usable = (await s.repos.chat.listAgents()).filter((a) => canUseAgent(a, u));
+    return { agents: usable.map((a) => ({ id: a.id, name: a.name, description: a.description, providerId: a.providerId, model: a.model })) };
   });
 
   // Upload a file into a conversation → extract its text for context. Returns metadata only.

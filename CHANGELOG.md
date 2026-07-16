@@ -14,6 +14,26 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 📣 **Agents: reusable, org-defined chat presets (replacing the personal Assistant).** An **Agent** is a named
+  chat preset — instructions, a model, and a set of tools — that an **admin defines once in the operator** and
+  shares with specific users or teams. Anyone entitled to it starts a chat from it in the chat app and inherits
+  its setup. This replaces the old personal "Assistant" (a preset each user built for themselves, hidden in the
+  new-chat dialog): the good ones are now organization capital, curated and governed centrally, instead of
+  trapped in one person's account.
+  - **Operator → Agents**: create/edit/delete agents with the same cross-endpoint tool picker as MCP endpoints,
+    a provider + model, and an access policy (all signed-in users, or specific teams/users). Managing agents is
+    gated by the `settings` permission.
+  - **Chat client**: an "Agents" section in the sidebar and a picker in the new-chat dialog list the agents you
+    may use. Starting a chat from one applies its model + instructions + tools.
+  - **Governance is unchanged.** An agent's tools are a **filter over what each user is already entitled to,
+    never a grant** — re-checked live on every turn, exactly like project tools. Being able to use an agent can
+    never reach a tool you couldn't already reach. The **MCP gateway/data plane is untouched**: agents are a
+    chat-client concept and are invisible to external MCP clients.
+  - The personal Assistant is removed (its saved presets are dropped — they were few, in beta, and lost no
+    stored content since assistant instructions were only ever injected live).
+- 🎨 **Projects can pin a default model.** A project can set a default model so every chat started in it opens on
+  that model (the highest-leverage setting for a workflow — the right model is what most separates a good result
+  from a bad one). Leave it empty to keep picking per chat.
 - 📣 **Teams now shows iPhone (HEIC) photos, and blank images say why.** The native Teams connector fetched an
   image's bytes and handed them to the model without checking what they were, so two kinds of image arrived
   blank: an **HEIC** photo (an iPhone's default format, which vision models can't render) whose type was passed

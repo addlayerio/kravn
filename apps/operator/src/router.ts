@@ -18,6 +18,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'resources', name: 'resources', component: () => import('./views/ResourcesView.vue'), meta: { permission: 'registry.read' } },
       { path: 'prompts', name: 'prompts', component: () => import('./views/PromptsView.vue'), meta: { permission: 'registry.read' } },
       { path: 'mcp-endpoints', name: 'mcp-endpoints', component: () => import('./views/McpEndpointsView.vue'), meta: { permission: 'endpoints.read' } },
+      { path: 'agents', name: 'agents', component: () => import('./views/AgentsView.vue'), meta: { permission: 'settings.read' } },
       { path: 'mcp-endpoints/new', name: 'mcp-endpoint-new', component: () => import('./views/McpEndpointEditView.vue'), meta: { permission: 'endpoints.write' } },
       { path: 'mcp-endpoints/:id', name: 'mcp-endpoint-edit', component: () => import('./views/McpEndpointEditView.vue'), meta: { permission: 'endpoints.read' } },
       // Back-compat: the old /virtual-servers* URLs (renamed to /mcp-endpoints) still resolve.
