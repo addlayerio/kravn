@@ -4,6 +4,26 @@ import { defineConfig } from 'vitepress';
 const HOSTNAME = 'https://kravn.ai';
 const BASE = '/';
 
+// FAQPage structured data for /faq. Mirrors the visible Q&A in faq.md so the answers Google/AI engines
+// read match the page. Keep the two in sync when editing either.
+const FAQ_JSONLD = {
+  '@context': 'https://schema.org',
+  '@type': 'FAQPage',
+  mainEntity: [
+    ['What is Kravn?', 'Kravn is a self-hostable MCP gateway, registry and proxy. It brings the Model Context Protocol to your organization on your own infrastructure, integrated with your identity stack (SAML, OIDC, SCIM, RBAC), with no data ever leaving your perimeter.'],
+    ['What is an MCP gateway?', 'An MCP gateway sits between AI clients and the MCP servers they need: it connects to many upstream MCP servers, imports their tools, resources and prompts into one registry, and re-exposes them behind a single governed endpoint, so every call passes through access control and policy.'],
+    ['Is Kravn free and open-source?', 'Kravn is source-available and free to self-host. It is licensed under the Business Source License 1.1 (BSL 1.1), which converts to Apache 2.0 after four years. You can read the source, run it, and self-host it at no cost.'],
+    ['Is there a paid or enterprise edition?', 'No. There is one edition. The enterprise capabilities — SSO, SCIM, RBAC, governance pipelines, audit, KMS/HSM key management — are in the product you self-host, not behind a paywall or a per-seat license.'],
+    ['Does my data leave my network with Kravn?', 'No. Kravn is self-hosted by design and runs entirely on your infrastructure via Docker or Helm. There is no data egress and no third-party dependency in the request path.'],
+    ['How is Kravn different from IBM MCP Context Forge?', 'IBM MCP Context Forge is a broad, mature, Python-based MCP gateway. Kravn is a leaner, identity-first take built in TypeScript (Fastify + Vue 3): it boots in one command, is configured at runtime, and leads with corporate identity, governance and audit for compliance-bound teams.'],
+    ['Which identity providers does Kravn support?', 'SAML and OAuth2 / OIDC single sign-on, SCIM 2.0 provisioning, role-based access control, teams, and per-team MCP and tool entitlements, out of the box.'],
+    ['How do I install Kravn?', 'Run docker compose up or helm install with zero overrides and it is running — embedded SQLite, an auto-generated signing key and a first-run setup wizard.'],
+    ['Which databases does Kravn support?', 'A portable store over SQLite, PostgreSQL, MySQL / MariaDB, or SQL Server, with versioned migrations. SQLite is embedded so a fresh install needs no external database.'],
+    ['What can Kravn connect to?', 'Any upstream MCP server over streamable-HTTP, SSE or stdio, plus a curated catalog of 100+ public MCP servers, and native integrations for SharePoint, Microsoft Teams, Jira and Confluence over the vendor API.'],
+    ['Is Kravn ready for regulated or bank environments?', 'That is the design center: governance pipelines (redact secrets and PII, guard against prompt injection), a tamper-evident audit trail, KMS/HSM-backed key management, separation-of-duties / maker-checker controls, and SBOM plus signed images.'],
+  ].map(([q, a]) => ({ '@type': 'Question', name: q, acceptedAnswer: { '@type': 'Answer', text: a } })),
+};
+
 export default defineConfig({
   base: BASE,
   lang: 'en-US',
@@ -56,14 +76,49 @@ export default defineConfig({
         '@type': 'SoftwareApplication',
         name: 'Kravn',
         applicationCategory: 'DeveloperApplication',
+        applicationSubCategory: 'MCP gateway',
         operatingSystem: 'Docker, Kubernetes, Linux',
         url: HOSTNAME,
         description:
           'Kravn — a self-hostable, enterprise MCP gateway, registry and proxy. Bring the Model Context Protocol to your organization on your own infrastructure, integrated with your identity stack (SAML/OIDC/SCIM/RBAC), with no data ever leaving your perimeter.',
+        featureList: [
+          'Self-hosted MCP gateway, registry and proxy (Docker / Helm)',
+          'No data egress — runs entirely on your infrastructure',
+          'Enterprise identity: SAML, OAuth2/OIDC SSO, SCIM 2.0, RBAC, teams',
+          'Per-team MCP server and tool entitlements',
+          'Governance pipelines: redact secrets/PII, prompt-injection guard, tamper-evident audit',
+          'Catalog of 100+ public MCP servers plus native SharePoint, Teams, Jira, Confluence',
+          'Boots in one command with a first-run setup wizard; runtime config, no redeploy',
+          'KMS/HSM key management, SBOM and signed images',
+        ],
         author: { '@type': 'Organization', name: 'AddLayer', url: HOSTNAME },
         offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
         license: 'https://github.com/addlayerio/kravn/blob/main/LICENSE',
         sameAs: ['https://github.com/addlayerio/kravn'],
+      }),
+    ],
+    [
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'Organization',
+        name: 'AddLayer',
+        url: HOSTNAME,
+        logo: `${HOSTNAME}/logo.svg`,
+        description: 'AddLayer builds Kravn — a self-hostable, source-available enterprise MCP gateway.',
+        sameAs: ['https://github.com/addlayerio', 'https://github.com/addlayerio/kravn'],
+      }),
+    ],
+    [
+      'script',
+      { type: 'application/ld+json' },
+      JSON.stringify({
+        '@context': 'https://schema.org',
+        '@type': 'WebSite',
+        name: 'Kravn',
+        url: HOSTNAME,
+        publisher: { '@type': 'Organization', name: 'AddLayer' },
       }),
     ],
   ],
@@ -86,6 +141,10 @@ export default defineConfig({
       ['link', { rel: 'canonical', href: url }],
       ['meta', { property: 'og:url', content: url }],
     );
+    // Rich results: the FAQ page carries FAQPage structured data (answers mirror the visible Q&A).
+    if (slug === 'faq') {
+      pageData.frontmatter.head.push(['script', { type: 'application/ld+json' }, JSON.stringify(FAQ_JSONLD)]);
+    }
   },
 
   themeConfig: {
@@ -94,9 +153,11 @@ export default defineConfig({
 
     nav: [
       { text: 'Why Kravn', link: '/guide/what-is-kravn', activeMatch: '/guide/what-is-kravn' },
+      { text: 'Compare', link: '/comparison' },
       { text: 'Integrations', link: '/integrations' },
       { text: 'Get Started', link: '/guide/getting-started' },
       { text: 'Install', link: '/guide/installation' },
+      { text: 'FAQ', link: '/faq' },
       {
         text: 'Docs',
         items: [

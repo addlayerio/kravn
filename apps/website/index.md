@@ -88,6 +88,6 @@ one click and re-exposed **under your own governance**. Breadth, without the dat
 
 <div style="margin-top: 2.5rem; text-align:center;">
 
-[Get started →](/guide/getting-started) &nbsp;·&nbsp; [Read the concepts →](/guide/concepts) &nbsp;·&nbsp; [See the security posture →](/guide/security)
+[Get started →](/guide/getting-started) &nbsp;·&nbsp; [Compare the options →](/comparison) &nbsp;·&nbsp; [Read the concepts →](/guide/concepts) &nbsp;·&nbsp; [FAQ →](/faq)
 
 </div>

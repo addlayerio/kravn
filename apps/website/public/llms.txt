@@ -1,0 +1,23 @@
+# Kravn
+
+> Kravn is a self-hostable, source-available enterprise MCP gateway, registry and proxy. It brings the Model Context Protocol (MCP) to your organization on your own infrastructure — integrated with your identity stack (SAML, OIDC, SCIM, RBAC), governed by your own policies, with no data ever leaving your perimeter.
+
+Kravn sits between AI clients (Claude, ChatGPT, Gemini, your own agents) and the MCP servers and corporate systems they need. It connects to upstream MCP servers over streamable-HTTP, SSE or stdio, imports their tools/resources/prompts into one registry, and re-exposes them behind a single governed endpoint. It ships enterprise identity out of the box, governance pipelines (redact secrets/PII, prompt-injection guard, tamper-evident audit), and boots in one command. Built by AddLayer in TypeScript (Fastify + Vue 3). Licensed under BSL 1.1 (converts to Apache 2.0), free to self-host.
+
+## Docs
+
+- [Why Kravn](https://kravn.ai/guide/what-is-kravn): What Kravn is, the problem it solves, and its highlights.
+- [Comparison](https://kravn.ai/comparison): How to choose an MCP gateway and how Kravn compares to SaaS tooling, self-hosted alternatives and IBM MCP Context Forge.
+- [FAQ](https://kravn.ai/faq): Direct answers on licensing, self-hosting, identity, data privacy and installation.
+- [Core concepts](https://kravn.ai/guide/concepts): Gateway, registry, MCP endpoints, pipelines, teams and entitlements.
+- [Get started](https://kravn.ai/guide/getting-started): Run Kravn in one command.
+- [Installation](https://kravn.ai/guide/installation): Docker and Helm installation manual.
+- [Configuration](https://kravn.ai/guide/configuration): Runtime settings — SSRF policy, rate limits, transports, auth, observability.
+- [Plugins & integrations](https://kravn.ai/guide/plugins): The plugin SDK and the catalog of 100+ MCP servers.
+- [Security & compliance](https://kravn.ai/guide/security): Governance, audit, key management and licensing.
+- [Integrations gallery](https://kravn.ai/integrations): The full catalog of ready-to-add MCP servers.
+
+## Optional
+
+- [Source on GitHub](https://github.com/addlayerio/kravn): The Kravn source repository.
+- [License (BSL 1.1)](https://github.com/addlayerio/kravn/blob/main/LICENSE): Business Source License 1.1, converting to Apache 2.0.
