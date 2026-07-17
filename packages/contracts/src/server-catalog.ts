@@ -7,6 +7,12 @@
  *  - `auth: 'apikey'` -> the server takes an API key/token (added as a Bearer header); connects today.
  *  - `auth: 'oauth'`  -> the server requires an OAuth 2.1 handshake to the upstream; catalogued now,
  *                        one-click connect lands with upstream-OAuth support.
+ *
+ * `connect` refines the OAuth story: `'auto'` (default) means the server advertises protected-resource
+ * metadata + Dynamic Client Registration, so Kravn can do the whole handshake with a single "Connect"
+ * click (redirect → approve → done). `'manual'` means it needs a one-time OAuth-app registration
+ * (no DCR — e.g. GitHub, Slack), so the catalog only offers "Add"; the client is configured afterwards
+ * from the installed list. Verified by probing each endpoint's discovery + registration_endpoint.
  */
 export type CatalogAuth = 'open' | 'apikey' | 'oauth';
 
@@ -19,6 +25,8 @@ export interface CatalogServer {
   url: string;
   transport: 'streamable-http' | 'sse';
   auth: CatalogAuth;
+  /** OAuth only: `'auto'` = one-click Connect (DCR); `'manual'` = Add-then-configure (no DCR). Default `'auto'`. */
+  connect?: 'auto' | 'manual';
   provider?: string;
   tags?: string[];
 }
@@ -63,7 +71,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'grafbase', name: 'Grafbase', category: 'Software Development',
     description: 'GraphQL backend platform',
-    url: 'https://api.grafbase.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Grafbase',
+    url: 'https://api.grafbase.com/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Grafbase',
     tags: ['graphql', 'backend', 'api', 'development'],
   },
   {
@@ -189,7 +197,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'box', name: 'Box', category: 'Document Management',
     description: 'Cloud content management and file sharing',
-    url: 'https://mcp.box.com', transport: 'streamable-http', auth: 'oauth', provider: 'Box',
+    url: 'https://mcp.box.com', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Box',
     tags: ['storage', 'documents', 'collaboration'],
   },
   {
@@ -225,7 +233,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'listenetic', name: 'Listenetic', category: 'Productivity',
     description: 'Audio analysis and processing platform',
-    url: 'https://mcp.listenetic.com/v1/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Listenetic',
+    url: 'https://mcp.listenetic.com/v1/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Listenetic',
     tags: ['audio', 'analysis', 'productivity'],
   },
   {
@@ -255,7 +263,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'invideo', name: 'InVideo', category: 'Video Platform',
     description: 'Video creation and editing platform',
-    url: 'https://mcp.invideo.io/sse', transport: 'sse', auth: 'oauth', provider: 'Invidio',
+    url: 'https://mcp.invideo.io/sse', transport: 'sse', auth: 'oauth', connect: 'manual', provider: 'Invidio',
     tags: ['video', 'editing', 'content-creation'],
   },
   {
@@ -393,7 +401,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'hive-intelligence', name: 'Hive Intelligence', category: 'Crypto',
     description: 'Cryptocurrency and blockchain analytics',
-    url: 'https://hiveintelligence.xyz/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Hive Intelligence',
+    url: 'https://hiveintelligence.xyz/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Hive Intelligence',
     tags: ['crypto', 'blockchain', 'analytics'],
   },
   {
@@ -423,7 +431,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'rube', name: 'Rube', category: 'Other',
     description: 'Workflow automation and integration platform',
-    url: 'https://rube.app/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Composio',
+    url: 'https://rube.app/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Composio',
     tags: ['automation', 'integration', 'workflow'],
   },
   {
@@ -597,7 +605,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'github', name: 'GitHub', category: 'Software Development',
     description: 'Version control and collaborative software development',
-    url: 'https://api.githubcopilot.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'GitHub',
+    url: 'https://api.githubcopilot.com/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'GitHub',
     tags: ['development', 'git', 'version-control', 'collaboration'],
   },
   {
@@ -609,7 +617,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'stack-overflow', name: 'Stack Overflow', category: 'Software Development',
     description: 'Developer Q&A platform — search and access programming knowledge',
-    url: 'https://mcp.stackoverflow.com', transport: 'streamable-http', auth: 'oauth', provider: 'Stack Overflow',
+    url: 'https://mcp.stackoverflow.com', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Stack Overflow',
     tags: ['development', 'q-and-a', 'knowledge'],
   },
   {
@@ -633,13 +641,13 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'power-bi', name: 'Power BI', category: 'Data Analytics',
     description: 'Query Power BI semantic models — AI agents connect to hosted analytics without running a local server',
-    url: 'https://api.fabric.microsoft.com/v1/mcp/powerbi', transport: 'streamable-http', auth: 'oauth', provider: 'Microsoft',
+    url: 'https://api.fabric.microsoft.com/v1/mcp/powerbi', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Microsoft',
     tags: ['analytics', 'bi', 'power-bi', 'fabric', 'microsoft'],
   },
   {
     id: 'microsoft-foundry', name: 'Microsoft Foundry', category: 'AI Services',
     description: 'Unified toolkit for Azure AI — models, knowledge, evaluation, and more through a single MCP endpoint',
-    url: 'https://mcp.ai.azure.com', transport: 'streamable-http', auth: 'oauth', provider: 'Microsoft',
+    url: 'https://mcp.ai.azure.com', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Microsoft',
     tags: ['ai', 'azure', 'models', 'evaluation', 'microsoft'],
   },
   {
@@ -663,25 +671,25 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'salesforce', name: 'Salesforce', category: 'CRM',
     description: 'Salesforce CRM — query, search and update records across your org (Hosted MCP)',
-    url: 'https://api.salesforce.com/platform/mcp/v1/platform/sobject-all', transport: 'streamable-http', auth: 'oauth', provider: 'Salesforce',
+    url: 'https://api.salesforce.com/platform/mcp/v1/platform/sobject-all', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Salesforce',
     tags: ['crm', 'sales', 'salesforce'],
   },
   {
     id: 'servicenow', name: 'ServiceNow', category: 'IT Service Management',
     description: 'ServiceNow ITSM — incidents, requests and records via your instance MCP server',
-    url: 'https://<your-instance>.service-now.com/sncapps/mcp-server/mcp/sn_mcp_server_default', transport: 'streamable-http', auth: 'oauth', provider: 'ServiceNow',
+    url: 'https://<your-instance>.service-now.com/sncapps/mcp-server/mcp/sn_mcp_server_default', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'ServiceNow',
     tags: ['itsm', 'tickets', 'incidents', 'servicenow'],
   },
   {
     id: 'slack', name: 'Slack', category: 'Communication',
     description: 'Slack — search and read messages and post to channels (official hosted MCP)',
-    url: 'https://mcp.slack.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Slack',
+    url: 'https://mcp.slack.com/mcp', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Slack',
     tags: ['communication', 'chat', 'slack'],
   },
   {
     id: 'snowflake', name: 'Snowflake', category: 'Data Analytics',
     description: 'Snowflake — query your data via a Snowflake-managed Cortex MCP server',
-    url: 'https://<account>.snowflakecomputing.com/api/v2/databases/<database>/schemas/<schema>/mcp-servers/<mcp_server>', transport: 'streamable-http', auth: 'oauth', provider: 'Snowflake',
+    url: 'https://<account>.snowflakecomputing.com/api/v2/databases/<database>/schemas/<schema>/mcp-servers/<mcp_server>', transport: 'streamable-http', auth: 'oauth', connect: 'manual', provider: 'Snowflake',
     tags: ['database', 'data-analytics', 'snowflake'],
   },
   {

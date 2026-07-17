@@ -449,8 +449,8 @@ async function remove(srv: UpstreamServer) {
             <span class="badge" :class="s.status">{{ s.status }}</span>
             <div v-if="s.lastError"><small class="muted">{{ s.lastError }}</small></div>
           </td>
-          <td>
-            <div class="btn-row">
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap">
               <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">{{ t('serversView.connect') }}</button>
               <button class="btn icon" :title="t('serversView.sync')" :aria-label="t('serversView.sync')" @click="sync(s)"><RefreshCw :size="16" :stroke-width="2" /></button>
               <button v-if="auth.can('servers.write')" class="btn icon" :title="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" :aria-label="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" @click="editServer(s)"><component :is="s.transport === 'plugin' ? Settings2 : Pencil" :size="16" :stroke-width="2" /></button>
@@ -507,8 +507,9 @@ async function remove(srv: UpstreamServer) {
           <template v-else>
             <span v-if="e.installed" class="muted">{{ t('serversView.added') }} ✓</span>
             <template v-else-if="auth.can('servers.write')">
-              <!-- OAuth servers can connect in one click (add + sign-in); the rest just Add. -->
-              <button v-if="e.auth === 'oauth'" class="btn primary" @click="e.remote && connectFromCatalog(e.remote)">{{ t('serversView.connect') }}</button>
+              <!-- One-click Connect only for OAuth servers with DCR (redirect → approve → done). Servers that
+                   need a manual OAuth-app (connect:'manual', e.g. GitHub/Slack) just Add, then configure. -->
+              <button v-if="e.auth === 'oauth' && e.remote?.connect !== 'manual'" class="btn primary" @click="e.remote && connectFromCatalog(e.remote)">{{ t('serversView.connect') }}</button>
               <button v-else class="btn" @click="e.remote && addFromCatalog(e.remote)">{{ t('serversView.add') }}</button>
             </template>
           </template>
@@ -753,6 +754,12 @@ async function remove(srv: UpstreamServer) {
 </template>
 
 <style scoped>
+/* Row actions never wrap: the column widens to fit the icons instead of dropping one to a second line. */
+.actions-cell {
+  white-space: nowrap;
+  width: 1%;
+  text-align: right;
+}
 .segmented {
   display: inline-flex;
   border: 1px solid var(--border, #33384a);
