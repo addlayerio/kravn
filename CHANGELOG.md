@@ -12,8 +12,22 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.87] — 2026-07-18
 
+- 🧩 **Jira: read a ticket's comment thread (`jira_get_comments`).** The connector could *add* a comment but had
+  no way to *read* the discussion. New `jira_get_comments` returns an issue's comments — author, date and text,
+  oldest first, paginated (`startAt`/`maxResults`) — so an agent can catch up on what was said, not just the
+  fields. `jira_get_issue` also stops leaking the raw comment JSON into its field dump and now shows a
+  `Comments: N — read with jira_get_comments` pointer when a ticket has any.
+- 🧩 **Catalog: one-click Connect for OAuth servers that support it.** A catalogued MCP server that advertises
+  dynamic client registration now shows a **Connect** button right on its card — one click creates the server
+  and starts the sign-in (redirect → approve → connected), instead of add-then-hunt-for-the-button. Servers that
+  need a manually registered OAuth app (GitHub, Slack, …) keep the plain **Add** and are configured afterward;
+  the split is verified per server, so Connect never dead-ends in a config form.
+- 🎨 **Operator: cleaner configuration tables.** Row actions across every config table — MCP servers, endpoints,
+  agents, models, prompts, teams, users — are now compact icons with tooltips instead of text buttons, and the
+  actions column no longer wraps to a second line. On MCP servers, native plugins and remote servers now share a
+  single **Edit** action: one "MCP Server" to the user, whichever it is underneath.
 - 🐛 **Jira now returns custom fields and pages past 50 results.** The Jira connector requested a fixed handful
   of fields (summary/status/assignee/type/priority/dates), so **custom fields never came back** — Story Points,
   Sprint, a "Module" select, a "Target UAT" date, anything your team added — and search capped at 50 issues with
