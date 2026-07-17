@@ -10,6 +10,7 @@ import PluginConfigModal from '../components/PluginConfigModal.vue';
 import IntegrationIcon from '../components/IntegrationIcon.vue';
 import MarkdownText from '../components/MarkdownText.vue';
 import { serverIconId } from '../lib/server-icon';
+import { RefreshCw, Pencil, Settings2, Trash2 } from 'lucide-vue-next';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
@@ -267,6 +268,24 @@ function addFromCatalog(e: CatalogServer) {
   showModal.value = true;
 }
 
+/** One-click for OAuth catalog servers: create the server AND start the sign-in, instead of Add-then-hunt-for-
+ *  Connect in the installed list. If the provider needs a manual client (no DCR), connectOAuth surfaces that
+ *  form as usual — the server is already created so nothing is lost. */
+async function connectFromCatalog(e: CatalogServer) {
+  try {
+    const res = await api.post<{ server: UpstreamServer }>('/api/servers', {
+      name: e.name, description: e.description, url: e.url, command: '', args: [], headers: {},
+      authType: 'oauth', tlsCa: '', tlsClientCert: '', enabled: true,
+      transport: e.transport, authValue: '', tlsClientKey: '', env: {},
+    });
+    tab.value = 'installed';
+    await load();
+    await connectOAuth(res.server);
+  } catch (err) {
+    toast.error(err instanceof ApiError ? err.message : t('serversView.couldNotStartOAuth'));
+  }
+}
+
 /** Add the remote server from the detail modal (then close it). */
 function addFromDetail() {
   if (detailItem.value?.remote) {
@@ -433,9 +452,9 @@ async function remove(srv: UpstreamServer) {
           <td>
             <div class="btn-row">
               <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">{{ t('serversView.connect') }}</button>
-              <button class="btn" @click="sync(s)">{{ t('serversView.sync') }}</button>
-              <button v-if="auth.can('servers.write')" class="btn" @click="editServer(s)">{{ s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit') }}</button>
-              <button v-if="auth.can('servers.delete')" class="btn danger" @click="remove(s)">{{ t('serversView.delete') }}</button>
+              <button class="btn icon" :title="t('serversView.sync')" :aria-label="t('serversView.sync')" @click="sync(s)"><RefreshCw :size="16" :stroke-width="2" /></button>
+              <button v-if="auth.can('servers.write')" class="btn icon" :title="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" :aria-label="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" @click="editServer(s)"><component :is="s.transport === 'plugin' ? Settings2 : Pencil" :size="16" :stroke-width="2" /></button>
+              <button v-if="auth.can('servers.delete')" class="btn danger icon" :title="t('serversView.delete')" :aria-label="t('serversView.delete')" @click="remove(s)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>
@@ -487,7 +506,11 @@ async function remove(srv: UpstreamServer) {
           </template>
           <template v-else>
             <span v-if="e.installed" class="muted">{{ t('serversView.added') }} ✓</span>
-            <button v-else-if="auth.can('servers.write')" class="btn" @click="e.remote && addFromCatalog(e.remote)">{{ t('serversView.add') }}</button>
+            <template v-else-if="auth.can('servers.write')">
+              <!-- OAuth servers can connect in one click (add + sign-in); the rest just Add. -->
+              <button v-if="e.auth === 'oauth'" class="btn primary" @click="e.remote && connectFromCatalog(e.remote)">{{ t('serversView.connect') }}</button>
+              <button v-else class="btn" @click="e.remote && addFromCatalog(e.remote)">{{ t('serversView.add') }}</button>
+            </template>
           </template>
         </div>
       </div>

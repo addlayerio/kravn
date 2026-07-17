@@ -411,6 +411,14 @@ textarea:focus {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+/* Icon-only action: square, no text padding — reads as a compact control, not a labelled button. */
+.btn.icon {
+  padding: 0.4rem;
+  aspect-ratio: 1;
+}
+.btn.icon > svg {
+  display: block;
+}
 .btn.primary {
   background: var(--brand);
   border-color: var(--brand);
