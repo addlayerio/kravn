@@ -69,6 +69,22 @@ const TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: 'jira_get_comments',
+    description:
+      'Read the comment thread of a Jira issue — each comment with its author, date and text, oldest first. ' +
+      'Paginates: use `startAt`/`maxResults` to window into issues with many comments. jira_get_issue returns the ' +
+      'issue detail but NOT the discussion; use this to catch up on what was said on a ticket.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueKey: { type: 'string', description: 'Issue key, e.g. ABC-123.' },
+        maxResults: { type: 'number', description: 'Comments to return in this call (default 20, max 100).' },
+        startAt: { type: 'number', description: 'Offset into the comment list (default 0) — for windowing past `maxResults`.' },
+      },
+      required: ['issueKey'],
+    },
+  },
+  {
     name: 'jira_list_projects',
     description: 'List the Jira projects the account can see, with each project key and name.',
     inputSchema: {
@@ -248,7 +264,7 @@ async function getIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Pr
   const names: Record<string, string> = it.names ?? {};
   const desc = adfToText(f.description).trim();
   // Base fields we render with a fixed layout — excluded from the generic custom-field dump below.
-  const BASE = new Set(['summary', 'description', 'status', 'assignee', 'reporter', 'priority', 'issuetype', 'created', 'updated', 'labels']);
+  const BASE = new Set(['summary', 'description', 'status', 'assignee', 'reporter', 'priority', 'issuetype', 'created', 'updated', 'labels', 'comment']);
   const custom = Object.keys(f)
     .filter((k) => !BASE.has(k))
     .map((k) => ({ label: names[k] || k, val: fmtField(f[k]) }))
@@ -265,6 +281,7 @@ async function getIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Pr
     `Reporter: ${f.reporter?.displayName ?? '—'}`,
     ...(Array.isArray(f.labels) && f.labels.length ? [`Labels:   ${f.labels.join(', ')}`] : []),
     `Updated:  ${f.updated ?? '—'}`,
+    ...(f.comment?.total ? [`Comments: ${f.comment.total} — read with jira_get_comments`] : []),
     ...(custom.length ? ['', '## Fields', ...custom.map((c) => `${c.label}: ${c.val}`)] : []),
     '',
     desc ? `## Description\n${desc}` : '(no description)',
@@ -309,6 +326,32 @@ async function addComment(cfg: AtlassianConfig, args: Record<string, unknown>): 
   return text(`Comment added to ${key}: ${cfg.baseUrl}/browse/${key}`);
 }
 
+async function getComments(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const key = String(args.issueKey ?? '').trim();
+  if (!key) return text('Error: issueKey is required.', true);
+  const startAt = Math.max(0, Math.trunc(Number(args.startAt ?? 0)) || 0);
+  const maxResults = Math.min(100, Math.max(1, Math.trunc(Number(args.maxResults ?? 20)) || 20));
+  // `orderBy=created` = oldest first, so the thread reads top-to-bottom chronologically.
+  const data = await atlassianFetch(
+    cfg,
+    'GET',
+    `/rest/api/3/issue/${encodeURIComponent(key)}/comment?startAt=${startAt}&maxResults=${maxResults}&orderBy=created`,
+  );
+  const comments: any[] = Array.isArray(data?.comments) ? data.comments : [];
+  const total = Number(data?.total ?? comments.length);
+  if (!comments.length) return text(`${key} has no comments${startAt ? ` past offset ${startAt}` : ''}.`);
+  const blocks = comments.map((c) => {
+    const who = c.author?.displayName ?? c.author?.emailAddress ?? 'Unknown';
+    const edited = c.updated && c.updated !== c.created ? ' (edited)' : '';
+    const bodyText = adfToText(c.body).trim() || '(empty)';
+    return `── ${who} · ${c.created ?? ''}${edited}\n${bodyText}`;
+  });
+  const shownEnd = startAt + comments.length;
+  const more = shownEnd < total ? `\n\n…${total - shownEnd} more — call again with startAt=${shownEnd}.` : '';
+  const header = `# Comments on ${key} — showing ${startAt + 1}–${shownEnd} of ${total}`;
+  return text([header, `${cfg.baseUrl}/browse/${key}`, '', blocks.join('\n\n')].join('\n') + more);
+}
+
 async function transitionIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
   const key = String(args.issueKey ?? '').trim();
   const wanted = String(args.transition ?? '').trim();
@@ -334,8 +377,9 @@ export function jiraPlugin(): McpServerPlugin {
       version: '0.1.0',
       type: 'mcp-server',
       description:
-        'Interact with Jira over MCP via the Jira REST API. Search issues with JQL, read issue detail, list ' +
-        'projects, and create issues / add comments / transition status. Requires a site URL, account email and API token.',
+        'Interact with Jira over MCP via the Jira REST API. Search issues with JQL, read issue detail and the ' +
+        'comment thread, list projects, and create issues / add comments / transition status. Requires a site URL, ' +
+        'account email and API token.',
       author: 'Kravn',
       priority: 100,
       configSchema: {
@@ -363,6 +407,8 @@ export function jiraPlugin(): McpServerPlugin {
               return await search(cfg, args);
             case 'jira_get_issue':
               return await getIssue(cfg, args);
+            case 'jira_get_comments':
+              return await getComments(cfg, args);
             case 'jira_list_projects':
               return await listProjects(cfg, args);
             case 'jira_create_issue':

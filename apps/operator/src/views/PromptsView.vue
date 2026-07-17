@@ -5,6 +5,7 @@ import type { Prompt, LocalPrompt, LocalPromptArgument, UpstreamServer } from '@
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { Pencil, Trash2 } from 'lucide-vue-next';
 import GroupedList, { type GroupListMeta } from '../components/GroupedList.vue';
 import { serverIconId } from '../lib/server-icon';
 
@@ -162,10 +163,10 @@ async function remove(p: LocalPrompt) {
           <td><small class="muted">{{ p.arguments.length }}</small></td>
           <td><small class="muted">v{{ p.version }}</small></td>
           <td><span class="badge" :class="p.enabled ? 'online' : 'disabled'">{{ p.enabled ? t('promptsView.on') : t('promptsView.off') }}</span></td>
-          <td>
-            <div class="btn-row" v-if="auth.can('registry.write')">
-              <button class="btn" @click="openEdit(p)">{{ t('promptsView.edit') }}</button>
-              <button class="btn danger" @click="remove(p)">{{ t('promptsView.delete') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap" v-if="auth.can('registry.write')">
+              <button class="btn icon" :title="t('promptsView.edit')" :aria-label="t('promptsView.edit')" @click="openEdit(p)"><Pencil :size="16" :stroke-width="2" /></button>
+              <button class="btn danger icon" :title="t('promptsView.delete')" :aria-label="t('promptsView.delete')" @click="remove(p)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>

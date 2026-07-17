@@ -5,6 +5,7 @@ import type { ChatAgent, Tool, Team, User, LlmProvider, UpstreamServer } from '@
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { Pencil, Trash2, X } from 'lucide-vue-next';
 import GroupedSelect, { type GroupedItem, type GroupMeta } from '../components/GroupedSelect.vue';
 import { serverIconId } from '../lib/server-icon';
 
@@ -180,10 +181,10 @@ function accessLabel(a: ChatAgent): string {
           <td><small class="muted">{{ a.toolIds.length }}</small></td>
           <td><small class="muted">{{ accessLabel(a) }}</small></td>
           <td><span class="badge" :class="a.enabled ? 'online' : 'disabled'">{{ a.enabled ? t('agentsView.on') : t('agentsView.off') }}</span></td>
-          <td>
-            <div class="btn-row" v-if="canWrite">
-              <button class="btn" @click="openEdit(a)">{{ t('agentsView.edit') }}</button>
-              <button class="btn danger" @click="remove(a)">{{ t('agentsView.delete') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap" v-if="canWrite">
+              <button class="btn icon" :title="t('agentsView.edit')" :aria-label="t('agentsView.edit')" @click="openEdit(a)"><Pencil :size="16" :stroke-width="2" /></button>
+              <button class="btn danger icon" :title="t('agentsView.delete')" :aria-label="t('agentsView.delete')" @click="remove(a)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>
@@ -243,7 +244,7 @@ function accessLabel(a: ChatAgent): string {
             <tbody>
               <tr v-for="tm in selectedTeams" :key="tm.id">
                 <td style="font-weight: 600">{{ tm.name }}</td>
-                <td style="text-align: right"><button class="btn danger" @click="removeTeam(tm.id)">{{ t('agentsView.remove') }}</button></td>
+                <td class="actions-cell"><button class="btn danger icon" :title="t('agentsView.remove')" :aria-label="t('agentsView.remove')" @click="removeTeam(tm.id)"><X :size="16" :stroke-width="2" /></button></td>
               </tr>
             </tbody>
           </table>
@@ -262,7 +263,7 @@ function accessLabel(a: ChatAgent): string {
             <tbody>
               <tr v-for="us in selectedUsers" :key="us.id">
                 <td><div style="font-weight: 600">{{ us.name || us.email }}</div><small v-if="us.name" class="muted">{{ us.email }}</small></td>
-                <td style="text-align: right"><button class="btn danger" @click="removeUser(us.id)">{{ t('agentsView.remove') }}</button></td>
+                <td class="actions-cell"><button class="btn danger icon" :title="t('agentsView.remove')" :aria-label="t('agentsView.remove')" @click="removeUser(us.id)"><X :size="16" :stroke-width="2" /></button></td>
               </tr>
             </tbody>
           </table>

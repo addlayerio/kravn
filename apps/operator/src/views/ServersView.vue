@@ -10,7 +10,7 @@ import PluginConfigModal from '../components/PluginConfigModal.vue';
 import IntegrationIcon from '../components/IntegrationIcon.vue';
 import MarkdownText from '../components/MarkdownText.vue';
 import { serverIconId } from '../lib/server-icon';
-import { RefreshCw, Pencil, Settings2, Trash2 } from 'lucide-vue-next';
+import { RefreshCw, Pencil, Trash2 } from 'lucide-vue-next';
 import { useI18n } from 'vue-i18n';
 
 const { t } = useI18n();
@@ -453,7 +453,8 @@ async function remove(srv: UpstreamServer) {
             <div class="btn-row" style="flex-wrap: nowrap">
               <button v-if="s.authType === 'oauth' && s.status !== 'online' && auth.can('servers.write')" class="btn primary" @click="connectOAuth(s)">{{ t('serversView.connect') }}</button>
               <button class="btn icon" :title="t('serversView.sync')" :aria-label="t('serversView.sync')" @click="sync(s)"><RefreshCw :size="16" :stroke-width="2" /></button>
-              <button v-if="auth.can('servers.write')" class="btn icon" :title="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" :aria-label="s.transport === 'plugin' ? t('serversView.configure') : t('serversView.edit')" @click="editServer(s)"><component :is="s.transport === 'plugin' ? Settings2 : Pencil" :size="16" :stroke-width="2" /></button>
+              <!-- One "Edit" for the user, native or remote alike; editServer() routes to the right form internally. -->
+              <button v-if="auth.can('servers.write')" class="btn icon" :title="t('serversView.edit')" :aria-label="t('serversView.edit')" @click="editServer(s)"><Pencil :size="16" :stroke-width="2" /></button>
               <button v-if="auth.can('servers.delete')" class="btn danger icon" :title="t('serversView.delete')" :aria-label="t('serversView.delete')" @click="remove(s)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
@@ -754,12 +755,6 @@ async function remove(srv: UpstreamServer) {
 </template>
 
 <style scoped>
-/* Row actions never wrap: the column widens to fit the icons instead of dropping one to a second line. */
-.actions-cell {
-  white-space: nowrap;
-  width: 1%;
-  text-align: right;
-}
 .segmented {
   display: inline-flex;
   border: 1px solid var(--border, #33384a);

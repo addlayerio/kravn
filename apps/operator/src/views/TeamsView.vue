@@ -5,6 +5,7 @@ import type { Team, TeamMember, User } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { Users, KeyRound, Pencil, Trash2, X } from 'lucide-vue-next';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -194,12 +195,12 @@ function toggleTool(vs: ServerAccess, toolId: string) {
             <small class="muted">{{ team.description }}</small>
           </td>
           <td><span class="badge">{{ team.memberCount }}</span></td>
-          <td>
-            <div class="btn-row">
-              <button class="btn" @click="openMembers(team)">{{ t('teamsView.members') }}</button>
-              <button v-if="canWrite" class="btn" @click="openAccess(team)">{{ t('teamsView.mcpAccess') }}</button>
-              <button v-if="canWrite" class="btn" @click="openEdit(team)">{{ t('teamsView.edit') }}</button>
-              <button v-if="canWrite" class="btn danger" @click="remove(team)">{{ t('teamsView.delete') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap">
+              <button class="btn icon" :title="t('teamsView.members')" :aria-label="t('teamsView.members')" @click="openMembers(team)"><Users :size="16" :stroke-width="2" /></button>
+              <button v-if="canWrite" class="btn icon" :title="t('teamsView.mcpAccess')" :aria-label="t('teamsView.mcpAccess')" @click="openAccess(team)"><KeyRound :size="16" :stroke-width="2" /></button>
+              <button v-if="canWrite" class="btn icon" :title="t('teamsView.edit')" :aria-label="t('teamsView.edit')" @click="openEdit(team)"><Pencil :size="16" :stroke-width="2" /></button>
+              <button v-if="canWrite" class="btn danger icon" :title="t('teamsView.delete')" :aria-label="t('teamsView.delete')" @click="remove(team)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>
@@ -232,7 +233,7 @@ function toggleTool(vs: ServerAccess, toolId: string) {
           <tr v-for="m in members" :key="m.userId">
             <td><div style="font-weight: 600">{{ m.email }}</div><small class="muted">{{ m.name }}</small></td>
             <td><span class="badge">{{ m.role }}</span></td>
-            <td><button v-if="canWrite" class="btn danger" @click="removeMember(m)">{{ t('teamsView.remove') }}</button></td>
+            <td class="actions-cell"><button v-if="canWrite" class="btn danger icon" :title="t('teamsView.remove')" :aria-label="t('teamsView.remove')" @click="removeMember(m)"><X :size="16" :stroke-width="2" /></button></td>
           </tr>
         </tbody>
       </table>

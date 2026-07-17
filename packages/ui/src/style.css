@@ -485,6 +485,12 @@ th {
 tbody tr:hover {
   background: var(--hover);
 }
+/* Row-actions column: shrink to its content and never wrap the buttons to a second line. */
+.actions-cell {
+  width: 1%;
+  white-space: nowrap;
+  text-align: right;
+}
 
 /* ============================================================================
  * Badges / pills

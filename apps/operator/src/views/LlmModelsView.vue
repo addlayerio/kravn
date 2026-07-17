@@ -5,6 +5,7 @@ import { LLM_MODEL_CATALOG, type LlmProvider, type LlmProviderType, type LlmTest
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { PlugZap, Pencil, Trash2 } from 'lucide-vue-next';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -216,11 +217,11 @@ async function remove(p: LlmProvider) {
             <span class="badge" :class="p.status === 'ok' ? 'online' : p.status === 'error' ? 'error' : 'unknown'">{{ p.status }}</span>
             <div v-if="p.lastError"><small class="muted">{{ p.lastError }}</small></div>
           </td>
-          <td>
-            <div class="btn-row">
-              <button class="btn" :disabled="testing === p.id" @click="test(p)">{{ testing === p.id ? t('llmModelsView.testing') : t('llmModelsView.test') }}</button>
-              <button v-if="canWrite" class="btn" @click="openEdit(p)">{{ t('llmModelsView.edit') }}</button>
-              <button v-if="canWrite" class="btn danger" @click="remove(p)">{{ t('llmModelsView.delete') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap">
+              <button class="btn icon" :disabled="testing === p.id" :title="testing === p.id ? t('llmModelsView.testing') : t('llmModelsView.test')" :aria-label="t('llmModelsView.test')" @click="test(p)"><PlugZap :size="16" :stroke-width="2" /></button>
+              <button v-if="canWrite" class="btn icon" :title="t('llmModelsView.edit')" :aria-label="t('llmModelsView.edit')" @click="openEdit(p)"><Pencil :size="16" :stroke-width="2" /></button>
+              <button v-if="canWrite" class="btn danger icon" :title="t('llmModelsView.delete')" :aria-label="t('llmModelsView.delete')" @click="remove(p)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>

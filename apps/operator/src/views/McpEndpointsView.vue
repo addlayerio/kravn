@@ -7,6 +7,7 @@ import { api } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import { copyText } from '../lib/clipboard';
+import { Copy, Pencil, Trash2 } from 'lucide-vue-next';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -76,11 +77,11 @@ async function copyUrl(slug: string): Promise<void> {
             <div><span class="badge" style="margin-top: 0.25rem">{{ v.access }}</span></div>
           </td>
           <td><small style="font-family: ui-monospace, monospace">/endpoints/{{ v.slug }}/mcp</small></td>
-          <td>
-            <div class="btn-row">
-              <button class="btn" @click="copyUrl(v.slug)">{{ t('endpointsView.copyUrl') }}</button>
-              <button v-if="auth.can('endpoints.write')" class="btn" @click="openEdit(v)">{{ t('endpointsView.edit') }}</button>
-              <button v-if="auth.can('endpoints.delete')" class="btn danger" @click="remove(v)">{{ t('endpointsView.delete') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap">
+              <button class="btn icon" :title="t('endpointsView.copyUrl')" :aria-label="t('endpointsView.copyUrl')" @click="copyUrl(v.slug)"><Copy :size="16" :stroke-width="2" /></button>
+              <button v-if="auth.can('endpoints.write')" class="btn icon" :title="t('endpointsView.edit')" :aria-label="t('endpointsView.edit')" @click="openEdit(v)"><Pencil :size="16" :stroke-width="2" /></button>
+              <button v-if="auth.can('endpoints.delete')" class="btn danger icon" :title="t('endpointsView.delete')" :aria-label="t('endpointsView.delete')" @click="remove(v)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>
           </td>
         </tr>

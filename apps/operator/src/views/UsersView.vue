@@ -5,6 +5,7 @@ import type { User } from '@kravn/contracts';
 import { api, ApiError } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
+import { Pencil, Trash2 } from 'lucide-vue-next';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -97,16 +98,16 @@ async function remove(u: User) {
           <td>
             <span class="badge" :class="u.disabled ? 'offline' : 'online'">{{ u.disabled ? t('usersView.statusDisabled') : t('usersView.statusActive') }}</span>
           </td>
-          <td>
-            <div class="btn-row">
-              <button v-if="auth.can('users.write')" class="btn" @click="openEdit(u)">{{ t('usersView.edit') }}</button>
+          <td class="actions-cell">
+            <div class="btn-row" style="flex-wrap: nowrap">
+              <button v-if="auth.can('users.write')" class="btn icon" :title="t('usersView.edit')" :aria-label="t('usersView.edit')" @click="openEdit(u)"><Pencil :size="16" :stroke-width="2" /></button>
               <button
                 v-if="auth.can('users.write') && u.id !== auth.user?.id"
-                class="btn danger"
+                class="btn danger icon"
+                :title="t('usersView.delete')"
+                :aria-label="t('usersView.delete')"
                 @click="remove(u)"
-              >
-                {{ t('usersView.delete') }}
-              </button>
+              ><Trash2 :size="16" :stroke-width="2" /></button>
               <small v-if="u.id === auth.user?.id" class="muted">{{ t('usersView.you') }}</small>
             </div>
           </td>
