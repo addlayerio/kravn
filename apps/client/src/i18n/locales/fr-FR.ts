@@ -37,6 +37,7 @@ export default {
     "remove": "Retirer",
     "uploading": "Envoi…",
     "attachFiles": "Joindre des fichiers",
+    "composerAdd": "Ajouter",
     "promptLibrary": "Bibliothèque de prompts",
     "memoryTooltip": "Mémoire — ce dont l'assistant se souvient toujours",
     "messagePlaceholder": "Message…  (joindre ou glisser des fichiers — PDF, Word, Excel/CSV, texte, images)",
@@ -151,6 +152,7 @@ export default {
     "add": "Ajouter",
     "instructions": "Instructions",
     "chatDefault": "Par défaut de la conversation",
+    "webSearch": "Recherche web",
     "webSearchOn": "Recherche web : activée (cliquez pour désactiver)",
     "webSearchOff": "Recherche web : désactivée (cliquez pour activer)"
   },

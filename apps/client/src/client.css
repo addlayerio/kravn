@@ -749,9 +749,69 @@
   color: var(--text-muted);
 }
 
-/* Web-search composer toggle: highlighted when active. */
-.web-toggle.on {
-  background: var(--accent);
-  color: #fff;
+/* Composer "+" menu (replaces the old row of loose buttons) + active-mode chip. */
+.composer {
+  align-items: flex-end; /* bottom-align the + / chip / send with the input */
+}
+.composer-plus {
+  position: relative;
+  flex: none;
+}
+/* The + button gets an accent when a mode (web search) is active, so it's visible without opening the menu. */
+.composer-plus > .btn.on {
+  color: var(--accent);
   border-color: var(--accent);
+}
+.composer-menu {
+  position: absolute;
+  bottom: calc(100% + 8px);
+  left: 0;
+  z-index: 61;
+  min-width: 230px;
+  max-height: 60vh;
+  overflow-y: auto;
+  background: var(--bg-surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.35);
+  padding: 4px;
+}
+.composer-menu .conv-menu-item svg {
+  flex: none;
+}
+.composer-check {
+  margin-left: auto;
+  color: var(--accent);
+}
+/* Active-mode pill shown inside the composer (e.g. web search on), removable. */
+.mode-chip {
+  display: inline-flex;
+  align-items: center;
+  align-self: center;
+  gap: 0.3rem;
+  flex: none;
+  padding: 0.3rem 0.55rem;
+  border-radius: 999px;
+  font-size: 12.5px;
+  color: var(--accent);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent);
+  white-space: nowrap;
+}
+.mode-chip svg {
+  flex: none;
+}
+.mode-chip-x {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+  color: inherit;
+  padding: 0;
+  opacity: 0.7;
+}
+.mode-chip-x:hover {
+  opacity: 1;
 }

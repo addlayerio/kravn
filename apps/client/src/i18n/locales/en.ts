@@ -37,6 +37,7 @@ export default {
     "remove": "Remove",
     "uploading": "Uploading…",
     "attachFiles": "Attach files",
+    "composerAdd": "Add",
     "promptLibrary": "Prompt library",
     "memoryTooltip": "Memory — what the assistant always remembers",
     "messagePlaceholder": "Message…  (attach or drag files — PDF, Word, Excel/CSV, text, images)",
@@ -151,6 +152,7 @@ export default {
     "add": "Add",
     "instructions": "Instructions",
     "chatDefault": "Chat default",
+    "webSearch": "Web search",
     "webSearchOn": "Web search: on (click to turn off)",
     "webSearchOff": "Web search: off (click to turn on)"
   },

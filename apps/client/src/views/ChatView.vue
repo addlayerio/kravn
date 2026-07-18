@@ -14,7 +14,7 @@ import GroupedSelect, { type GroupedItem, type GroupMeta } from '../GroupedSelec
 import {
   Folder, MoreHorizontal, Pencil, Settings, Trash2, Bot, Pin, ChevronRight, ChevronDown,
   Ban, Archive, ArchiveRestore, Globe, MessageSquare, Clock, FileText, User, Wrench,
-  ClipboardList, Brain, Paperclip, Download, X,
+  ClipboardList, Brain, Paperclip, Download, X, Plus, Check,
 } from 'lucide-vue-next';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
@@ -704,6 +704,9 @@ function openMemory() {
   loadMemory();
 }
 
+// Composer "+" menu (attach / prompts / memory / web search) — collapses the loose buttons into one entry.
+const composerMenu = ref(false);
+
 // Per-chat native web search (Claude/Gemini/OpenAI run the search server-side when this is on).
 async function toggleWebSearch() {
   if (!current.value) return;
@@ -1174,19 +1177,39 @@ async function logout() {
             <input ref="fileInput" type="file" multiple style="display: none"
               accept=".pdf,.doc,.docx,.txt,.md,.csv,.tsv,.xlsx,.xls,.json,.log,.yaml,.yml,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
               @change="onFilesSelected" />
-            <button class="btn icon" :title="t('chat.attachFiles')" :aria-label="t('chat.attachFiles')" :disabled="uploading" @click="triggerPick"><Paperclip :size="16" :stroke-width="2" /></button>
-            <button class="btn icon" :title="t('chat.promptLibrary')" :aria-label="t('chat.promptLibrary')" @click="openPrompts"><ClipboardList :size="16" :stroke-width="2" /></button>
-            <button class="btn icon" :title="t('chat.memoryTooltip')" :aria-label="t('chat.memoryTooltip')" @click="openMemory"><Brain :size="16" :stroke-width="2" /></button>
-            <button
-              class="btn icon web-toggle"
-              :class="{ on: current?.webSearch }"
-              :title="current?.webSearch ? t('chat.webSearchOn') : t('chat.webSearchOff')"
-              :aria-label="current?.webSearch ? t('chat.webSearchOn') : t('chat.webSearchOff')"
-              @click="toggleWebSearch"
-            ><Globe :size="16" :stroke-width="2" /></button>
+            <div class="composer-plus" @keydown.esc="composerMenu = false">
+              <button
+                class="btn icon"
+                :class="{ on: current?.webSearch }"
+                :title="t('chat.composerAdd')"
+                :aria-label="t('chat.composerAdd')"
+                :aria-expanded="composerMenu"
+                @click.stop="composerMenu = !composerMenu"
+              ><Plus :size="18" :stroke-width="2" /></button>
+              <div v-if="composerMenu" class="composer-menu" @click.stop>
+                <button class="conv-menu-item" :disabled="uploading" @click="composerMenu = false; triggerPick()">
+                  <Paperclip :size="16" :stroke-width="2" /> {{ t('chat.attachFiles') }}
+                </button>
+                <button class="conv-menu-item" @click="composerMenu = false; openPrompts()">
+                  <ClipboardList :size="16" :stroke-width="2" /> {{ t('chat.promptLibrary') }}
+                </button>
+                <button class="conv-menu-item" @click="composerMenu = false; openMemory()">
+                  <Brain :size="16" :stroke-width="2" /> {{ t('chat.memoryTooltip') }}
+                </button>
+                <button class="conv-menu-item" :aria-pressed="!!current?.webSearch" @click="toggleWebSearch()">
+                  <Globe :size="16" :stroke-width="2" /> {{ t('chat.webSearch') }}
+                  <Check v-if="current?.webSearch" :size="16" :stroke-width="2" class="composer-check" />
+                </button>
+              </div>
+            </div>
+            <span v-if="current?.webSearch" class="mode-chip">
+              <Globe :size="13" :stroke-width="2" /> {{ t('chat.webSearch') }}
+              <button class="mode-chip-x" :title="t('chat.webSearchOn')" :aria-label="t('chat.webSearchOn')" @click="toggleWebSearch()"><X :size="13" :stroke-width="2" /></button>
+            </span>
             <textarea v-model="input" rows="2" :placeholder="t('chat.messagePlaceholder')" @keydown.enter.exact.prevent="send"></textarea>
             <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">{{ t('chat.send') }}</button>
           </div>
+          <div v-if="composerMenu" class="menu-backdrop" @click="composerMenu = false"></div>
         </div>
       </template>
 
