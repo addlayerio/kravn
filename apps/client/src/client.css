@@ -756,6 +756,12 @@
   display: flex;
   align-items: stretch; /* the + fills the composer height, matching the input and Send button */
 }
+/* Don't force the + into a square: under the stretched composer height, .btn.icon's aspect-ratio:1
+   blows its width out to the full height and collides with the input. Size it by padding, like Send. */
+.composer-plus > .btn.icon {
+  aspect-ratio: auto;
+  padding: 0.4rem 0.6rem;
+}
 /* The + button gets an accent when a mode (web search) is active, so it's visible without opening the menu. */
 .composer-plus > .btn.on {
   color: var(--accent);
