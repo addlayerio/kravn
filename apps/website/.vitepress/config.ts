@@ -145,6 +145,33 @@ export default defineConfig({
     if (slug === 'faq') {
       pageData.frontmatter.head.push(['script', { type: 'application/ld+json' }, JSON.stringify(FAQ_JSONLD)]);
     }
+    // Learn articles carry TechArticle + BreadcrumbList structured data (title/description from frontmatter).
+    if (slug.startsWith('learn/')) {
+      const title = pageData.frontmatter.title ?? pageData.title;
+      const description = pageData.frontmatter.description ?? '';
+      pageData.frontmatter.head.push(
+        ['script', { type: 'application/ld+json' }, JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'TechArticle',
+          headline: title,
+          description,
+          url,
+          mainEntityOfPage: url,
+          author: { '@type': 'Organization', name: 'AddLayer', url: HOSTNAME },
+          publisher: { '@type': 'Organization', name: 'AddLayer', logo: { '@type': 'ImageObject', url: `${HOSTNAME}/logo.svg` } },
+          isPartOf: { '@type': 'CollectionPage', name: 'Learn', url: `${HOSTNAME}/learn` },
+        })],
+        ['script', { type: 'application/ld+json' }, JSON.stringify({
+          '@context': 'https://schema.org',
+          '@type': 'BreadcrumbList',
+          itemListElement: [
+            { '@type': 'ListItem', position: 1, name: 'Home', item: HOSTNAME },
+            { '@type': 'ListItem', position: 2, name: 'Learn', item: `${HOSTNAME}/learn` },
+            { '@type': 'ListItem', position: 3, name: title, item: url },
+          ],
+        })],
+      );
+    }
   },
 
   themeConfig: {
@@ -154,6 +181,7 @@ export default defineConfig({
     nav: [
       { text: 'Why Kravn', link: '/guide/what-is-kravn', activeMatch: '/guide/what-is-kravn' },
       { text: 'Compare', link: '/comparison' },
+      { text: 'Learn', link: '/learn/', activeMatch: '/learn/' },
       { text: 'Integrations', link: '/integrations' },
       { text: 'Get Started', link: '/guide/getting-started' },
       { text: 'Install', link: '/guide/installation' },
@@ -202,6 +230,40 @@ export default defineConfig({
             { text: 'Security & compliance', link: '/guide/security' },
             { text: 'Key management (KMS/HSM)', link: '/guide/key-management' },
             { text: 'Disaster recovery & continuity', link: '/guide/dr-bcp' },
+          ],
+        },
+      ],
+      '/learn/': [
+        {
+          text: 'Fundamentals',
+          items: [
+            { text: 'What is MCP?', link: '/learn/what-is-model-context-protocol' },
+            { text: 'What is an MCP Gateway?', link: '/learn/what-is-an-mcp-gateway' },
+            { text: 'What is an MCP Registry?', link: '/learn/mcp-registry' },
+            { text: 'MCP Proxy', link: '/learn/mcp-proxy' },
+            { text: 'MCP Reverse Proxy', link: '/learn/mcp-reverse-proxy' },
+            { text: 'MCP vs API Gateway', link: '/learn/mcp-vs-api-gateway' },
+          ],
+        },
+        {
+          text: 'Security & governance',
+          items: [
+            { text: 'MCP Authentication', link: '/learn/mcp-authentication' },
+            { text: 'MCP Authorization', link: '/learn/mcp-authorization' },
+            { text: 'MCP Security', link: '/learn/mcp-security' },
+            { text: 'MCP Governance', link: '/learn/mcp-governance' },
+            { text: 'Tool Poisoning & Rug-Pull', link: '/learn/mcp-tool-poisoning' },
+          ],
+        },
+        {
+          text: 'Enterprise & operations',
+          items: [
+            { text: 'Enterprise MCP Architecture', link: '/learn/enterprise-mcp-architecture' },
+            { text: 'MCP for Regulated Industries', link: '/learn/mcp-for-regulated-industries' },
+            { text: 'MCP Observability & Auditing', link: '/learn/mcp-observability' },
+            { text: 'Running MCP On-Premise', link: '/learn/running-mcp-on-premise' },
+            { text: 'Deploying MCP in Kubernetes', link: '/learn/deploying-mcp-in-kubernetes' },
+            { text: 'MCP Best Practices', link: '/learn/mcp-best-practices' },
           ],
         },
       ],
