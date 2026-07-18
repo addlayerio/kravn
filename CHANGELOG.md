@@ -12,6 +12,16 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.89] — 2026-07-18
+
+- 📣 **Every chat has its own link — refresh no longer loses it.** Chats, projects and scheduled tasks now
+  each have their own URL (`/c/…`, `/p/…`, `/s/…`), so a page refresh (F5) reopens exactly what you were
+  looking at, browser back/forward moves between views, and you can share a link straight to a chat. Deleting
+  or archiving the open chat returns to the home view; a stale link falls back gracefully.
+- 🐛 **Composer polish.** Tidied the redesigned composer: the `+` and **Send** buttons now match the input
+  height instead of rendering small, and no longer overlap the input, and the active web-search mode shows as
+  a removable pill above the input.
+
 ## [0.1.88] — 2026-07-18
 
 - 🎨 **Chat client — a cleaner, more consistent UI.** Every emoji glyph in the chat app was replaced with proper
