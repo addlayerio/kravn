@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { computed, nextTick, onMounted, reactive, ref } from 'vue';
+import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { useRouter } from 'vue-router';
+import { useRouter, useRoute } from 'vue-router';
 import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
 import { api, ApiError, postSse } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
@@ -24,6 +24,7 @@ interface ProjectDetail { project: ChatProject; documents: ChatProjectDocument[]
 const { t } = useI18n();
 const auth = useAuthStore();
 const router = useRouter();
+const route = useRoute();
 const brandName = computed(() => auth.info?.branding?.brandName || auth.info?.instanceName || 'Kravn');
 const brandCustomized = computed(() => shouldShowAttribution(auth.info?.branding, auth.info?.instanceName));
 
@@ -216,7 +217,56 @@ async function load() {
 async function loadSchedules() {
   schedules.value = (await api.get<{ schedules: ChatSchedule[] }>('/api/chat/schedules')).schedules;
 }
-onMounted(load);
+// ── Deep linking ────────────────────────────────────────────────────────────
+// Each open chat / project / scheduled task owns a URL, so a refresh (F5) or a shared link reopens it.
+// syncUrl() pushes the URL to match the current view; applyRoute() opens whatever the URL points at
+// (on first load and on browser back/forward). Both are guarded so they don't loop.
+function syncUrl() {
+  const target = current.value
+    ? { name: 'chat-conversation', params: { id: current.value.id } }
+    : project.value
+      ? { name: 'chat-project', params: { id: project.value.project.id } }
+      : scheduleView.value && editingScheduleId.value
+        ? { name: 'chat-schedule', params: { id: editingScheduleId.value } }
+        : { name: 'chat' };
+  const curId = typeof route.params.id === 'string' ? route.params.id : undefined;
+  if (route.name !== target.name || curId !== (target as { params?: { id?: string } }).params?.id) {
+    void router.push(target);
+  }
+}
+async function applyRoute() {
+  const id = typeof route.params.id === 'string' ? route.params.id : undefined;
+  try {
+    if (route.name === 'chat-conversation' && id) {
+      if (current.value?.id !== id) await open({ id } as ChatConversation);
+    } else if (route.name === 'chat-project' && id) {
+      if (project.value?.project.id !== id) await openProject({ id } as ChatProject);
+    } else if (route.name === 'chat-schedule' && id) {
+      if (!(scheduleView.value && editingScheduleId.value === id)) {
+        const s = schedules.value.find((x) => x.id === id);
+        if (s) openSchedule(s);
+        else void router.replace({ name: 'chat' });
+      }
+    } else if (route.name === 'chat') {
+      // Home ('/') — e.g. browser back from a chat: show the empty state.
+      current.value = null;
+      project.value = null;
+      scheduleView.value = false;
+    }
+  } catch {
+    // Stale/invalid id (deleted chat, bad link) → fall back to the home view.
+    current.value = null;
+    project.value = null;
+    scheduleView.value = false;
+    if (route.name !== 'chat') void router.replace({ name: 'chat' });
+  }
+}
+onMounted(async () => {
+  await load();
+  await applyRoute();
+});
+// Browser back/forward (and any external URL change) re-syncs the view to the URL.
+watch(() => route.fullPath, applyRoute);
 
 async function scrollDown() {
   await nextTick();
@@ -233,6 +283,7 @@ async function open(c: ChatConversation) {
   messages.value = res.messages;
   attachments.value = res.attachments ?? [];
   scrollDown();
+  syncUrl();
 }
 
 // ── Inline rename of the conversation title (click title → input; Enter/blur saves, Esc cancels) ──
@@ -308,6 +359,7 @@ async function openProject(p: ChatProject) {
   share.email = '';
   void loadAvailableTools();
   if (res.project.access === 'owner') void loadShareableUsers();
+  syncUrl();
 }
 function openNewProject() {
   projectError.value = '';
@@ -404,6 +456,7 @@ async function deleteConversation(c: ChatConversation) {
     current.value = null;
     messages.value = [];
     editingTitle.value = false;
+    syncUrl();
   }
 }
 
@@ -466,6 +519,7 @@ async function toggleArchive(c: ChatConversation) {
     if (next && current.value?.id === c.id) {
       current.value = null;
       messages.value = [];
+      syncUrl();
     }
   } catch (e) {
     alert(e instanceof ApiError ? e.message : t('chat.couldNotUpdateChat'));
@@ -595,6 +649,7 @@ function openSchedule(s: ChatSchedule) {
     timezone: s.timezone || 'UTC', enabled: s.enabled,
   });
   scheduleView.value = true;
+  syncUrl();
 }
 function onScheduleProviderChange() {
   const p = providers.value.find((x) => x.id === sf.providerId);
@@ -805,6 +860,7 @@ async function createConversation() {
     project.value = null;
     current.value = res.conversation;
     messages.value = [];
+    syncUrl();
   } catch (e) {
     newError.value = e instanceof ApiError ? e.message : t('chat.couldNotCreateChat');
   }
