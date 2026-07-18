@@ -43,19 +43,17 @@ Compose is the easiest way to run Kravn alongside a database container for a rea
 
 ## Option B — Kubernetes with Helm
 
-The chart is designed to install with **zero overrides**:
+The chart is designed to install with **zero overrides**, straight from the public registry — no checkout
+needed:
 
 ```bash
-helm install kravn ./charts/kravn
+helm install kravn oci://ghcr.io/addlayerio/charts/kravn
 kubectl port-forward svc/kravn 8080:80
 # → http://localhost:8080
 ```
 
-Or install the packaged chart straight from the registry (no checkout needed):
-
-```bash
-helm install kravn oci://ghcr.io/addlayerio/charts/kravn --version 0.1.42
-```
+Pin a specific release with `--version <x.y.z>` (browse tags on the repo's *Packages* page). If you've
+cloned the repo, you can install from the local chart instead: `helm install kravn ./charts/kravn`.
 
 > If the GHCR packages are private, either make them public from the repo's *Packages* page or pull with
 > an `imagePullSecret`.
@@ -94,7 +92,7 @@ database:
 ```
 
 ```bash
-helm install kravn ./charts/kravn -f values.yaml
+helm install kravn oci://ghcr.io/addlayerio/charts/kravn -f values.yaml
 ```
 
 ## Choosing a database

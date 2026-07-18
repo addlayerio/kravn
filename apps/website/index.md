@@ -60,8 +60,8 @@ governed by its own access policies, with nothing leaving the perimeter and no i
 # Docker
 docker compose up            # → http://localhost:8080
 
-# Kubernetes
-helm install kravn ./charts/kravn
+# Kubernetes — straight from the public registry, no clone needed
+helm install kravn oci://ghcr.io/addlayerio/charts/kravn
 kubectl port-forward svc/kravn 8080:80
 ```
 
