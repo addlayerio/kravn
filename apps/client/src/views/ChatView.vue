@@ -1166,7 +1166,11 @@ async function logout() {
           @drop.prevent="onDrop"
         >
           <div v-if="dragOver" class="drop-hint">{{ t('chat.dropFiles') }}</div>
-          <div v-if="pending.length || uploading" class="att-tray">
+          <div v-if="pending.length || uploading || current?.webSearch" class="att-tray">
+            <span v-if="current?.webSearch" class="mode-chip">
+              <Globe :size="13" :stroke-width="2" /> {{ t('chat.webSearch') }}
+              <button class="mode-chip-x" :title="t('chat.webSearchOn')" :aria-label="t('chat.webSearchOn')" @click="toggleWebSearch()"><X :size="13" :stroke-width="2" /></button>
+            </span>
             <span v-for="a in pending" :key="a.id" class="att-chip">
               <Paperclip :size="14" :stroke-width="2" /> {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}{{ a.textChars ? '' : t('chat.noTextSuffix') }}</small>
               <button class="att-x" :title="t('chat.remove')" :aria-label="t('chat.remove')" @click="removePending(a)"><X :size="14" :stroke-width="2" /></button>
@@ -1202,10 +1206,6 @@ async function logout() {
                 </button>
               </div>
             </div>
-            <span v-if="current?.webSearch" class="mode-chip">
-              <Globe :size="13" :stroke-width="2" /> {{ t('chat.webSearch') }}
-              <button class="mode-chip-x" :title="t('chat.webSearchOn')" :aria-label="t('chat.webSearchOn')" @click="toggleWebSearch()"><X :size="13" :stroke-width="2" /></button>
-            </span>
             <textarea v-model="input" rows="2" :placeholder="t('chat.messagePlaceholder')" @keydown.enter.exact.prevent="send"></textarea>
             <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">{{ t('chat.send') }}</button>
           </div>
