@@ -9,6 +9,7 @@ export default {
     "newChat": "Nuevo chat",
     "couldNotDeleteChat": "No se pudo eliminar el chat. Intentá de nuevo.",
     "couldNotUpdateChat": "No se pudo actualizar el chat.",
+    "couldNotUpdateProject": "No se pudo actualizar el proyecto.",
     "couldNotMoveChat": "No se pudo mover el chat.",
     "confirmDeleteProject": "¿Eliminar el proyecto “{name}”? Se eliminan sus documentos; sus chats se conservan.",
     "scheduleFieldsRequired": "Se requieren nombre, prompt, proveedor y modelo.",

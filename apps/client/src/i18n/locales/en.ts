@@ -9,6 +9,7 @@ export default {
     "newChat": "New chat",
     "couldNotDeleteChat": "Could not delete the chat — please try again.",
     "couldNotUpdateChat": "Could not update the chat.",
+    "couldNotUpdateProject": "Could not update the project.",
     "couldNotMoveChat": "Could not move the chat.",
     "confirmDeleteProject": "Delete project “{name}”? Its documents are removed; its chats are kept.",
     "scheduleFieldsRequired": "Name, prompt, provider and model are required.",

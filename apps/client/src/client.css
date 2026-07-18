@@ -13,6 +13,54 @@
   flex-direction: column;
   min-height: 0;
 }
+/* Only the conversation list scrolls; brand, new-chat and the footer stay put instead of
+   compressing when the window gets short. */
+.convs {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+}
+.chat-sidebar > *:not(.convs) {
+  flex-shrink: 0;
+}
+.proj-rename {
+  flex: 1;
+  min-width: 0;
+  padding: 3px 6px;
+  border-radius: 6px;
+  border: 1px solid var(--border);
+  background: var(--bg-surface);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}
+
+/* Lucide icons replaced the old emoji glyphs. Inline leading markers (a folder/chat/clock icon
+   before a label) baseline-align low, so nudge them to optical center; in flex containers the
+   nudge is simply ignored. */
+.chat-sidebar svg,
+.project-panel svg,
+.chat-head svg,
+.modal svg {
+  vertical-align: -0.15em;
+}
+/* Icon-only buttons and single-glyph slots: center the SVG as a block instead of leaving it on
+   the text baseline. */
+.conv-menu-btn,
+.conv-del,
+.head-del,
+.tag-x,
+.att-x,
+.foot-gear,
+.pin-dot,
+.caret,
+.sub-caret,
+.dl-icon,
+.conv-menu-item span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
 .brand-wrap {
   border-bottom: 1px solid var(--border);
 }

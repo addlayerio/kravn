@@ -11,6 +11,11 @@ import BrandLogo from '../BrandLogo.vue';
 import PoweredByKravn from '../PoweredByKravn.vue';
 import LocaleSwitcher from '../LocaleSwitcher.vue';
 import GroupedSelect, { type GroupedItem, type GroupMeta } from '../GroupedSelect.vue';
+import {
+  Folder, MoreHorizontal, Pencil, Settings, Trash2, Bot, Pin, ChevronRight, ChevronDown,
+  Ban, Archive, ArchiveRestore, Globe, MessageSquare, Clock, FileText, User, Wrench,
+  ClipboardList, Brain, Paperclip, Download, X,
+} from 'lucide-vue-next';
 
 interface ProviderOpt { id: string; name: string; models: string[]; defaultModel: string }
 interface VsOpt { slug: string; name: string }
@@ -496,6 +501,63 @@ async function deleteProject(p: ChatProject) {
   if (project.value?.project.id === p.id) project.value = null;
 }
 
+// ── Project actions menu (rename / configure / delete) — mirrors the per-chat menu ──
+const projMenuFor = ref<string | null>(null);
+const projMenuPos = ref({ x: 0, y: 0 });
+const projMenuUp = ref(false);
+const renamingProjectId = ref<string | null>(null);
+const projRenameDraft = ref('');
+
+function toggleProjMenu(p: ChatProject, ev: MouseEvent) {
+  if (projMenuFor.value === p.id) {
+    projMenuFor.value = null;
+    return;
+  }
+  const r = (ev.currentTarget as HTMLElement).getBoundingClientRect();
+  const width = 220;
+  const x = Math.min(r.right - width + 8, window.innerWidth - width - 8);
+  projMenuUp.value = r.bottom > window.innerHeight - 180;
+  projMenuPos.value = { x: Math.max(8, x), y: projMenuUp.value ? r.top - 8 : r.bottom + 4 };
+  projMenuFor.value = p.id;
+}
+function closeProjMenu() {
+  projMenuFor.value = null;
+}
+async function startRenameProject(p: ChatProject) {
+  closeProjMenu();
+  renamingProjectId.value = p.id;
+  projRenameDraft.value = p.name;
+  await nextTick();
+  const el = document.querySelector<HTMLInputElement>('.proj-rename');
+  el?.focus();
+  el?.select();
+}
+function cancelRenameProject() {
+  renamingProjectId.value = null;
+}
+async function commitRenameProject(p: ChatProject) {
+  if (renamingProjectId.value !== p.id) return; // guard: enter fires, then blur — only rename once
+  renamingProjectId.value = null;
+  const name = projRenameDraft.value.trim();
+  if (!name || name === p.name) return;
+  try {
+    const res = await api.put<{ project: ChatProject }>(`/api/chat/projects/${p.id}`, { name });
+    p.name = res.project.name;
+    if (project.value?.project.id === p.id) project.value.project.name = res.project.name;
+  } catch (e) {
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotUpdateProject'));
+  }
+}
+async function openProjectSettings(p: ChatProject) {
+  closeProjMenu();
+  await openProject(p);
+  showProjectSettings.value = true;
+}
+function deleteFromProjMenu(p: ChatProject) {
+  closeProjMenu();
+  deleteProject(p);
+}
+
 // ── New chat ──────────────────────────────────────────────────────────────
 // ── Scheduled tasks ─────────────────────────────────────────────────────────
 const scheduleView = ref(false);
@@ -901,18 +963,36 @@ async function logout() {
         <div
           v-for="p in projects"
           :key="p.id"
-          class="conv-item"
+          class="conv-item conv-row"
           :class="{ active: project?.project.id === p.id }"
-          @click="openProject(p)"
+          @click="renamingProjectId === p.id ? null : openProject(p)"
         >
-          📁 {{ p.name }}
-          <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">{{ t('nav.shared') }} · {{ p.ownerEmail }}</small>
+          <input
+            v-if="renamingProjectId === p.id"
+            v-model="projRenameDraft"
+            class="proj-rename"
+            @click.stop
+            @keydown.enter.prevent="commitRenameProject(p)"
+            @keydown.esc.prevent="cancelRenameProject()"
+            @blur="commitRenameProject(p)"
+          />
+          <template v-else>
+            <span class="conv-item-title"><Folder :size="15" :stroke-width="2" /> {{ p.name }}
+              <small v-if="p.access && p.access !== 'owner'" class="muted" style="display: block; font-size: 11px">{{ t('nav.shared') }} · {{ p.ownerEmail }}</small>
+            </span>
+            <button class="conv-menu-btn" :title="t('chatMenu.actions')" :aria-label="t('chatMenu.actions')" @click.stop="toggleProjMenu(p, $event)"><MoreHorizontal :size="16" :stroke-width="2" /></button>
+            <div v-if="projMenuFor === p.id" class="conv-menu" :class="{ up: projMenuUp }" :style="{ left: projMenuPos.x + 'px', top: projMenuPos.y + 'px' }" @click.stop>
+              <button v-if="p.access !== 'viewer'" class="conv-menu-item" @click="startRenameProject(p)"><span><Pencil :size="15" :stroke-width="2" /></span> {{ t('chatMenu.rename') }}</button>
+              <button class="conv-menu-item" @click="openProjectSettings(p)"><span><Settings :size="15" :stroke-width="2" /></span> {{ t('chat.projectSettings') }}</button>
+              <button v-if="p.access === 'owner'" class="conv-menu-item danger" @click="deleteFromProjMenu(p)"><span><Trash2 :size="15" :stroke-width="2" /></span> {{ t('chatMenu.delete') }}</button>
+            </div>
+          </template>
         </div>
 
         <template v-if="agents.length">
           <div class="side-section" style="margin-top: 6px"><span>{{ t('nav.agents') }}</span></div>
           <div v-for="a in agents" :key="a.id" class="conv-item" :title="a.description || a.name" @click="startFromAgent(a)">
-            🤖 {{ a.name }}
+            <Bot :size="15" :stroke-width="2" /> {{ a.name }}
             <small class="muted" style="display: block; font-size: 11px">{{ t('nav.agentOrg') }}</small>
           </div>
         </template>
@@ -936,22 +1016,22 @@ async function logout() {
           :class="{ active: current?.id === c.id }"
           @click="open(c)"
         >
-          <span class="conv-item-title"><span v-if="c.pinned" class="pin-dot" :title="t('chat.pinned')">📌</span>{{ c.title || t('chat.newChat') }}</span>
-          <button class="conv-menu-btn" :title="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)">⋯</button>
+          <span class="conv-item-title"><span v-if="c.pinned" class="pin-dot" :title="t('chat.pinned')"><Pin :size="14" :stroke-width="2" /></span>{{ c.title || t('chat.newChat') }}</span>
+          <button class="conv-menu-btn" :title="t('chatMenu.actions')" :aria-label="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)"><MoreHorizontal :size="16" :stroke-width="2" /></button>
           <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
-            <button class="conv-menu-item" @click="renameFromMenu(c)"><span>✏️</span> {{ t('chatMenu.rename') }}</button>
+            <button class="conv-menu-item" @click="renameFromMenu(c)"><span><Pencil :size="15" :stroke-width="2" /></span> {{ t('chatMenu.rename') }}</button>
             <div class="conv-menu-item has-sub" @click.stop="moveSubmenu = !moveSubmenu">
-              <span>📁</span> {{ t('chatMenu.moveToProject') }} <span class="sub-caret">›</span>
+              <span><Folder :size="15" :stroke-width="2" /></span> {{ t('chatMenu.moveToProject') }} <span class="sub-caret"><ChevronRight :size="14" :stroke-width="2" /></span>
               <div v-if="moveSubmenu" class="conv-submenu">
-                <button class="conv-menu-item" @click="moveToProject(c, '')"><span>🚫</span> {{ t('chatMenu.noProject') }}</button>
+                <button class="conv-menu-item" @click="moveToProject(c, '')"><span><Ban :size="15" :stroke-width="2" /></span> {{ t('chatMenu.noProject') }}</button>
                 <button v-for="p in projects" :key="p.id" class="conv-menu-item" @click="moveToProject(c, p.id)">
-                  <span>📁</span> {{ p.name }}
+                  <span><Folder :size="15" :stroke-width="2" /></span> {{ p.name }}
                 </button>
               </div>
             </div>
-            <button class="conv-menu-item" @click="togglePin(c)"><span>📌</span> {{ c.pinned ? t('chatMenu.unpin') : t('chatMenu.pin') }}</button>
-            <button class="conv-menu-item" @click="toggleArchive(c)"><span>🗄</span> {{ t('chatMenu.archive') }}</button>
-            <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> {{ t('chatMenu.delete') }}</button>
+            <button class="conv-menu-item" @click="togglePin(c)"><span><Pin :size="15" :stroke-width="2" /></span> {{ c.pinned ? t('chatMenu.unpin') : t('chatMenu.pin') }}</button>
+            <button class="conv-menu-item" @click="toggleArchive(c)"><span><Archive :size="15" :stroke-width="2" /></span> {{ t('chatMenu.archive') }}</button>
+            <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span><Trash2 :size="15" :stroke-width="2" /></span> {{ t('chatMenu.delete') }}</button>
           </div>
         </div>
 
@@ -967,13 +1047,13 @@ async function logout() {
           :class="{ active: scheduleView && editingScheduleId === s.id }"
           @click="openSchedule(s)"
         >
-          <span class="conv-item-title">⏱ {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></span>
-          <button class="conv-del" :title="t('chatMenu.deleteTask')" @click.stop="deleteSchedule(s)">🗑</button>
+          <span class="conv-item-title"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></span>
+          <button class="conv-del" :title="t('chatMenu.deleteTask')" :aria-label="t('chatMenu.deleteTask')" @click.stop="deleteSchedule(s)"><Trash2 :size="16" :stroke-width="2" /></button>
         </div>
 
         <div class="side-section archived-toggle" style="margin-top: 6px" @click="toggleArchivedView">
-          <span>🗄 {{ t('nav.archived') }}<span v-if="archived.length"> ({{ archived.length }})</span></span>
-          <span class="caret">{{ showArchived ? '▾' : '▸' }}</span>
+          <span><Archive :size="15" :stroke-width="2" /> {{ t('nav.archived') }}<span v-if="archived.length"> ({{ archived.length }})</span></span>
+          <span class="caret"><component :is="showArchived ? ChevronDown : ChevronRight" :size="14" :stroke-width="2" /></span>
         </div>
         <template v-if="showArchived">
           <div v-if="archived.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noArchived') }}</div>
@@ -985,19 +1065,20 @@ async function logout() {
             @click="open(c)"
           >
             <span class="conv-item-title">{{ c.title || t('chat.newChat') }}</span>
-            <button class="conv-menu-btn" :title="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)">⋯</button>
+            <button class="conv-menu-btn" :title="t('chatMenu.actions')" :aria-label="t('chatMenu.actions')" @click.stop="toggleMenu(c, $event)"><MoreHorizontal :size="16" :stroke-width="2" /></button>
             <div v-if="menuFor === c.id" class="conv-menu" :class="{ up: menuUp }" :style="{ left: menuPos.x + 'px', top: menuPos.y + 'px' }" @click.stop>
-              <button class="conv-menu-item" @click="toggleArchive(c)"><span>↩️</span> {{ t('chatMenu.unarchive') }}</button>
-              <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span>🗑</span> {{ t('chatMenu.delete') }}</button>
+              <button class="conv-menu-item" @click="toggleArchive(c)"><span><ArchiveRestore :size="15" :stroke-width="2" /></span> {{ t('chatMenu.unarchive') }}</button>
+              <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span><Trash2 :size="15" :stroke-width="2" /></span> {{ t('chatMenu.delete') }}</button>
             </div>
           </div>
         </template>
       </div>
       <div v-if="menuFor" class="menu-backdrop" @click="closeMenu"></div>
+      <div v-if="projMenuFor" class="menu-backdrop" @click="closeProjMenu"></div>
       <div class="foot">
         <button class="foot-user" :title="t('settings.title')" @click="showSettings = true">
           <span class="foot-email muted">{{ auth.user?.email }}</span>
-          <span class="foot-gear">⚙</span>
+          <span class="foot-gear"><Settings :size="16" /></span>
         </button>
         <button class="btn" @click="logout">{{ t('nav.signOut') }}</button>
       </div>
@@ -1019,14 +1100,14 @@ async function logout() {
           />
           <span v-else class="chat-title" :title="t('chat.clickToRename')" @click="startRenameTitle">{{ current.title || t('chat.newChat') }}</span>
           <span class="chat-head-right">
-            <small v-if="currentAgent" class="muted">🤖 {{ currentAgent.name }} · </small>
+            <small v-if="currentAgent" class="muted"><Bot :size="14" :stroke-width="2" /> {{ currentAgent.name }} · </small>
             <small class="muted">{{ current.model }}<span v-if="current.vserverSlug"> · {{ t('chat.toolsInline', { slug: current.vserverSlug }) }}</span></small>
-            <button class="conv-del head-del" :title="t('chat.deleteChat')" @click="deleteConversation(current)">🗑</button>
+            <button class="conv-del head-del" :title="t('chat.deleteChat')" :aria-label="t('chat.deleteChat')" @click="deleteConversation(current)"><Trash2 :size="16" :stroke-width="2" /></button>
           </span>
         </div>
         <div class="chat-tags">
           <span v-for="tag in (current.tags ?? [])" :key="tag" class="tag-chip static">
-            {{ tag }}<button class="tag-x" :title="t('chat.removeTag')" @click="removeTag(tag)">×</button>
+            {{ tag }}<button class="tag-x" :title="t('chat.removeTag')" :aria-label="t('chat.removeTag')" @click="removeTag(tag)"><X :size="14" :stroke-width="2" /></button>
           </span>
           <input
             v-model="tagDraft"
@@ -1052,7 +1133,7 @@ async function logout() {
                   :title="t('chat.downloadFile', { name: a.name })"
                   @click="downloadAttachment(a)"
                 >
-                  📎 {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}</small> <span class="dl-icon">⬇</span>
+                  <Paperclip :size="14" :stroke-width="2" /> {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}</small> <span class="dl-icon"><Download :size="14" :stroke-width="2" /></span>
                 </button>
               </div>
             </div>
@@ -1084,8 +1165,8 @@ async function logout() {
           <div v-if="dragOver" class="drop-hint">{{ t('chat.dropFiles') }}</div>
           <div v-if="pending.length || uploading" class="att-tray">
             <span v-for="a in pending" :key="a.id" class="att-chip">
-              📎 {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}{{ a.textChars ? '' : t('chat.noTextSuffix') }}</small>
-              <button class="att-x" :title="t('chat.remove')" @click="removePending(a)">×</button>
+              <Paperclip :size="14" :stroke-width="2" /> {{ a.name }} <small class="muted">{{ fmtSize(a.size) }}{{ a.textChars ? '' : t('chat.noTextSuffix') }}</small>
+              <button class="att-x" :title="t('chat.remove')" :aria-label="t('chat.remove')" @click="removePending(a)"><X :size="14" :stroke-width="2" /></button>
             </span>
             <span v-if="uploading" class="muted" style="font-size: 12px">{{ t('chat.uploading') }}</span>
           </div>
@@ -1093,15 +1174,16 @@ async function logout() {
             <input ref="fileInput" type="file" multiple style="display: none"
               accept=".pdf,.doc,.docx,.txt,.md,.csv,.tsv,.xlsx,.xls,.json,.log,.yaml,.yml,.xml,.html,.png,.jpg,.jpeg,.webp,.gif"
               @change="onFilesSelected" />
-            <button class="btn" :title="t('chat.attachFiles')" :disabled="uploading" @click="triggerPick">📎</button>
-            <button class="btn" :title="t('chat.promptLibrary')" @click="openPrompts">📋</button>
-            <button class="btn" :title="t('chat.memoryTooltip')" @click="openMemory">🧠</button>
+            <button class="btn icon" :title="t('chat.attachFiles')" :aria-label="t('chat.attachFiles')" :disabled="uploading" @click="triggerPick"><Paperclip :size="16" :stroke-width="2" /></button>
+            <button class="btn icon" :title="t('chat.promptLibrary')" :aria-label="t('chat.promptLibrary')" @click="openPrompts"><ClipboardList :size="16" :stroke-width="2" /></button>
+            <button class="btn icon" :title="t('chat.memoryTooltip')" :aria-label="t('chat.memoryTooltip')" @click="openMemory"><Brain :size="16" :stroke-width="2" /></button>
             <button
-              class="btn web-toggle"
+              class="btn icon web-toggle"
               :class="{ on: current?.webSearch }"
               :title="current?.webSearch ? t('chat.webSearchOn') : t('chat.webSearchOff')"
+              :aria-label="current?.webSearch ? t('chat.webSearchOn') : t('chat.webSearchOff')"
               @click="toggleWebSearch"
-            >🌐</button>
+            ><Globe :size="16" :stroke-width="2" /></button>
             <textarea v-model="input" rows="2" :placeholder="t('chat.messagePlaceholder')" @keydown.enter.exact.prevent="send"></textarea>
             <button class="btn primary" :disabled="sending || uploading || (!input.trim() && pending.length === 0)" @click="send">{{ t('chat.send') }}</button>
           </div>
@@ -1111,13 +1193,13 @@ async function logout() {
       <!-- Project panel -->
       <div v-else-if="project" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
-          <span>📁 {{ project.project.name }}
+          <span><Folder :size="16" :stroke-width="2" /> {{ project.project.name }}
             <small v-if="project.project.access !== 'owner'" class="muted" style="font-size: 12px">· {{ project.project.access }} · {{ t('chat.sharedBy', { email: project.project.ownerEmail }) }}</small>
           </span>
           <div class="btn-row">
             <button class="btn primary" @click="openNew(project.project.id)">{{ t('chat.newChatInProject') }}</button>
             <button class="btn" @click="openScheduleNew(project.project.id)">{{ t('chat.newScheduledTaskInProject') }}</button>
-            <button class="btn" :class="{ active: showProjectSettings }" :title="t('chat.projectSettings')" @click="showProjectSettings = !showProjectSettings">⚙️</button>
+            <button class="btn icon" :class="{ active: showProjectSettings }" :title="t('chat.projectSettings')" :aria-label="t('chat.projectSettings')" @click="showProjectSettings = !showProjectSettings"><Settings :size="16" :stroke-width="2" /></button>
             <button v-if="isOwner" class="btn" @click="deleteProject(project.project)">{{ t('chat.delete') }}</button>
           </div>
         </div>
@@ -1127,12 +1209,12 @@ async function logout() {
           <div class="panel-card">
             <h3>{{ t('chat.chatsInProject') }} <span class="muted" style="font-weight: 400">({{ project.conversations.length }})</span></h3>
             <div v-if="project.conversations.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noChatsInProject') }}</div>
-            <div v-for="c in project.conversations" :key="c.id" class="conv-item" @click="open(c)">💬 {{ c.title || t('chat.newChat') }}</div>
+            <div v-for="c in project.conversations" :key="c.id" class="conv-item" @click="open(c)"><MessageSquare :size="15" :stroke-width="2" /> {{ c.title || t('chat.newChat') }}</div>
           </div>
 
           <div class="panel-card" v-if="projectSchedules.length">
             <h3>{{ t('chat.scheduledTasks') }} <span class="muted" style="font-weight: 400">({{ projectSchedules.length }})</span></h3>
-            <div v-for="s in projectSchedules" :key="s.id" class="conv-item" @click="openSchedule(s)">⏱ {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></div>
+            <div v-for="s in projectSchedules" :key="s.id" class="conv-item" @click="openSchedule(s)"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></div>
           </div>
         </template>
 
@@ -1180,7 +1262,7 @@ async function logout() {
             <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.documentsHint') }}</p>
             <div v-if="project.documents.length === 0" class="muted" style="font-size: 13px">{{ t('chat.noDocuments') }}</div>
             <div v-for="d in project.documents" :key="d.id" class="doc-item">
-              <span>📄 {{ d.name }}</span>
+              <span><FileText :size="15" :stroke-width="2" /> {{ d.name }}</span>
               <span class="row" style="gap: 0.6rem; align-items: center">
                 <span class="doc-meta">{{ Math.ceil(d.size / 1024) }} KB</span>
                 <button v-if="canEdit" class="btn" @click="deleteDocument(d)">{{ t('chat.remove') }}</button>
@@ -1202,7 +1284,7 @@ async function logout() {
             <p class="muted" style="margin: 0; font-size: 12px">{{ t('chat.sharingHint') }}</p>
             <div v-if="project.members.length === 0" class="muted" style="font-size: 13px">{{ t('chat.notSharedYet') }}</div>
             <div v-for="m in project.members" :key="m.userId" class="doc-item">
-              <span>👤 {{ m.email }}</span>
+              <span><User :size="15" :stroke-width="2" /> {{ m.email }}</span>
               <span class="row" style="gap: 0.6rem; align-items: center">
                 <span class="doc-meta">{{ m.role }}</span>
                 <button class="btn" @click="unshareMember(m)">{{ t('chat.remove') }}</button>
@@ -1231,7 +1313,7 @@ async function logout() {
       <!-- Scheduled task editor -->
       <div v-else-if="scheduleView" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
-          <span>⏱ {{ editingScheduleId ? t('chat.editScheduledTask') : t('chat.newScheduledTask') }}</span>
+          <span><Clock :size="16" :stroke-width="2" /> {{ editingScheduleId ? t('chat.editScheduledTask') : t('chat.newScheduledTask') }}</span>
         </div>
 
         <div class="panel-card">
@@ -1346,7 +1428,7 @@ async function logout() {
           </select>
         </div>
         <div v-else class="field">
-          <small class="muted">🔧 {{ t('chat.usesProjectTools') }}</small>
+          <small class="muted"><Wrench :size="14" :stroke-width="2" /> {{ t('chat.usesProjectTools') }}</small>
         </div>
         <div class="field">
           <label>{{ t('chat.projectOptional') }}</label>
@@ -1391,11 +1473,11 @@ async function logout() {
           <p class="muted" style="font-size: 12px; margin: 0.2rem 0">{{ t('chat.promptsHint') }}</p>
           <div v-if="prompts.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noPromptsYet') }}</div>
           <div v-for="p in prompts" :key="p.id" class="doc-item">
-            <span class="conv-item-title">📋 {{ p.name }}</span>
+            <span class="conv-item-title"><ClipboardList :size="15" :stroke-width="2" /> {{ p.name }}</span>
             <span class="row" style="gap: 0.4rem; align-items: center">
               <button class="btn" @click="usePrompt(p)">{{ t('chat.use') }}</button>
               <button class="btn" @click="editPrompt(p)">{{ t('chat.edit') }}</button>
-              <button class="btn" :title="t('chat.delete')" @click="deletePrompt(p)">🗑</button>
+              <button class="btn icon" :title="t('chat.delete')" :aria-label="t('chat.delete')" @click="deletePrompt(p)"><Trash2 :size="16" :stroke-width="2" /></button>
             </span>
           </div>
           <div class="btn-row" style="justify-content: flex-end; margin-top: 0.5rem">
@@ -1422,8 +1504,8 @@ async function logout() {
         </p>
         <div v-if="memory.length === 0" class="muted" style="font-size: 13px; padding: 0.5rem 0">{{ t('chat.noMemories') }}</div>
         <div v-for="m in memory" :key="m.id" class="doc-item">
-          <span class="conv-item-title" style="white-space: normal">🧠 {{ m.content }}</span>
-          <button class="btn" :title="t('chat.forget')" @click="deleteMemory(m)">🗑</button>
+          <span class="conv-item-title" style="white-space: normal"><Brain :size="15" :stroke-width="2" /> {{ m.content }}</span>
+          <button class="btn icon" :title="t('chat.forget')" :aria-label="t('chat.forget')" @click="deleteMemory(m)"><Trash2 :size="16" :stroke-width="2" /></button>
         </div>
         <div class="field" style="margin-top: 0.5rem">
           <label>{{ t('chat.addMemory') }}</label>
