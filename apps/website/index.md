@@ -38,6 +38,9 @@ features:
   - icon: ⚙️
     title: Config lives in the app
     details: SSRF policy, rate limits, transports, auth and observability are edited at runtime from the Settings page and applied without a redeploy. Only true infra (DB, secret, port) is environment config.
+  - icon: 🪪
+    title: Governed AI people actually use
+    details: "A separate, SSO-gated app — chat, projects, org agents — over the tools the gateway governs. Each user reaches only what their entitlements allow: a filter, never a grant."
 ---
 
 ## Why teams choose Kravn

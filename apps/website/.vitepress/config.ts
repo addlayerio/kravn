@@ -190,6 +190,7 @@ export default defineConfig({
         text: 'Docs',
         items: [
           { text: 'Core concepts', link: '/guide/concepts' },
+          { text: 'The governed client', link: '/guide/client' },
           { text: 'Configuration', link: '/guide/configuration' },
           { text: 'Plugins & integrations', link: '/guide/plugins' },
           { text: 'Security & compliance', link: '/guide/security' },
@@ -213,6 +214,7 @@ export default defineConfig({
           items: [
             { text: 'Why Kravn', link: '/guide/what-is-kravn' },
             { text: 'Core concepts', link: '/guide/concepts' },
+            { text: 'The governed client', link: '/guide/client' },
           ],
         },
         {
