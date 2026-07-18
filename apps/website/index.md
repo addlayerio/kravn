@@ -41,6 +41,8 @@ features:
   - icon: 🪪
     title: Governed AI people actually use
     details: "A separate, SSO-gated app — chat, projects, org agents — over the tools the gateway governs. Each user reaches only what their entitlements allow: a filter, never a grant."
+    link: /guide/client
+    linkText: The governed client
 ---
 
 ## Why teams choose Kravn
