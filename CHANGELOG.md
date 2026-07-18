@@ -12,6 +12,21 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.88] — 2026-07-18
+
+- 🎨 **Chat client — a cleaner, more consistent UI.** Every emoji glyph in the chat app was replaced with proper
+  vector icons (the same set the admin console uses), so the interface reads as one product instead of a mix of
+  system emoji. Row actions across the sidebar and menus are crisp icons with tooltips.
+- 📣 **Projects get a right-click-style menu, like chats.** Each project in the sidebar now has a `⋯` menu to
+  **rename** it inline, open its **configuration** (sharing, default model, tools, documents, instructions), or
+  **delete** it — gated by access (rename for owners/editors, delete for owners). Previously a project could only
+  be opened, never managed from the list.
+- 🐛 **The sidebar no longer squashes on a short window.** When the window got short, the whole sidebar compressed
+  upward; now only the conversation list scrolls, while the brand, new-chat button and footer stay put.
+- 🎨 **Composer: one "+" instead of a row of buttons.** Attach files, prompt library, memory and web search moved
+  into a single **`+` menu**. Web search shows a check when it's on and appears as a removable pill inside the
+  composer, so an active mode is obvious — a tidier, more familiar composer.
+
 ## [0.1.87] — 2026-07-18
 
 - 🧩 **Jira: read a ticket's comment thread (`jira_get_comments`).** The connector could *add* a comment but had
