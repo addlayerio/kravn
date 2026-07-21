@@ -18,6 +18,11 @@ hero:
     - theme: alt
       text: View on GitHub
       link: https://github.com/addlayerio/kravn
+    # A plain link, not the Buy-Me-a-Coffee widget script: a third-party CDN script on a site that sells
+    # "no egress, no third-party dependency" is a bad look (and would break under a CSP).
+    - theme: alt
+      text: ☕ Buy me a coffee
+      link: https://buymeacoffee.com/kravn
 
 features:
   - icon: 🏛️
