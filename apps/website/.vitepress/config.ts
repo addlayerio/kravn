@@ -281,7 +281,9 @@ export default defineConfig({
     },
 
     footer: {
-      message: 'Source-available under the Business Source License 1.1 (converts to Apache 2.0). Built by AddLayer.',
+      message:
+        'Source-available under the Business Source License 1.1 (converts to Apache 2.0). Built by AddLayer. · ' +
+        '<a href="https://buymeacoffee.com/kravn" class="coffee-link">☕ Buy me a coffee</a>',
       copyright: '© 2026 AddLayer',
     },
 

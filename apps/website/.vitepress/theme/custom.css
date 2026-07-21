@@ -50,3 +50,22 @@
 .VPFeature .icon {
   background-color: var(--vp-c-brand-soft) !important;
 }
+
+/* "Buy me a coffee": an amber-OUTLINE hero button (targeted by its href, since VitePress hero buttons take
+   no class). It uses the brand colour so it reads as Kravn's, but stays a step below the solid "Get Started"
+   CTA — visible without cannibalizing the primary action. Also styled as an amber link in the footer. */
+.VPHero .VPButton.alt[href*="buymeacoffee"] {
+  background-color: transparent;
+  border-color: var(--vp-c-brand-1);
+  color: var(--vp-c-brand-1);
+}
+.VPHero .VPButton.alt[href*="buymeacoffee"]:hover {
+  background-color: var(--vp-c-brand-soft);
+  border-color: var(--vp-c-brand-2);
+  color: var(--vp-c-brand-2);
+}
+.VPFooter .message .coffee-link {
+  color: var(--vp-c-brand-1);
+  font-weight: 600;
+  white-space: nowrap;
+}

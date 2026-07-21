@@ -12,14 +12,17 @@ hero:
     - theme: brand
       text: Get Started
       link: /guide/getting-started
+    # Short labels on purpose: four hero buttons only fit on one line if these stay terse.
     - theme: alt
-      text: Installation Manual
+      text: Install
       link: /guide/installation
     - theme: alt
-      text: View on GitHub
+      text: GitHub
       link: https://github.com/addlayerio/kravn
     # A plain link, not the Buy-Me-a-Coffee widget script: a third-party CDN script on a site that sells
     # "no egress, no third-party dependency" is a bad look (and would break under a CSP).
+    # Styled as an amber OUTLINE in custom.css (via its href) — brand-coloured but visually secondary to the
+    # solid "Get Started" CTA, so it doesn't cannibalize the primary action.
     - theme: alt
       text: ☕ Buy me a coffee
       link: https://buymeacoffee.com/kravn
