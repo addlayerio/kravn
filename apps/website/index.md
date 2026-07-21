@@ -53,6 +53,14 @@ features:
     linkText: The governed client
 ---
 
+<div class="ph-badge">
+  <a href="https://www.producthunt.com/products/kravn" target="_blank" rel="noopener noreferrer" aria-label="Kravn on Product Hunt">
+    <!-- Self-hosted badge (both themes), not the producthunt.com hotlink — same no-egress principle as the coffee link. -->
+    <img class="ph-light" src="/producthunt-light.svg" alt="Kravn on Product Hunt" width="250" height="54" />
+    <img class="ph-dark" src="/producthunt-dark.svg" alt="Kravn on Product Hunt" width="250" height="54" />
+  </a>
+</div>
+
 ## Why teams choose Kravn
 
 The rise of AI brought a wave of new tooling, and almost all of it is SaaS-first: your prompts, your

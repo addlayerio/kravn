@@ -69,3 +69,19 @@
   font-weight: 600;
   white-space: nowrap;
 }
+
+/* Product Hunt launch badge — self-hosted for both themes (no producthunt.com hotlink). Centered under the
+   hero content; shows the light badge in light mode and the dark badge in dark mode. */
+.ph-badge {
+  text-align: center;
+  margin: 1rem 0 2.5rem;
+}
+.ph-badge .ph-dark {
+  display: none;
+}
+html.dark .ph-badge .ph-light {
+  display: none;
+}
+html.dark .ph-badge .ph-dark {
+  display: inline;
+}
