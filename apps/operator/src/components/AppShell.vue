@@ -19,6 +19,7 @@ import {
   Palette,
   ScrollText,
   Scale,
+  FileSearch,
   Sun,
   Moon,
   LogOut,
@@ -46,6 +47,7 @@ const collapsed = computed(() => theme.sidebarCollapsed);
 
 // Map each nav route to its i18n key; falls back to the static English label if unmapped.
 const NAV_KEY: Record<string, string> = {
+  '/audit': 'audit',
   '/': 'dashboard', '/servers': 'servers', '/tools': 'tools', '/resources': 'resources',
   '/prompts': 'prompts', '/mcp-endpoints': 'endpoints', '/agents': 'agents', '/users': 'users', '/teams': 'teams',
   '/authentication': 'authentication', '/plugins': 'plugins', '/pipelines': 'pipelines',
@@ -86,6 +88,7 @@ const items: NavItem[] = [
   { to: '/settings', label: 'Settings', icon: SettingsIcon, perm: 'settings.read', section: 'admin', tour: 'settings' },
   { to: '/appearance', label: 'Appearance', icon: Palette, perm: 'settings.write', section: 'admin' },
   { to: '/governance', label: 'Governance', icon: Scale, perm: 'servers.read', section: 'admin' },
+  { to: '/audit', label: 'Audit', icon: FileSearch, perm: 'audit.read', section: 'admin' },
   { to: '/logs', label: 'Logs', icon: ScrollText, perm: 'logs.read', section: 'admin' },
 ];
 

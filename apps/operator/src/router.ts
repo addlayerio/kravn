@@ -35,6 +35,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'appearance', name: 'appearance', component: () => import('./views/AppearanceView.vue'), meta: { permission: 'settings.write' } },
       { path: 'logs', name: 'logs', component: () => import('./views/LogsView.vue'), meta: { permission: 'logs.read' } },
       { path: 'governance', name: 'governance', component: () => import('./views/GovernanceView.vue'), meta: { permission: 'servers.read' } },
+      { path: 'audit', name: 'audit', component: () => import('./views/AuditView.vue'), meta: { permission: 'audit.read' } },
     ],
   },
   { path: '/:pathMatch(.*)*', redirect: '/' },

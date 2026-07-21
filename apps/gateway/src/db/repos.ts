@@ -2029,6 +2029,21 @@ export class ServerOAuthRepo {
   }
 }
 
+/** Server-side filter for the audit viewer. Empty/undefined fields are simply not applied. */
+export interface AuditFilter {
+  category?: string;
+  action?: string;
+  actor?: string;
+  /** System events carry no actor — this lets you isolate (or exclude) them. */
+  actorMode?: 'user' | 'system';
+  resourceType?: string;
+  resource?: string;
+  outcome?: string;
+  /** ISO-8601 UTC bounds compared against the `ts` string column. HALF-OPEN: `from` inclusive, `to` exclusive. */
+  from?: string;
+  to?: string;
+}
+
 export interface AuditRecord {
   seq?: number;
   id: string;
@@ -2102,6 +2117,75 @@ export class AuditLogRepo {
         ? `SELECT TOP (${n}) * FROM audit_log ORDER BY seq DESC`
         : `SELECT * FROM audit_log ORDER BY seq DESC LIMIT ${n}`;
     return (await this.store.all(sql)).map(mapAudit);
+  }
+
+  /** WHERE clause for a filtered search. Every caller-supplied value is BOUND, never interpolated.
+   *
+   *  Two portability details worth keeping:
+   *   - `ts` is an ISO-8601 STRING column, so the range compares lexicographically and behaves identically on
+   *     all four dialects. The range is HALF-OPEN (`>= from`, `< to`) — the route widens a calendar day to the
+   *     start of the next day, so "to = today" includes today's events.
+   *   - Free-text matches use `LOWER(col) LIKE ? ESCAPE '!'`. LOWER() because SQL Server's default collation is
+   *     case-insensitive while PostgreSQL and SQLite are not — without it the same filter behaves differently
+   *     per deployment. ESCAPE '!' (not backslash, which MySQL also treats as a string escape) so a literal
+   *     '%' or '_' typed by the user matches literally instead of acting as a wildcard.
+   */
+  private whereFor(f: AuditFilter): { sql: string; params: unknown[] } {
+    const w: string[] = [];
+    const p: unknown[] = [];
+    // Escape LIKE metacharacters, then lowercase to pair with LOWER(col).
+    const contains = (v: string) => `%${v.replace(/[!%_]/g, (c) => `!${c}`).toLowerCase()}%`;
+    if (f.category) { w.push('category = ?'); p.push(f.category); }
+    if (f.outcome) { w.push('outcome = ?'); p.push(f.outcome); }
+    if (f.resourceType) { w.push('resource_type = ?'); p.push(f.resourceType); }
+    if (f.action) { w.push("LOWER(action) LIKE ? ESCAPE '!'"); p.push(contains(f.action)); }
+    if (f.resource) { w.push("LOWER(resource_id) LIKE ? ESCAPE '!'"); p.push(contains(f.resource)); }
+    if (f.actor) {
+      w.push("(LOWER(actor_email) LIKE ? ESCAPE '!' OR LOWER(actor_id) LIKE ? ESCAPE '!')");
+      p.push(contains(f.actor), contains(f.actor));
+    }
+    // System-generated events (rug-pull detection, budget breaches) carry NO actor. Without this an operator
+    // filtering by actor would silently miss exactly the events they most need to see.
+    if (f.actorMode === 'user') w.push('actor_id IS NOT NULL');
+    if (f.actorMode === 'system') w.push('actor_id IS NULL');
+    if (f.from) { w.push('ts >= ?'); p.push(f.from); }
+    if (f.to) { w.push('ts < ?'); p.push(f.to); }
+    return { sql: w.length ? ` WHERE ${w.join(' AND ')}` : '', params: p };
+  }
+
+  /** Filtered page of events, newest first. limit/offset are already clamped integers and are inlined rather
+   *  than bound — mysql2 can send a bound LIMIT as a string, which the server then rejects. ORDER BY seq is
+   *  required here: SQL Server's OFFSET…FETCH is a syntax error without it, and seq (bigIncrements) is unique
+   *  and monotonic, so pages are stable. */
+  async search(f: AuditFilter, limit: number, offset: number): Promise<AuditRecord[]> {
+    const n = Math.min(500, Math.max(1, Math.trunc(Number(limit)) || 100));
+    const off = Math.max(0, Math.trunc(Number(offset)) || 0);
+    const { sql: where, params } = this.whereFor(f);
+    const sql =
+      this.store.kind === 'mssql'
+        ? `SELECT * FROM audit_log${where} ORDER BY seq DESC OFFSET ${off} ROWS FETCH NEXT ${n} ROWS ONLY`
+        : `SELECT * FROM audit_log${where} ORDER BY seq DESC LIMIT ${n} OFFSET ${off}`;
+    return (await this.store.all(sql, params)).map(mapAudit);
+  }
+
+  /** The values actually present in the trail, so the console's dropdowns can never offer a dead option.
+   *  (Only 3 of the 5 declared categories are emitted today; hardcoding the union would show empty filters.) */
+  async facets(): Promise<{ categories: string[]; resourceTypes: string[] }> {
+    const cat = await this.store.all<{ category: string }>('SELECT DISTINCT category FROM audit_log ORDER BY category');
+    const rt = await this.store.all<{ resource_type: string | null }>(
+      'SELECT DISTINCT resource_type FROM audit_log WHERE resource_type IS NOT NULL ORDER BY resource_type',
+    );
+    return {
+      categories: cat.map((r) => String(r.category)).filter(Boolean),
+      resourceTypes: rt.map((r) => String(r.resource_type)).filter(Boolean),
+    };
+  }
+
+  /** Total matching the SAME filter, so the pager reflects the filtered set rather than the whole table. */
+  async countFiltered(f: AuditFilter): Promise<number> {
+    const { sql: where, params } = this.whereFor(f);
+    const r = await this.store.get<{ n: number }>(`SELECT COUNT(*) AS n FROM audit_log${where}`, params);
+    return Number(r?.n ?? 0);
   }
 }
 

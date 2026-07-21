@@ -1009,8 +1009,31 @@ const chatConversationAgent: Migration = {
   },
 };
 
+const auditFilterIndexes: Migration = {
+  name: '034_audit_log_filter_indexes',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('audit_log'))) return;
+    // audit_log grows unbounded by design and is never pruned, so the viewer's filters must not full-scan.
+    // Composite (col, seq) matches the dominant access pattern: filter by a facet, newest first.
+    // No index on `outcome` on purpose — it is a 2-value column that is ~99% 'success', so a planner ignores it.
+    await knex.schema.alterTable('audit_log', (t) => {
+      t.index(['category', 'seq'], 'audit_log_category_seq_idx');
+      t.index(['resource_type', 'seq'], 'audit_log_resource_type_seq_idx');
+      t.index(['resource_id'], 'audit_log_resource_id_idx');
+    });
+  },
+  async down(knex) {
+    if (!(await knex.schema.hasTable('audit_log'))) return;
+    await knex.schema.alterTable('audit_log', (t) => {
+      t.dropIndex(['category', 'seq'], 'audit_log_category_seq_idx');
+      t.dropIndex(['resource_type', 'seq'], 'audit_log_resource_type_seq_idx');
+      t.dropIndex(['resource_id'], 'audit_log_resource_id_idx');
+    });
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle
