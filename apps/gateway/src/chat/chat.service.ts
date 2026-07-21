@@ -252,7 +252,14 @@ export class ChatService {
             // normal chat's endpoint drives them exactly as the MCP data plane does. It is undefined for a
             // project tool (endpoint-independent → global pipeline only) and for a plugin-sandbox tool. The tool
             // always executes against its own origin server regardless.
-            const result = await this.registry.invokeTool(entry.toolId, args, actor, { mcpEndpointId: entry.endpointId, files: workspaceFiles });
+            // Chat knows the driving model, so the tool-call audit can attribute "which model touched which data"
+            // (external MCP clients don't advertise a model — those calls are audited by client/identity instead).
+            const result = await this.registry.invokeTool(entry.toolId, args, actor, {
+              mcpEndpointId: entry.endpointId,
+              files: workspaceFiles,
+              model: conv.model,
+              clientLabel: 'chat',
+            });
             // Only honor result `files` (→ downloadable attachments) from in-process plugin tools, never
             // from remote MCP upstreams (toolId `tl_plg_…` ⇒ plugin server). See review F1.
             const trusted = entry.toolId.startsWith('tl_plg_');
