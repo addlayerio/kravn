@@ -305,8 +305,55 @@ function hostedImageIds(msg: any): string[] {
   return [...new Set(ids)];
 }
 
+/** How many distinct quoted messages a single transcript will resolve, and how much of each to inline. */
+const QUOTE_FETCH_MAX = 25;
+const QUOTE_MAX_CHARS = 600;
+
+/** A quoted / replied-to message. Teams doesn't put the quoted text in the reply's body — it sends a
+ *  `messageReference` ATTACHMENT whose `content` is a JSON string carrying the original message's id, a
+ *  preview of its text, and its sender. Without parsing this, a reply reads as a dangling reference. */
+function messageRefs(msg: any): { messageId: string; preview: string; sender: string }[] {
+  const out: { messageId: string; preview: string; sender: string }[] = [];
+  for (const a of Array.isArray(msg?.attachments) ? msg.attachments : []) {
+    if (a?.contentType !== 'messageReference') continue;
+    let c: any = {};
+    try {
+      c = typeof a.content === 'string' ? JSON.parse(a.content) : (a?.content ?? {});
+    } catch {
+      c = {};
+    }
+    const messageId = String(c?.messageId ?? a?.id ?? '').trim();
+    const sender = String(c?.messageSender?.user?.displayName ?? c?.messageSender?.application?.displayName ?? '').trim();
+    const raw = String(c?.messagePreview ?? '');
+    const preview = (raw.includes('<') ? htmlToMarkdown(raw) : raw).trim();
+    if (messageId || preview) out.push({ messageId, preview, sender });
+  }
+  return out;
+}
+
+/** Fetch the FULL text of each quoted message referenced in a transcript, so a reply carries what it replied
+ *  to instead of just an id. Best-effort and parallel: a quote can point at a thread reply or a deleted
+ *  message this path can't resolve — those fall back to the preview Teams embedded in the reference itself. */
+async function resolveQuoted(cfg: TeamsConfig, basePath: string, messages: any[]): Promise<Map<string, { author: string; text: string }>> {
+  const ids = [...new Set(messages.flatMap((m) => messageRefs(m).map((r) => r.messageId)).filter(Boolean))].slice(0, QUOTE_FETCH_MAX);
+  const out = new Map<string, { author: string; text: string }>();
+  await Promise.all(
+    ids.map(async (id) => {
+      try {
+        const q = await graphGet(cfg, `${basePath}/${encodeURIComponent(id)}`);
+        const author = String(q?.from?.user?.displayName ?? q?.from?.application?.displayName ?? '').trim();
+        const body = renderBody(q).trim();
+        if (body || author) out.set(id, { author, text: body });
+      } catch {
+        // Unresolvable (thread reply, deleted, or no permission) — the caller falls back to the preview.
+      }
+    }),
+  );
+  return out;
+}
+
 /** Build a readable, chronological transcript from Graph chat/channel messages. */
-function transcript(messages: any[]): string {
+function transcript(messages: any[], quoted?: Map<string, { author: string; text: string }>): string {
   const at = (v: unknown): number => {
     const t = new Date((v as string) ?? 0).getTime();
     return Number.isNaN(t) ? 0 : t;
@@ -320,8 +367,23 @@ function transcript(messages: any[]): string {
     }
     const author = m?.from?.user?.displayName || m?.from?.application?.displayName || '(unknown)';
     const body = renderBody(m);
-    const attachments = (m?.attachments ?? []).map((a: any) => a?.name || a?.contentType).filter(Boolean);
+    // A quoted message is a `messageReference` attachment, not a file — render it as the quote it is.
+    const attachments = (m?.attachments ?? [])
+      .filter((a: any) => a?.contentType !== 'messageReference')
+      .map((a: any) => a?.name || a?.contentType)
+      .filter(Boolean);
     lines.push(`[${m?.createdDateTime ?? ''}] ${author}:`);
+    // The quote comes first — it's the context the reply answers.
+    for (const r of messageRefs(m)) {
+      const q = r.messageId ? quoted?.get(r.messageId) : undefined;
+      const who = q?.author || r.sender || 'someone';
+      const quotedText = (q?.text || r.preview || '').replace(/\s+/g, ' ').trim();
+      lines.push(
+        quotedText
+          ? `  ↩️ In reply to ${who}: "${quotedText.length > QUOTE_MAX_CHARS ? `${quotedText.slice(0, QUOTE_MAX_CHARS)}…` : quotedText}"`
+          : `  ↩️ In reply to ${who} — the quoted message could not be retrieved (messageId="${r.messageId}")`,
+      );
+    }
     if (body) lines.push(body);
     // Always surface the real messageId when a message carries anything fetchable (an attachment or an inline
     // image), so the model never has to guess it. teams_get_message_images works with any of them.
@@ -388,7 +450,9 @@ const TOOLS: McpToolDef[] = [
     name: 'teams_read_chat',
     description:
       'Read a Teams chat as a chronological transcript (author, time, text). Pass since/until (ISO dates) to scope ' +
-      'to a period, e.g. yesterday. HTML message bodies are reduced to Markdown.',
+      'to a period, e.g. yesterday. HTML message bodies are reduced to Markdown. When someone quotes/replies to an ' +
+      'earlier message, the quoted message is resolved and inlined ("↩️ In reply to X: …") — you do not need to look ' +
+      'it up separately.',
     inputSchema: {
       type: 'object',
       properties: {
@@ -432,7 +496,8 @@ const TOOLS: McpToolDef[] = [
     name: 'teams_read_channel_messages',
     description:
       'Read the most recent top-level posts in a team channel, as a chronological transcript (author, time, text). ' +
-      'Pass since/until (ISO dates) to scope to a period. HTML bodies are reduced to Markdown; threaded replies are not included.',
+      'Pass since/until (ISO dates) to scope to a period. HTML bodies are reduced to Markdown; threaded replies are not ' +
+      'included. When a post quotes an earlier message, the quoted message is resolved and inlined ("↩️ In reply to X: …").',
     inputSchema: {
       type: 'object',
       properties: {
@@ -515,9 +580,11 @@ async function readChat(cfg: TeamsConfig, args: Record<string, unknown>): Promis
   const limit = clamp(args.limit, 1, 100, 40);
   const since = parseBound(args.since, 'since');
   const until = parseBound(args.until, 'until');
-  const msgs = await pagedMessages(cfg, `/chats/${encodeURIComponent(chatId)}/messages?$top=50`, limit, since, until);
+  const base = `/chats/${encodeURIComponent(chatId)}/messages`;
+  const msgs = await pagedMessages(cfg, `${base}?$top=50`, limit, since, until);
   if (!msgs.length) return text(`No messages in this chat${rangeLabel(since, until)}.`);
-  return text(cap(`# Chat transcript (${msgs.length} messages${rangeLabel(since, until)})\n\n${transcript(msgs)}`));
+  const quoted = await resolveQuoted(cfg, base, msgs);
+  return text(cap(`# Chat transcript (${msgs.length} messages${rangeLabel(since, until)})\n\n${transcript(msgs, quoted)}`));
 }
 
 async function listTeams(cfg: TeamsConfig, args: Record<string, unknown>): Promise<McpToolResult> {
@@ -554,9 +621,11 @@ async function readChannelMessages(cfg: TeamsConfig, args: Record<string, unknow
   const limit = clamp(args.limit, 1, 100, 30);
   const since = parseBound(args.since, 'since');
   const until = parseBound(args.until, 'until');
-  const msgs = await pagedMessages(cfg, `/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages?$top=50`, limit, since, until);
+  const base = `/teams/${encodeURIComponent(teamId)}/channels/${encodeURIComponent(channelId)}/messages`;
+  const msgs = await pagedMessages(cfg, `${base}?$top=50`, limit, since, until);
   if (!msgs.length) return text(`No messages in this channel${rangeLabel(since, until)}.`);
-  return text(cap(`# Channel messages (${msgs.length}${rangeLabel(since, until)})\n\n${transcript(msgs)}`));
+  const quoted = await resolveQuoted(cfg, base, msgs);
+  return text(cap(`# Channel messages (${msgs.length}${rangeLabel(since, until)})\n\n${transcript(msgs, quoted)}`));
 }
 
 async function getMessageImages(cfg: TeamsConfig, args: Record<string, unknown>): Promise<McpToolResult> {

@@ -17,7 +17,7 @@ import type { Metrics } from '../metrics.js';
 import type { PluginManager } from '../plugins/manager.js';
 import type { McpCallContext } from '@kravn/plugin-sdk';
 import type { AuthUser } from '../auth/auth.service.js';
-import type { AuditService } from '../audit/audit.service.js';
+import type { AuditService, AuditEvent } from '../audit/audit.service.js';
 import type { UsageService } from '../usage/usage.service.js';
 import type { Logger } from 'pino';
 
@@ -549,6 +549,35 @@ export class RegistryService {
     return result;
   }
 
+  /** Build the audit event for a tool call. Captures who (or which client, for anonymous public endpoints),
+   *  the tool + upstream server + MCP endpoint, the driving model when known, and the arguments — the audit
+   *  service redacts and caps `details`. Answers "which identity/model touched which tool with which data". */
+  private toolAuditEvent(
+    tool: { name: string; serverId: string },
+    args: Record<string, unknown>,
+    actor: AuthUser | undefined,
+    ctx: McpCallContext | undefined,
+    outcome: 'success' | 'failure',
+    err?: unknown,
+  ): AuditEvent {
+    return {
+      category: 'tool',
+      action: 'mcp.tool.call',
+      actor: actor ? { id: actor.id, email: actor.email, role: actor.role } : null,
+      resourceType: 'tool',
+      resourceId: tool.name,
+      outcome,
+      details: {
+        server: tool.serverId,
+        ...(ctx?.mcpEndpointId ? { endpoint: ctx.mcpEndpointId } : {}),
+        ...(ctx?.model ? { model: ctx.model } : {}),
+        ...(ctx?.clientLabel ? { client: ctx.clientLabel } : {}),
+        args,
+        ...(outcome === 'failure' ? { error: err instanceof Error ? err.message : String(err) } : {}),
+      },
+    };
+  }
+
   async invokeTool(toolDbId: string, args: Record<string, unknown>, actor?: AuthUser, ctx?: McpCallContext): Promise<unknown> {
     const tool = await this.d.repos.registry.getTool(toolDbId);
     if (!tool || !tool.enabled) throw new Error('Tool not found or disabled.');
@@ -570,12 +599,17 @@ export class RegistryService {
           this.d.metrics.toolCalls.inc({ server: tool.serverId, tool: tool.name });
           void this.d.usage.meterToolCall(actor && { id: actor.id }, vsId); // best-effort usage metering
           this.d.logstore.add('info', `Tool "${tool.name}" invoked`, { server: tool.serverId });
+          // Per-call audit: who called which tool, on which server/endpoint, with which arguments (redacted +
+          // capped by the audit service), and whether it succeeded. Fire-and-forget so auditing never blocks
+          // or fails the tool call; it still reaches the SIEM even if the DB write fails.
+          void this.d.audit.record(this.toolAuditEvent(tool, args, actor, ctx, 'success'));
           return result;
         } catch (err) {
           this.d.metrics.toolErrors.inc({ server: tool.serverId, tool: tool.name });
           // Surface the real failure on the Logs page — otherwise the upstream error is only in the metric
           // and the MCP client masks it (e.g. Claude shows a generic "Error occurred during tool execution").
           this.d.logstore.add('error', `Tool "${tool.name}" failed: ${err instanceof Error ? err.message : String(err)}`, { server: tool.serverId });
+          void this.d.audit.record(this.toolAuditEvent(tool, args, actor, ctx, 'failure', err));
           throw err;
         }
       },

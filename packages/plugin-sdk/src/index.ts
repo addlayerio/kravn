@@ -236,6 +236,11 @@ export interface McpCallContext {
   actor?: PluginActor;
   /** The virtual server this call was routed through (undefined = global catalog / chat). */
   mcpEndpointId?: string;
+  /** The LLM model driving this call, when known (Kravn's own chat client). External MCP clients don't
+   *  advertise a model over the protocol, so this is undefined for them — audit attributes the client instead. */
+  model?: string;
+  /** A human label for the calling client (e.g. the registered OAuth client name, or "chat"). */
+  clientLabel?: string;
 }
 export interface McpServerHandlers {
   listTools: (config: PluginConfig) => McpToolDef[] | Promise<McpToolDef[]>;
