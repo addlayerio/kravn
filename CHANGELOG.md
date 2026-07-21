@@ -12,6 +12,21 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.90] — 2026-07-22
+
+- 📣 **Every MCP tool call is now audited.** Each tool invocation is written to the tamper-evident audit trail
+  (and exported to your SIEM): who called it — or which client, for anonymous public endpoints — which tool, on
+  which upstream server and MCP endpoint, the arguments (redacted and capped), the outcome, and the driving
+  **model** when the call comes from Kravn's chat (external MCP clients don't advertise a model, so those are
+  attributed by client/identity). Auditing is fire-and-forget, so it never blocks or fails a tool call.
+- 📣 **In-app audit viewer.** A new **Audit** screen in the operator (gated by `audit.read`, so a bank can give
+  it to a dedicated auditor) shows the trail with server-side filters — actor, actor type (user/system),
+  category, resource type, tool/resource, outcome, and a UTC date range — plus paging and a one-click
+  **"verify chain"** that recomputes the hash chain and reports any break.
+- 🧩 **Teams: quoted/replied messages are resolved.** When someone quotes or replies to an earlier message,
+  Teams sends only a reference; the connector now fetches the original and inlines it (*"↩️ In reply to X: …"*)
+  instead of a dangling pointer, falling back to the embedded preview when it can't be retrieved.
+
 ## [0.1.89] — 2026-07-18
 
 - 📣 **Every chat has its own link — refresh no longer loses it.** Chats, projects and scheduled tasks now
