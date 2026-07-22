@@ -119,6 +119,12 @@ async function verifyChain(): Promise<void> {
   }
 }
 
+/** Compact UTC stamp for the table: "2026-07-22 02:06:36Z" — the raw ISO string (with milliseconds) is long
+ *  enough to wrap mid-value and stretch the column. */
+function fmtTs(ts: string): string {
+  return ts.replace('T', ' ').replace(/\.\d+Z$/, 'Z');
+}
+
 /** Pretty-print the redacted JSON details, falling back to the raw string if it isn't JSON. */
 function prettyDetails(d: string): string {
   try {
@@ -185,16 +191,22 @@ onMounted(async () => {
       </select>
       <input v-model="f.from" type="date" :title="t('auditView.filterFrom')" />
       <input v-model="f.to" type="date" :title="t('auditView.filterTo')" />
-      <small class="muted">{{ t('auditView.utcNote') }}</small>
+    </div>
+    <!-- Actions sit outside the grid so they keep their natural size instead of being stretched to a cell. -->
+    <div class="filter-actions">
       <button class="btn primary" @click="applyFilters">{{ t('auditView.apply') }}</button>
       <button v-if="hasFilters" class="btn icon" :title="t('auditView.clear')" :aria-label="t('auditView.clear')" @click="clearFilters">
         <X :size="16" :stroke-width="2" />
       </button>
+      <small class="muted">{{ t('auditView.utcNote') }}</small>
     </div>
 
     <p v-if="loading" class="muted">{{ t('auditView.loading') }}</p>
     <div v-else-if="events.length === 0" class="empty">{{ hasFilters ? t('auditView.emptyFiltered') : t('auditView.empty') }}</div>
-    <table v-else>
+    <!-- The trail is wide (7 columns incl. long emails/ids): scroll it inside the card instead of letting it
+         blow the page layout out horizontally. -->
+    <div v-else class="table-scroll">
+    <table>
       <thead>
         <tr>
           <th>{{ t('auditView.colTime') }}</th>
@@ -209,7 +221,7 @@ onMounted(async () => {
       <tbody>
         <template v-for="e in events" :key="e.id">
           <tr>
-            <td><small class="muted" style="font-family: ui-monospace, monospace">{{ e.ts }}</small></td>
+            <td class="col-ts"><small class="muted">{{ fmtTs(e.ts) }}</small></td>
             <td>
               <div>{{ e.actorEmail || e.actorId || t('auditView.systemActor') }}</div>
               <small v-if="e.actorRole" class="muted">{{ e.actorRole }}</small>
@@ -236,6 +248,7 @@ onMounted(async () => {
         </template>
       </tbody>
     </table>
+    </div>
 
     <div class="btn-row" style="justify-content: flex-end; align-items: center; margin-top: 0.75rem">
       <small class="muted">{{ rangeLabel }}</small>
@@ -250,17 +263,41 @@ onMounted(async () => {
 </template>
 
 <style scoped>
+/* A dense auto-fitting grid: as many filter columns as the width allows (never fewer than ~160px each), so
+   eight filters collapse into a couple of tight rows instead of eight full-width ones. The console's global
+   `input, select { width: 100% }` is what stacked them; here 100% just means "fill my grid cell". */
 .filters {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 0.4rem;
   align-items: center;
+  margin-bottom: 0.6rem;
+}
+.filters > input,
+.filters > select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.3rem 0.5rem;
+  font-size: 0.82rem;
+  height: auto;
+}
+.filter-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
   margin-bottom: 1rem;
 }
-.filters input[type='text'],
-.filters input:not([type]),
-.filters select {
-  min-width: 150px;
+/* Keep the wide trail inside the card. */
+.table-scroll {
+  overflow-x: auto;
+  max-width: 100%;
+}
+.table-scroll table {
+  min-width: 900px; /* below this the columns squash; scroll instead */
+}
+.col-ts {
+  white-space: nowrap;
+  font-family: ui-monospace, monospace;
 }
 .details {
   white-space: pre-wrap;

@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.91] — 2026-07-22
+
+- 🐛 **The Audit screen fits the page again.** With real traffic in it, the trail's seven columns pushed past
+  the page width and the eight filters each took a full row, so the table overflowed and the filters ate most
+  of the screen. The trail now scrolls inside its own card instead of stretching the layout, the filters pack
+  into a dense auto-fitting grid (as many per row as the width allows) with smaller controls, and the
+  timestamp is rendered compactly (`2026-07-22 02:06:36Z`) so it no longer wraps mid-value.
+
 ## [0.1.90] — 2026-07-22
 
 - 📣 **Every MCP tool call is now audited.** Each tool invocation is written to the tamper-evident audit trail
