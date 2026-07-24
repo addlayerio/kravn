@@ -93,6 +93,24 @@ export const appSettingsSchema = z
       })
       .default({}),
 
+    /**
+     * A2A (agent-to-agent) SERVER. When enabled, Kravn publishes an Agent Card at
+     * `/.well-known/agent-card.json` and accepts A2A JSON-RPC tasks at `POST /a2a`, exposing org agents
+     * (and, optionally, MCP endpoints) as skills. Every inbound task is authenticated, entitlement-checked
+     * against the caller (canUseAgent / canConsumeMcpEndpoint) and audited. Off by default — publishing an
+     * A2A surface is an explicit opt-in. (Consuming remote A2A agents needs no toggle: register one as a
+     * Server with transport 'a2a'.)
+     */
+    a2a: z
+      .object({
+        serverEnabled: z.boolean().default(false),
+        /** List org agents (the ones a caller may use) as A2A skills. */
+        exposeAgents: z.boolean().default(true),
+        /** List consumable MCP endpoints as A2A skills (each routes a task through the endpoint's tools). */
+        exposeEndpoints: z.boolean().default(false),
+      })
+      .default({}),
+
     federation: z
       .object({
         autoReconnect: z.boolean().default(true),
@@ -299,6 +317,22 @@ export const SETTINGS_UI: SettingGroupMeta[] = [
       { path: 'mcp.requestTimeoutMs', label: 'Request timeout (ms)', control: 'number' },
       { path: 'mcp.keepAliveIntervalMs', label: 'Keepalive interval (ms)', control: 'number' },
       { path: 'mcp.maxContentSizeBytes', label: 'Max content size (bytes)', control: 'number' },
+    ],
+  },
+  {
+    key: 'a2a',
+    label: 'Agent-to-agent (A2A)',
+    description:
+      'Publish Kravn as an A2A agent so other agents can delegate tasks to your org agents — authenticated, entitlement-checked and audited. To CONSUME a remote A2A agent instead, add it under Servers with transport “a2a”.',
+    fields: [
+      {
+        path: 'a2a.serverEnabled',
+        label: 'Publish A2A server',
+        control: 'boolean',
+        help: 'Serve an Agent Card at /.well-known/agent-card.json and accept A2A JSON-RPC tasks at /a2a.',
+      },
+      { path: 'a2a.exposeAgents', label: 'Expose org agents as skills', control: 'boolean' },
+      { path: 'a2a.exposeEndpoints', label: 'Expose MCP endpoints as skills', control: 'boolean' },
     ],
   },
   {

@@ -29,6 +29,7 @@ import { LogStore } from './logstore.js';
 import { Metrics } from './metrics.js';
 import { PluginManager } from './plugins/manager.js';
 import { ChatService } from './chat/chat.service.js';
+import { A2AService } from './a2a/a2a.service.js';
 import { SchedulerService } from './schedules/scheduler.service.js';
 import { PyodideExecutor, type CodeExecutor } from './interpreter/executor.js';
 import { nativePlugins } from './plugins/native.js';
@@ -56,6 +57,8 @@ export interface Services {
   downstream: DownstreamMcp;
   plugins: PluginManager;
   chat: ChatService;
+  /** A2A (agent-to-agent) server: publishes an Agent Card and runs delegated tasks under governance. */
+  a2a: A2AService;
   /** Runs scheduled tasks (cron/calendar) — a prompt fired on a schedule, result → a new conversation. */
   scheduler: SchedulerService;
   interpreter: CodeExecutor;
@@ -180,11 +183,12 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const sso = new SsoService(repos, encryptor, jwt, settings, log, sharedStore);
   const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins, settings, usage);
+  const a2a = new A2AService({ repos, chat, settings, ssrf, encryptor, audit, log });
   const scheduler = new SchedulerService({ repos, sharedStore, chat, log });
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, scheduler, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, a2a, scheduler, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */

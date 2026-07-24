@@ -20,7 +20,7 @@ import type { SsrfGuard } from '../http/ssrf.js';
  * True WORM at the storage layer (append-only DB grants, log immutability in the SIEM) is deployment config.
  */
 export interface AuditEvent {
-  category: 'config' | 'auth' | 'access' | 'tool' | 'system';
+  category: 'config' | 'auth' | 'access' | 'tool' | 'system' | 'a2a';
   action: string;
   actor?: { id: string; email: string; role: string } | null;
   resourceType?: string;

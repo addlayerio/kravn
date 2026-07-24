@@ -146,6 +146,10 @@ export function currentUser(req: FastifyRequest): AuthUser {
 export async function authenticateToken(token: string, jwt: JwtService, repos: Repos): Promise<AuthUser | null> {
   try {
     const claims = await jwt.verify(token);
+    // Confine the data plane to full-session (unscoped) or OAuth 'mcp'-scoped tokens. Narrow single-purpose
+    // tickets (scope 'logstream', 'handoff', …) must stay at their own consuming endpoint and must never be
+    // replayable as a full MCP/A2A caller — mirroring app.authenticate, which rejects any scoped token.
+    if (claims.scope && claims.scope !== 'mcp') return null;
     if (await repos.tokens.isRevoked(claims.jti)) return null;
     const user = await repos.users.getById(claims.sub);
     if (!user || user.disabled) return null;

@@ -12,6 +12,30 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 📣 **Agent-to-agent (A2A) — Kravn now speaks the horizontal protocol too.** MCP connects an agent to *tools*;
+  [A2A](https://a2a-protocol.org) (Agent2Agent, Linux Foundation) connects agents to *each other*. Kravn now does
+  both, under one governance plane — identity, entitlements, redaction and audit, applied to agent-to-agent
+  traffic. Nothing leaves your perimeter.
+  - 🧩 **Consume remote A2A agents.** Add one under **MCP Servers** with the new **A2A agent** transport and its
+    Agent Card URL; Kravn fetches the card and bridges each of its skills into your tool registry as a governed
+    tool. Your existing MCP clients (Claude, the chat client) can delegate a task to it **with no changes** — it
+    composes into MCP endpoints, is granted to teams, runs through your governance pipelines, and is audited like
+    any tool call. Bearer / basic / OAuth 2.1 (with refresh) and per-server TLS are reused from the MCP upstream
+    machinery.
+  - 🔒 **Publish Kravn as an A2A agent.** Opt in under **Settings → Agent-to-agent (A2A)** (off by default) and
+    Kravn serves an Agent Card at `/.well-known/agent-card.json` and an A2A JSON-RPC endpoint at `POST /a2a`,
+    exposing your org agents — and optionally your MCP endpoints — as skills. Every inbound task is
+    **authenticated** (`a2a.invoke`, accepting OAuth mcp-scoped tokens), **entitlement-checked** (`canUseAgent` /
+    team membership — platform admins get no free pass on the data plane), **executed under the same governance as
+    chat** (model allowlist, daily token budget, input DLP, per-tool audit), and **recorded** in the tamper-evident
+    audit trail under a new **`a2a`** category.
+  - 📣 **Full 8-state task lifecycle** — `message/send`, streaming `message/stream` (SSE), `tasks/get` /
+    `tasks/cancel` / `tasks/resubscribe`, and `tasks/pushNotificationConfig/*` webhook delivery — persisted so it
+    survives across replicas. A new **A2A** page in the operator shows the published Agent Card, its capabilities,
+    and the recent-task feed.
+
 ## [0.1.91] — 2026-07-22
 
 - 🐛 **The Audit screen fits the page again.** With real traffic in it, the trail's seven columns pushed past

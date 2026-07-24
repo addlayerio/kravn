@@ -1032,8 +1032,49 @@ const auditFilterIndexes: Migration = {
   },
 };
 
+// A2A (agent-to-agent) SERVER-direction task lifecycle. Inbound A2A tasks (delegated to Kravn's org
+// agents / endpoints) persist here across the 8-state lifecycle so tasks/get, tasks/resubscribe and the
+// operator's task view work across pods. (Remote A2A agents Kravn CONSUMES are `servers` rows, no table.)
+const a2aTasks: Migration = {
+  name: '035_a2a_tasks',
+  async up(knex) {
+    await createIfMissing(knex, 'a2a_tasks', (t) => {
+      t.string('id', 64).primary();
+      t.string('context_id', 64).notNullable();
+      t.string('skill_id', 191).notNullable(); // the org agent id or MCP endpoint slug that backs the skill
+      t.string('skill_kind', 16).notNullable(); // 'agent' | 'endpoint'
+      t.string('actor_id', 64).nullable();
+      t.string('actor_email', 191).nullable();
+      t.string('state', 32).notNullable(); // A2aTaskState
+      t.text('input_message').notNullable(); // JSON A2aMessage
+      t.text('status_message').nullable(); // JSON A2aMessage (latest status message)
+      t.text('artifacts').nullable(); // JSON A2aArtifact[]
+      t.text('history').nullable(); // JSON A2aMessage[]
+      t.text('error').nullable();
+      t.string('conversation_id', 64).nullable(); // the chat conversation that executed the task
+      t.string('created_at', 40).notNullable();
+      t.string('updated_at', 40).notNullable();
+      t.index('context_id');
+      t.index('state');
+      t.index('created_at');
+    });
+    await createIfMissing(knex, 'a2a_push_configs', (t) => {
+      t.string('id', 64).primary();
+      t.string('task_id', 64).notNullable();
+      t.text('url').notNullable();
+      t.text('token_enc').nullable(); // caller webhook token, encrypted at rest
+      t.string('created_at', 40).notNullable();
+      t.index('task_id');
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('a2a_push_configs')) await knex.schema.dropTable('a2a_push_configs');
+    if (await knex.schema.hasTable('a2a_tasks')) await knex.schema.dropTable('a2a_tasks');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

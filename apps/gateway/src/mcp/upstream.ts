@@ -3,6 +3,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js';
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js';
 import { type UpstreamServer } from '@kravn/contracts';
+import { connectA2a } from './a2a-client.js';
 import { APP_VERSION } from '../version.js';
 import type { McpCallContext } from '@kravn/plugin-sdk';
 import type { Logger } from 'pino';
@@ -128,8 +129,21 @@ export class UpstreamManager {
       return shim;
     }
 
-    const client = new Client({ name: 'kravn-gateway', version: APP_VERSION }, { capabilities: {} });
     const headers = { ...server.headers, ...authHeaders(server.authType, authPlain) };
+
+    // A2A agents speak a different protocol (JSON-RPC task lifecycle, not MCP). Fetch the Agent Card and
+    // bridge its skills into the registry via a ClientLike shim — no MCP SDK Client is built.
+    if (server.transport === 'a2a') {
+      const a2a = await withTimeout(
+        connectA2a(server.url, headers, dispatcher, this.timeoutMs, this.log),
+        this.timeoutMs(),
+        `connect to A2A agent ${server.name}`,
+      );
+      this.conns.set(server.id, { client: a2a, close: () => a2a.close() });
+      return a2a;
+    }
+
+    const client = new Client({ name: 'kravn-gateway', version: APP_VERSION }, { capabilities: {} });
     // `dispatcher` (undici) carries the per-server TLS (custom CA / mTLS client cert) while keeping the SSRF
     // pinning; undici's global fetch honors it on the RequestInit even though the DOM type omits it.
     const requestInit: RequestInit = { headers };

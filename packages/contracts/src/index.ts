@@ -5,5 +5,6 @@ export * from './entities.js';
 export * from './dtos.js';
 export * from './server-catalog.js';
 export * from './brand-icons.js';
+export * from './a2a.js';
 
 export const KRAVN_VERSION = '0.1.0';

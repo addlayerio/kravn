@@ -191,6 +191,7 @@ export default defineConfig({
         items: [
           { text: 'Core concepts', link: '/guide/concepts' },
           { text: 'The governed client', link: '/guide/client' },
+          { text: 'Agent-to-agent (A2A)', link: '/guide/a2a' },
           { text: 'Configuration', link: '/guide/configuration' },
           { text: 'Plugins & integrations', link: '/guide/plugins' },
           { text: 'Security & compliance', link: '/guide/security' },
@@ -229,6 +230,7 @@ export default defineConfig({
           text: 'Capabilities',
           items: [
             { text: 'Plugins & integrations', link: '/guide/plugins' },
+            { text: 'Agent-to-agent (A2A)', link: '/guide/a2a' },
             { text: 'Security & compliance', link: '/guide/security' },
             { text: 'Key management (KMS/HSM)', link: '/guide/key-management' },
             { text: 'Disaster recovery & continuity', link: '/guide/dr-bcp' },

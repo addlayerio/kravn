@@ -41,6 +41,9 @@ export const PERMISSIONS = [
   'logs.read',
   'audit.read',
   'mcp.invoke',
+  // Data-plane: may an identity delegate a task to Kravn over the A2A (agent-to-agent) server. A distinct
+  // axis from mcp.invoke so an org can allow tool consumption but not agent-to-agent delegation (or vice versa).
+  'a2a.invoke',
 ] as const;
 export type Permission = (typeof PERMISSIONS)[number];
 
@@ -58,6 +61,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     'teams.read',
     'logs.read',
     'mcp.invoke',
+    'a2a.invoke',
   ],
   viewer: [
     'servers.read',
@@ -70,6 +74,7 @@ export const ROLE_PERMISSIONS: Record<Role, readonly string[]> = {
     // user may use — the per-mcp-endpoint access policy + per-team tool grants do. So a "consumer" user
     // (e.g. a partner) can be a viewer: able to invoke, but only the servers/tools they've been granted.
     'mcp.invoke',
+    'a2a.invoke',
   ],
 };
 

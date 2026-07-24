@@ -29,6 +29,10 @@ import type {
   ChatRole,
   ChatAttachment,
   ChatAttachmentKind,
+  A2aTaskState,
+  A2aMessage,
+  A2aArtifact,
+  A2aTaskSummary,
 } from '@kravn/contracts';
 import { PLATFORM_ADMIN_TEAM_ID, PLATFORM_ADMIN_TEAM_SLUG, PLATFORM_ADMIN_TEAM_NAME } from '@kravn/contracts';
 
@@ -1745,6 +1749,8 @@ export interface Repos {
   toolFingerprints: ToolFingerprintsRepo;
   toolApprovals: ToolApprovalsRepo;
   usage: UsageRepo;
+  a2aTasks: A2aTasksRepo;
+  a2aPush: A2aPushRepo;
 }
 
 export interface OAuthClient {
@@ -2268,6 +2274,145 @@ export class SchedulesRepo {
   }
 }
 
+// ─── A2A (agent-to-agent) server-direction task lifecycle ────────────────────────────────────────
+
+/** Full internal record for an inbound A2A task (superset of the protocol A2aTask). */
+export interface A2aTaskRecord {
+  id: string;
+  contextId: string;
+  /** Which internal capability backs the task: an org agent id or an MCP endpoint slug. */
+  skillId: string;
+  skillKind: 'agent' | 'endpoint';
+  actorId: string | null;
+  actorEmail: string | null;
+  state: A2aTaskState;
+  inputMessage: A2aMessage;
+  statusMessage: A2aMessage | null;
+  artifacts: A2aArtifact[];
+  history: A2aMessage[];
+  error: string | null;
+  conversationId: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+function mapA2aTask(r: any): A2aTaskRecord {
+  return {
+    id: r.id,
+    contextId: r.context_id,
+    skillId: r.skill_id,
+    skillKind: (r.skill_kind === 'endpoint' ? 'endpoint' : 'agent'),
+    actorId: r.actor_id ?? null,
+    actorEmail: r.actor_email ?? null,
+    state: r.state as A2aTaskState,
+    inputMessage: JSON.parse(r.input_message || '{}'),
+    statusMessage: r.status_message ? JSON.parse(r.status_message) : null,
+    artifacts: JSON.parse(r.artifacts || '[]'),
+    history: JSON.parse(r.history || '[]'),
+    error: r.error ?? null,
+    conversationId: r.conversation_id ?? null,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export class A2aTasksRepo {
+  constructor(private store: Store) {}
+
+  async create(rec: {
+    id: string;
+    contextId: string;
+    skillId: string;
+    skillKind: 'agent' | 'endpoint';
+    actorId: string | null;
+    actorEmail: string | null;
+    state: A2aTaskState;
+    inputMessage: A2aMessage;
+  }): Promise<A2aTaskRecord> {
+    const ts = now();
+    await this.store.run(
+      `INSERT INTO a2a_tasks (id, context_id, skill_id, skill_kind, actor_id, actor_email, state, input_message, status_message, artifacts, history, error, conversation_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [rec.id, rec.contextId, rec.skillId, rec.skillKind, rec.actorId, rec.actorEmail, rec.state, JSON.stringify(rec.inputMessage), null, '[]', '[]', null, null, ts, ts],
+    );
+    return (await this.get(rec.id))!;
+  }
+
+  async get(id: string): Promise<A2aTaskRecord | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM a2a_tasks WHERE id = ?', [id]);
+    return r ? mapA2aTask(r) : undefined;
+  }
+
+  /** Newest-first summary list for the operator's A2A task view. */
+  async listRecent(limit: number): Promise<A2aTaskSummary[]> {
+    const n = Math.min(500, Math.max(1, Math.trunc(Number(limit)) || 100));
+    const sql = this.store.kind === 'mssql'
+      ? `SELECT TOP (${n}) * FROM a2a_tasks ORDER BY created_at DESC, id DESC`
+      : `SELECT * FROM a2a_tasks ORDER BY created_at DESC, id DESC LIMIT ${n}`;
+    const rows = await this.store.all<any>(sql);
+    return rows.map((r) => ({
+      id: r.id,
+      contextId: r.context_id,
+      skillId: r.skill_id,
+      actorEmail: r.actor_email ?? null,
+      state: r.state as A2aTaskState,
+      createdAt: r.created_at,
+      updatedAt: r.updated_at,
+      error: r.error ?? null,
+    }));
+  }
+
+  /** Apply a partial state/result update. JSON columns are stringified; only provided fields change. */
+  async update(
+    id: string,
+    patch: {
+      state?: A2aTaskState;
+      statusMessage?: A2aMessage | null;
+      artifacts?: A2aArtifact[];
+      history?: A2aMessage[];
+      error?: string | null;
+      conversationId?: string | null;
+    },
+  ): Promise<void> {
+    const sets: string[] = [];
+    const vals: unknown[] = [];
+    if (patch.state !== undefined) { sets.push('state = ?'); vals.push(patch.state); }
+    if (patch.statusMessage !== undefined) { sets.push('status_message = ?'); vals.push(patch.statusMessage ? JSON.stringify(patch.statusMessage) : null); }
+    if (patch.artifacts !== undefined) { sets.push('artifacts = ?'); vals.push(JSON.stringify(patch.artifacts)); }
+    if (patch.history !== undefined) { sets.push('history = ?'); vals.push(JSON.stringify(patch.history)); }
+    if (patch.error !== undefined) { sets.push('error = ?'); vals.push(patch.error); }
+    if (patch.conversationId !== undefined) { sets.push('conversation_id = ?'); vals.push(patch.conversationId); }
+    if (!sets.length) return;
+    sets.push('updated_at = ?');
+    vals.push(now(), id);
+    await this.store.run(`UPDATE a2a_tasks SET ${sets.join(', ')} WHERE id = ?`, vals);
+  }
+}
+
+export class A2aPushRepo {
+  constructor(private store: Store) {}
+
+  /** Register (or replace) a push-notification target for a task. `tokenEnc` is already encrypted. */
+  async set(id: string, taskId: string, url: string, tokenEnc: string | null): Promise<void> {
+    await this.store.run('DELETE FROM a2a_push_configs WHERE id = ? AND task_id = ?', [id, taskId]);
+    await this.store.run(
+      'INSERT INTO a2a_push_configs (id, task_id, url, token_enc, created_at) VALUES (?,?,?,?,?)',
+      [id, taskId, url, tokenEnc, now()],
+    );
+  }
+  async listByTask(taskId: string): Promise<Array<{ id: string; url: string; tokenEnc: string | null }>> {
+    const rows = await this.store.all<any>('SELECT * FROM a2a_push_configs WHERE task_id = ? ORDER BY created_at ASC', [taskId]);
+    return rows.map((r) => ({ id: r.id, url: r.url, tokenEnc: r.token_enc ?? null }));
+  }
+  async get(taskId: string, id: string): Promise<{ id: string; url: string; tokenEnc: string | null } | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM a2a_push_configs WHERE task_id = ? AND id = ?', [taskId, id]);
+    return r ? { id: r.id, url: r.url, tokenEnc: r.token_enc ?? null } : undefined;
+  }
+  async delete(taskId: string, id: string): Promise<void> {
+    await this.store.run('DELETE FROM a2a_push_configs WHERE task_id = ? AND id = ?', [taskId, id]);
+  }
+}
+
 export function createRepos(store: Store): Repos {
   return {
     users: new UsersRepo(store),
@@ -2291,5 +2436,7 @@ export function createRepos(store: Store): Repos {
     toolFingerprints: new ToolFingerprintsRepo(store),
     toolApprovals: new ToolApprovalsRepo(store),
     usage: new UsageRepo(store),
+    a2aTasks: new A2aTasksRepo(store),
+    a2aPush: new A2aPushRepo(store),
   };
 }

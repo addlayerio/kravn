@@ -5,6 +5,8 @@ import type { FastifyReply } from 'fastify';
 export interface SseStream {
   send(event: string, data?: unknown): void;
   close(): void;
+  /** True once the client disconnected (or the stream was closed) — lets a long producer stop early. */
+  closed(): boolean;
 }
 
 /**
@@ -57,6 +59,7 @@ export function openSse(reply: FastifyReply, heartbeatMs = 25_000): SseStream {
   return {
     // JSON.stringify escapes newlines, so a payload can never break out of its `data:` line.
     send: (event, data) => write(`event: ${event}\ndata: ${JSON.stringify(data ?? {})}\n\n`),
+    closed: () => closed,
     close: () => {
       cleanup();
       try {

@@ -3,7 +3,9 @@ import { roleSchema } from './permissions.js';
 
 // ─── Upstream MCP server (Kravn connects to these as an MCP CLIENT) ──────────────────────────────
 
-export const TRANSPORTS = ['streamable-http', 'sse', 'stdio', 'plugin'] as const;
+// 'a2a' = a remote Agent2Agent agent: Kravn fetches its Agent Card and bridges its skills into the
+// registry as tools, so any MCP/chat consumer can delegate a task to it under the same governance.
+export const TRANSPORTS = ['streamable-http', 'sse', 'stdio', 'plugin', 'a2a'] as const;
 export type Transport = (typeof TRANSPORTS)[number];
 export const transportSchema = z.enum(TRANSPORTS);
 

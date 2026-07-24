@@ -32,6 +32,7 @@ import { auditRoutes } from './routes/audit.routes.js';
 import { approvalRoutes } from './routes/approvals.routes.js';
 import { usageRoutes } from './routes/usage.routes.js';
 import { mcpRoutes } from './routes/mcp.routes.js';
+import { a2aRoutes } from './routes/a2a.routes.js';
 import { overviewRoutes } from './routes/overview.routes.js';
 import { eventRoutes } from './routes/events.routes.js';
 import { oauthRoutes } from './routes/oauth.routes.js';
@@ -242,6 +243,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     approvalRoutes(app, services);
     usageRoutes(app, services);
     mcpRoutes(app, services);
+    // A2A server: POST /a2a (JSON-RPC) + /.well-known/agent-card.json. GET /a2a is left for the operator SPA
+    // route (method-distinct), so '/a2a' is deliberately NOT added to API_PREFIXES.
+    a2aRoutes(app, services);
     overviewRoutes(app, services);
     eventRoutes(app, services);
   }

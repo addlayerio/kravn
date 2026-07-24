@@ -640,6 +640,7 @@ async function remove(srv: UpstreamServer) {
         <select v-model="form.transport">
           <option value="streamable-http">Streamable HTTP</option>
           <option value="sse">SSE</option>
+          <option value="a2a">{{ t('serversView.a2aOption') }}</option>
           <option value="stdio">{{ t('serversView.stdioOption') }}</option>
         </select>
       </div>
