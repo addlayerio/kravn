@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.92] — 2026-07-27
 
 - 📣 **Agent-to-agent (A2A) — Kravn now speaks the horizontal protocol too.** MCP connects an agent to *tools*;
   [A2A](https://a2a-protocol.org) (Agent2Agent, Linux Foundation) connects agents to *each other*. Kravn now does
