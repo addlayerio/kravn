@@ -619,7 +619,7 @@ const editingScheduleId = ref<string | null>(null);
 const savingSchedule = ref(false);
 const scheduleError = ref('');
 const sf = reactive({
-  name: '', prompt: '', providerId: '', model: '', vserverSlug: '', projectId: '',
+  name: '', prompt: '', agentId: '', providerId: '', model: '', vserverSlug: '', projectId: '',
   kind: 'cron' as 'cron' | 'once', cron: '0 9 * * 1', runAt: '', timezone: 'UTC', enabled: true,
 });
 function scheduleById(id: string | null): ChatSchedule | undefined {
@@ -632,7 +632,7 @@ function openScheduleNew(projectId = '') {
   scheduleError.value = '';
   const p = providers.value[0];
   Object.assign(sf, {
-    name: '', prompt: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
+    name: '', prompt: '', agentId: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
     vserverSlug: '', projectId, kind: 'cron', cron: '0 9 * * 1', runAt: '',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', enabled: true,
   });
@@ -644,7 +644,7 @@ function openSchedule(s: ChatSchedule) {
   editingScheduleId.value = s.id;
   scheduleError.value = '';
   Object.assign(sf, {
-    name: s.name, prompt: s.prompt, providerId: s.providerId, model: s.model, vserverSlug: s.vserverSlug,
+    name: s.name, prompt: s.prompt, agentId: s.agentId ?? '', providerId: s.providerId, model: s.model, vserverSlug: s.vserverSlug,
     projectId: s.projectId ?? '', kind: s.kind, cron: s.cron || '0 9 * * 1', runAt: s.runAt,
     timezone: s.timezone || 'UTC', enabled: s.enabled,
   });
@@ -654,6 +654,17 @@ function openSchedule(s: ChatSchedule) {
 function onScheduleProviderChange() {
   const p = providers.value.find((x) => x.id === sf.providerId);
   sf.model = p?.defaultModel ?? p?.models[0] ?? '';
+}
+/** Picking an agent pre-fills the task's provider + model; its instructions + tools apply server-side at run time. */
+function onScheduleAgentChange() {
+  const a = agents.value.find((x) => x.id === sf.agentId);
+  if (!a) return;
+  if (a.providerId && providers.value.some((p) => p.id === a.providerId)) {
+    sf.providerId = a.providerId;
+    sf.model = a.model || providers.value.find((p) => p.id === a.providerId)?.defaultModel || sf.model;
+  } else if (a.model) {
+    sf.model = a.model;
+  }
 }
 async function saveSchedule() {
   scheduleError.value = '';
@@ -667,6 +678,7 @@ async function saveSchedule() {
       name: sf.name.trim(), prompt: sf.prompt, providerId: sf.providerId, model: sf.model,
       vserverSlug: sf.vserverSlug, kind: sf.kind, cron: sf.cron, runAt: sf.runAt, timezone: sf.timezone, enabled: sf.enabled,
       ...(sf.projectId ? { projectId: sf.projectId } : {}),
+      ...(sf.agentId ? { agentId: sf.agentId } : {}),
     };
     const res = editingScheduleId.value
       ? await api.put<{ schedule: ChatSchedule }>(`/api/chat/schedules/${editingScheduleId.value}`, body)
@@ -1398,6 +1410,14 @@ async function logout() {
         <div class="panel-card">
           <div class="field"><label>{{ t('chat.name') }}</label><input v-model="sf.name" :placeholder="t('chat.taskNamePlaceholder')" /></div>
           <div class="field"><label>{{ t('chat.promptWhatToRun') }}</label><textarea v-model="sf.prompt" rows="4" :placeholder="t('chat.taskPromptPlaceholder')"></textarea></div>
+          <div v-if="agents.length" class="field">
+            <label>{{ t('chat.agentOptional') }}</label>
+            <select v-model="sf.agentId" @change="onScheduleAgentChange">
+              <option value="">{{ t('chat.noAgent') }}</option>
+              <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.name }}</option>
+            </select>
+            <small class="muted">{{ t('chat.agentHint') }}</small>
+          </div>
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
             <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.provider') }}</label>
               <select v-model="sf.providerId" @change="onScheduleProviderChange">

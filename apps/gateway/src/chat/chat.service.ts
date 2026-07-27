@@ -91,6 +91,53 @@ function textFromContent(c: string | LlmContentBlock[] | null | undefined): stri
   return '';
 }
 
+/**
+ * Turn a raw LLM-provider HTTP error into a short, human message an end user can act on. Providers return a
+ * JSON blob (`{"type":"error","error":{"type":"invalid_request_error","message":"prompt is too long: … tokens
+ * > 200000 maximum"}}`) that means nothing to a chat user — so we classify it and return plain guidance. The
+ * raw body is still logged server-side (see ChatService.llmError) for operators; it is never shown to the user.
+ */
+/** True when a provider error means the prompt exceeded the model's context window. */
+function isContextOverflow(hay: string): boolean {
+  return /too long|context length|context window|maximum context|too many tokens|reduce the length|maximum.*tokens/.test(hay);
+}
+
+function friendlyLlmError(status: number, rawBody: string): string {
+  let type = '';
+  let message = '';
+  try {
+    const j = JSON.parse(rawBody) as { type?: string; message?: string; error?: { type?: string; message?: string } };
+    type = j.error?.type ?? j.type ?? '';
+    message = j.error?.message ?? j.message ?? '';
+  } catch {
+    /* provider returned a non-JSON body (e.g. an HTML 502) */
+  }
+  const hay = `${type} ${message} ${rawBody}`.toLowerCase();
+  if (isContextOverflow(hay)) {
+    return 'This conversation is too long for the model to read in one go (it exceeds the model’s context window). Start a new chat, or remove older messages or large attachments, and try again.';
+  }
+  if (status === 429 || /rate.?limit/.test(hay)) {
+    return 'The assistant is receiving too many requests right now. Please wait a few seconds and try again.';
+  }
+  if (status === 529 || /overloaded/.test(hay)) {
+    return 'The model is temporarily overloaded. Please try again in a few seconds.';
+  }
+  if (status === 401 || status === 403 || /authentication|permission|invalid.?api.?key|unauthorized|credit balance|billing/.test(hay)) {
+    return 'The AI provider rejected the request (authentication, permissions or billing). Please ask an administrator to check the model provider’s settings.';
+  }
+  if (status === 404 || type === 'not_found_error' || /not_found|no such model|does not exist|model.*(not.*found|unavailable)/.test(hay)) {
+    const m = message.replace(/^\s*model:\s*/i, '').trim();
+    return `The selected model${m ? ` “${m}”` : ''} isn’t available from this provider (it may have been retired or renamed). An administrator can pick a current model in Settings → LLM Models — use “Fetch models” there to load the provider’s live list.`;
+  }
+  if (status >= 500) {
+    return 'The AI provider had a temporary error. Please try again in a moment.';
+  }
+  // Unknown 4xx: surface the provider's own message if we could parse one (already de-JSONed), else a generic line.
+  return message
+    ? `The assistant could not complete this request: ${message}`
+    : 'The assistant could not complete this request. Please try again.';
+}
+
 export class ChatService {
   constructor(
     private repos: Repos,
@@ -114,6 +161,65 @@ export class ChatService {
       return re.test(model);
     });
     if (!ok) throw new Error(`Model "${model}" is not allowed by policy. Allowed: ${allowed.join(', ')}.`);
+  }
+
+  /** Log the raw provider error (for operators) and return a user-facing Error with a friendly message.
+   *  Marks `contextOverflow` so the send loop can trim the oldest history and retry instead of failing. */
+  private llmError(status: number, rawBody: string): Error {
+    this.log.warn({ status, body: rawBody.slice(0, 800) }, 'LLM provider error');
+    const err = new Error(friendlyLlmError(status, rawBody)) as Error & { contextOverflow?: boolean };
+    err.contextOverflow = isContextOverflow(`${status} ${rawBody}`.toLowerCase());
+    return err;
+  }
+
+  /**
+   * Drop the oldest non-system message so the prompt shrinks toward the model's context window. Keeps the
+   * system prompt (index 0) and the most recent turn, and leaves the first remaining message a `user` turn
+   * (Anthropic requires that). Returns false when there is nothing safe left to trim.
+   */
+  private trimOldest(messages: LlmMessage[]): boolean {
+    // Only trim HISTORY that precedes the current question — never the current user turn or its in-flight tool
+    // exchange (which live at the tail). Find the last `user` message and only drop messages before it.
+    let lastUser = -1;
+    for (let i = messages.length - 1; i >= 1; i--) {
+      if (messages[i]?.role === 'user') { lastUser = i; break; }
+    }
+    if (lastUser <= 1) return false; // nothing older than the current question to drop
+    messages.splice(1, 1); // drop the oldest post-system message
+    // Keep the first remaining message a `user` turn (Anthropic requires it); stops at the current question.
+    while (messages.length > 2 && messages[1]?.role === 'assistant') messages.splice(1, 1);
+    return true;
+  }
+
+  /**
+   * Call the provider, and if it rejects the prompt for exceeding the context window, trim the oldest history
+   * and retry (up to a few times) rather than hard-failing. `trimmed` tells the caller to note that older
+   * context was dropped. Any non-overflow error propagates unchanged.
+   */
+  private async completeOrTrim(
+    actor: AuthUser,
+    provider: LlmProvider,
+    key: string,
+    model: string,
+    messages: LlmMessage[],
+    tools: any[],
+    webSearch: boolean,
+  ): Promise<{ msg: LlmMessage; trimmed: boolean }> {
+    let trimmed = false;
+    for (let attempt = 0; attempt < 6; attempt++) {
+      try {
+        const msg = await this.complete(actor, provider, key, model, messages, tools, webSearch);
+        return { msg, trimmed };
+      } catch (err) {
+        const overflow = (err as { contextOverflow?: boolean })?.contextOverflow === true;
+        if (!overflow || !this.trimOldest(messages)) throw err; // not a length problem, or nothing left to trim
+        trimmed = true;
+        this.log.info({ conversationMessages: messages.length }, 'chat: trimmed oldest context after overflow, retrying');
+      }
+    }
+    // Exhausted retries — one last try; if it still overflows, the friendly error surfaces to the user.
+    const msg = await this.complete(actor, provider, key, model, messages, tools, webSearch);
+    return { msg, trimmed };
   }
 
   /** Send a user message and produce the assistant reply (running tools when the model asks).
@@ -191,6 +297,7 @@ export class ChatService {
     const workspaceFiles: Array<{ name: string; b64: string; mime?: string }> = await this.repos.chat.getAttachmentFiles(actor.id, conversationId);
     const producedAttachmentIds: string[] = [];
     let finalText = '';
+    let contextTrimmed = false; // set when older messages were dropped to fit the model's context window
 
     // Best-effort and never load-bearing: a throwing/closed reporter must not fail the turn.
     const report = (p: ChatProgress) => {
@@ -203,7 +310,8 @@ export class ChatService {
 
     if (!supportsTools || tools.length === 0) {
       // Plain completion (no tool loop). Native web search still applies — it runs server-side at the provider.
-      const msg = await this.complete(actor, provider, key, conv.model, messages, [], conv.webSearch);
+      const { msg, trimmed } = await this.completeOrTrim(actor, provider, key, conv.model, messages, [], conv.webSearch);
+      if (trimmed) contextTrimmed = true;
       const think = thinkingTextOf(msg);
       if (think) report({ type: 'thinking', text: think });
       finalText = textOf(msg);
@@ -213,7 +321,8 @@ export class ChatService {
       const maxRounds = this.settings.get().governance.chatMaxToolRounds || DEFAULT_MAX_TOOL_ROUNDS;
       for (let round = 0; round < maxRounds; round++) {
         report({ type: 'round', round: round + 1, maxRounds });
-        const msg = await this.complete(actor, provider, key, conv.model, messages, tools, conv.webSearch);
+        const { msg, trimmed } = await this.completeOrTrim(actor, provider, key, conv.model, messages, tools, conv.webSearch);
+        if (trimmed) contextTrimmed = true;
         const think = thinkingTextOf(msg);
         if (think) report({ type: 'thinking', text: think });
         if (!msg.tool_calls || msg.tool_calls.length === 0) {
@@ -283,6 +392,10 @@ export class ChatService {
       }
     }
 
+    if (contextTrimmed) {
+      // Be transparent: the model answered, but some older messages were dropped to fit its context window.
+      finalText = `${finalText || '(no response)'}\n\n---\n\n_ℹ️ This conversation got long, so the oldest messages were left out to fit the model’s context window. For full context, start a new chat._`;
+    }
     const assistantMsg = await this.repos.chat.addMessage(newId(), conversationId, 'assistant', finalText || '(no response)');
     // Attach any tool-produced files to the assistant message so the user can download them.
     if (producedAttachmentIds.length) {
@@ -582,7 +695,7 @@ export class ChatService {
         headers: { 'content-type': 'application/json', 'x-api-key': key, 'anthropic-version': '2023-06-01' },
         body: JSON.stringify(body),
       }, ANTHROPIC_TIMEOUT_MS);
-      if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      if (!res.ok) throw this.llmError(res.status, await res.text());
       const data: any = await res.json();
       const u = data.usage ?? {};
       void this.usage.meterTokens({ id: actor.id }, model, Number(u.input_tokens) || 0, Number(u.output_tokens) || 0);
@@ -623,7 +736,7 @@ export class ChatService {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify(body),
       }, 60_000);
-      if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+      if (!res.ok) throw this.llmError(res.status, await res.text());
       const data: any = await res.json();
       const um = data.usageMetadata ?? {};
       void this.usage.meterTokens({ id: actor.id }, model, Number(um.promptTokenCount) || 0, Number(um.candidatesTokenCount) || 0);
@@ -657,7 +770,7 @@ export class ChatService {
       body.web_search_options = {};
     }
     const res = await safeFetch(url, { method: 'POST', headers, body: JSON.stringify(body) }, 60_000);
-    if (!res.ok) throw new Error(`LLM error HTTP ${res.status}: ${(await res.text()).slice(0, 300)}`);
+    if (!res.ok) throw this.llmError(res.status, await res.text());
     const data: any = await res.json();
     const uo = data.usage ?? {};
     void this.usage.meterTokens({ id: actor.id }, model, Number(uo.prompt_tokens) || 0, Number(uo.completion_tokens) || 0);

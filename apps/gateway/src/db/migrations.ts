@@ -1073,8 +1073,24 @@ const a2aTasks: Migration = {
   },
 };
 
+// A scheduled task may run AS an org Agent (its instructions + tool filter apply, re-checked live at run time).
+const chatScheduleAgent: Migration = {
+  name: '036_chat_schedule_agent',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_schedules'))) return;
+    if (!(await knex.schema.hasColumn('chat_schedules', 'agent_id'))) {
+      await knex.schema.alterTable('chat_schedules', (t) => t.string('agent_id').nullable());
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_schedules')) && (await knex.schema.hasColumn('chat_schedules', 'agent_id'))) {
+      await knex.schema.alterTable('chat_schedules', (t) => t.dropColumn('agent_id'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

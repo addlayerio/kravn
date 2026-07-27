@@ -159,6 +159,8 @@ export const createScheduleSchema = z.object({
   model: z.string().min(1),
   vserverSlug: z.string().optional(),
   projectId: z.string().optional(),
+  /** Optional org Agent to run this scheduled task as. */
+  agentId: z.string().optional(),
   kind: z.enum(['cron', 'once']),
   cron: z.string().max(120).optional(),
   runAt: z.string().max(40).optional(),

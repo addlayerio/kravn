@@ -7,7 +7,7 @@ import { api } from '../api/client';
 import { useAuthStore } from '../stores/auth';
 import { useToastStore } from '../stores/toast';
 import { copyText } from '../lib/clipboard';
-import { Copy, Pencil, Trash2 } from 'lucide-vue-next';
+import { Copy, CopyPlus, Pencil, Trash2 } from 'lucide-vue-next';
 
 const { t } = useI18n();
 const auth = useAuthStore();
@@ -31,6 +31,17 @@ function openCreate() {
 }
 function openEdit(v: McpEndpoint) {
   router.push(`/mcp-endpoints/${v.id}`);
+}
+// Fork an existing endpoint server-side into a DISABLED copy — same tools/resources/prompts/access/teams PLUS
+// its pipeline overlay and per-team tool subsets — then open it for editing so you can tweak and enable it.
+async function cloneEndpoint(v: McpEndpoint) {
+  try {
+    const { mcpEndpoint } = await api.post<{ mcpEndpoint: McpEndpoint }>(`/api/mcp-endpoints/${v.id}/clone`);
+    toast.success(t('endpointsView.cloned'));
+    router.push(`/mcp-endpoints/${mcpEndpoint.id}`);
+  } catch {
+    toast.error(t('endpointsView.cloneFailed'));
+  }
 }
 async function remove(v: McpEndpoint) {
   if (!confirm(t('endpointsView.confirmDelete', { name: v.name }))) return;
@@ -80,6 +91,7 @@ async function copyUrl(slug: string): Promise<void> {
           <td class="actions-cell">
             <div class="btn-row" style="flex-wrap: nowrap">
               <button class="btn icon" :title="t('endpointsView.copyUrl')" :aria-label="t('endpointsView.copyUrl')" @click="copyUrl(v.slug)"><Copy :size="16" :stroke-width="2" /></button>
+              <button v-if="auth.can('endpoints.write')" class="btn icon" :title="t('endpointsView.clone')" :aria-label="t('endpointsView.clone')" @click="cloneEndpoint(v)"><CopyPlus :size="16" :stroke-width="2" /></button>
               <button v-if="auth.can('endpoints.write')" class="btn icon" :title="t('endpointsView.edit')" :aria-label="t('endpointsView.edit')" @click="openEdit(v)"><Pencil :size="16" :stroke-width="2" /></button>
               <button v-if="auth.can('endpoints.delete')" class="btn danger icon" :title="t('endpointsView.delete')" :aria-label="t('endpointsView.delete')" @click="remove(v)"><Trash2 :size="16" :stroke-width="2" /></button>
             </div>

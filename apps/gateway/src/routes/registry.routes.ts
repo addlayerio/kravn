@@ -97,6 +97,37 @@ export function registryRoutes(app: FastifyInstance, s: Services): void {
     return reply.code(201).send({ mcpEndpoint: vs });
   });
 
+  // Clone an endpoint into a DISABLED copy: same tools/resources/prompts/access/teams, PLUS its governance
+  // pipeline overlay and each team's per-endpoint tool subset — so you can fork a working endpoint for a team
+  // and just tweak it, instead of rebuilding it by hand. Disabled on purpose so the fork isn't exposed to the
+  // same teams before you reconfigure it.
+  app.post('/api/mcp-endpoints/:id/clone', vsWrite, async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const src = await s.repos.mcpEndpoints.getById(id);
+    if (!src) return sendError(reply, 404, 'not_found', 'MCP endpoint not found.');
+    const name = `${src.name} (copy)`;
+    const vs = await s.repos.mcpEndpoints.create({
+      id: newId(),
+      name,
+      slug: await uniqueVsSlug(name),
+      description: src.description,
+      toolIds: src.toolIds,
+      resourceIds: src.resourceIds,
+      promptIds: src.promptIds,
+      access: src.access,
+      allowedRoles: src.allowedRoles,
+      allowedTeams: src.allowedTeams,
+      enabled: false,
+    });
+    await s.repos.pipeline.copyScope(src.id, vs.id); // carry over the hook-pipeline overlay
+    for (const teamId of src.allowedTeams) {
+      const subset = await s.repos.teams.serverToolSubset(teamId, src.id);
+      if (subset.length) await s.repos.teams.setServerToolSubset(teamId, vs.id, subset);
+    }
+    await s.plugins.reloadPipeline(); // activate the copied overlay in the in-memory chains
+    return reply.code(201).send({ mcpEndpoint: vs });
+  });
+
   app.patch('/api/mcp-endpoints/:id', vsWrite, async (req, reply) => {
     const { id } = req.params as { id: string };
     const dto = parse(reply, upsertMcpEndpointSchema.partial(), req.body);

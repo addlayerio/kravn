@@ -325,6 +325,8 @@ export const chatScheduleSchema = z.object({
   model: z.string().default(''),
   vserverSlug: z.string().default(''),
   projectId: z.string().nullable().default(null),
+  /** Optional org Agent to run this task as (its instructions + tool filter apply, entitlement re-checked live). */
+  agentId: z.string().nullable().default(null),
   kind: scheduleKindSchema,
   /** Cron expression (5-field), for kind='cron'. */
   cron: z.string().default(''),

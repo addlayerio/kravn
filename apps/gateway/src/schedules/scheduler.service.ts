@@ -98,6 +98,8 @@ export class SchedulerService {
       providerId: s.providerId,
       model: s.model,
       vserverSlug: s.vserverSlug || '',
+      // Run as the org Agent if one was chosen — its instructions + tool filter apply, re-checked live in send().
+      agentId: s.agentId || null,
     });
     await this.d.chat.send(actor, convId, s.prompt);
     return convId;

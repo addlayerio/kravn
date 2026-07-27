@@ -12,6 +12,30 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🐛 **Readable chat errors.** When the model provider rejects a request, the chat no longer shows the raw
+  provider JSON (e.g. `LLM error HTTP 400: {"type":"invalid_request_error","message":"prompt is too long: …"}`).
+  It now shows a short, actionable message — *“This conversation is too long for the model… start a new chat, or
+  remove older messages or large attachments”* for context-window overflows, plus friendly text for rate limits,
+  provider overload, auth/billing, and a **retired/renamed model** (404) — *“that model isn’t available… pick a
+  current one in Settings → LLM Models”*. The raw provider error is still logged server-side for operators.
+- 🐛 **LLM Models flags retired models.** “Fetch from provider” already pulls the provider’s live model list; now
+  any model you have **selected** that the provider no longer lists is marked **retired** in the picker — so a
+  stale id (e.g. an Anthropic model since withdrawn) is visible and removable instead of silently failing with a
+  404 the next time it’s used.
+- 📣 **Clone an MCP endpoint.** A new **Clone** action forks an endpoint into a **new, disabled copy** — same
+  tools, resources, prompts, access and teams, **plus its governance pipeline overlay and each team's per-endpoint
+  tool subset** — then opens it for editing. Fork a working endpoint for a specific team, swap the tools/prompts,
+  and enable it, instead of rebuilding it (and its overlays) by hand. It starts disabled so the fork isn't exposed
+  to the same teams before you reconfigure it.
+- 📣 **Scheduled tasks can run as an org Agent.** When creating a scheduled task in the client, you can now pick an
+  **Agent** — the task runs with that agent's instructions and tool set (entitlement re-checked live at run time),
+  exactly like starting a chat from an agent. Leave it blank for a plain prompt as before.
+- 🐛 **Long chats recover instead of failing.** If a conversation grows past the model's context window, the chat
+  now automatically drops the oldest messages and retries rather than returning an error — and the reply notes
+  that older context was left out (start a new chat for full context).
+
 ## [0.1.92] — 2026-07-27
 
 - 📣 **Agent-to-agent (A2A) — Kravn now speaks the horizontal protocol too.** MCP connects an agent to *tools*;

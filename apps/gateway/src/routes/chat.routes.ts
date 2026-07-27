@@ -238,6 +238,10 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
     }
+    if (dto.agentId) {
+      const agent = await s.repos.chat.getAgent(dto.agentId);
+      if (!agent || !canUseAgent(agent, u)) return sendError(reply, 404, 'not_found', 'Agent not found.');
+    }
     const cron = dto.cron ?? '';
     const runAt = dto.runAt ?? '';
     const timezone = dto.timezone || 'UTC';
@@ -248,7 +252,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (enabled && dto.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
     const schedule = await s.repos.schedules.create(u.id, newId(), {
       name: dto.name, prompt: dto.prompt, providerId: dto.providerId, model: dto.model,
-      vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId ?? null,
+      vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId ?? null, agentId: dto.agentId ?? null,
       kind: dto.kind, cron, runAt, timezone, enabled, nextRunAt,
     });
     return reply.code(201).send({ schedule });
@@ -262,6 +266,10 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (!existing) return sendError(reply, 404, 'not_found', 'Schedule not found.');
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
+    }
+    if (dto.agentId) {
+      const agent = await s.repos.chat.getAgent(dto.agentId);
+      if (!agent || !canUseAgent(agent, u)) return sendError(reply, 404, 'not_found', 'Agent not found.');
     }
     const m = { ...existing, ...dto };
     const enabled = dto.enabled ?? existing.enabled;

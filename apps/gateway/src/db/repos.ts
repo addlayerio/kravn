@@ -780,6 +780,20 @@ export class PipelineRepo {
   async deleteByScope(scope: string): Promise<void> {
     await this.store.run('DELETE FROM pipeline_steps WHERE scope = ?', [scope]);
   }
+
+  /** Duplicate every overlay step from one scope to another (endpoint clone), preserving hook + order. */
+  async copyScope(fromScope: string, toScope: string): Promise<void> {
+    const rows = await this.store.all<any>(
+      'SELECT hook_point, plugin_id, position, enabled FROM pipeline_steps WHERE scope = ? ORDER BY hook_point ASC, position ASC',
+      [fromScope],
+    );
+    for (const r of rows) {
+      await this.store.run(
+        'INSERT INTO pipeline_steps (scope, hook_point, plugin_id, position, enabled) VALUES (?,?,?,?,?)',
+        [toScope, r.hook_point, r.plugin_id, r.position, r.enabled ? 1 : 0],
+      );
+    }
+  }
 }
 
 // ─── Teams ────────────────────────────────────────────────────────────────────────────────────────
@@ -2198,7 +2212,7 @@ export class AuditLogRepo {
 function mapSchedule(r: any): ChatSchedule {
   return {
     id: r.id, name: r.name, prompt: r.prompt ?? '', providerId: r.provider_id, model: r.model,
-    vserverSlug: r.vserver_slug ?? '', projectId: r.project_id ?? null, kind: r.kind as ScheduleKind,
+    vserverSlug: r.vserver_slug ?? '', projectId: r.project_id ?? null, agentId: r.agent_id ?? null, kind: r.kind as ScheduleKind,
     cron: r.cron ?? '', runAt: r.run_at ?? '', timezone: r.timezone ?? 'UTC', enabled: bool(r.enabled),
     nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
     lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
@@ -2218,13 +2232,13 @@ export class SchedulesRepo {
   }
   async create(userId: string, id: string, s: {
     name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
-    kind: ScheduleKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
+    agentId: string | null; kind: ScheduleKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
   }): Promise<ChatSchedule> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_schedules (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, kind, cron, run_at, timezone, enabled, next_run_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt, ts, ts],
+      `INSERT INTO chat_schedules (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt, ts, ts],
     );
     return (await this.get(userId, id))!;
   }
@@ -2232,7 +2246,7 @@ export class SchedulesRepo {
   async update(userId: string, id: string, patch: Record<string, unknown>): Promise<void> {
     const cols: Record<string, string> = {
       name: 'name', prompt: 'prompt', providerId: 'provider_id', model: 'model', vserverSlug: 'vserver_slug',
-      projectId: 'project_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone', enabled: 'enabled', nextRunAt: 'next_run_at',
+      projectId: 'project_id', agentId: 'agent_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone', enabled: 'enabled', nextRunAt: 'next_run_at',
     };
     const sets: string[] = [];
     const vals: unknown[] = [];

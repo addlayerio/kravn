@@ -45,6 +45,8 @@ const form = reactive(blank());
 const candidates = ref<string[]>([]);
 const discovering = ref(false);
 const discoverNote = ref('');
+// Selected models the provider's LIVE list no longer offers (retired/renamed) — flagged after a live fetch.
+const staleModels = ref<string[]>([]);
 const customModel = ref('');
 
 function baseHint(t: LlmProviderType): string {
@@ -68,6 +70,7 @@ function openCreate() {
   Object.assign(form, blank());
   candidates.value = uniqSort([...(LLM_MODEL_CATALOG[form.type] ?? [])]);
   discoverNote.value = '';
+  staleModels.value = [];
   customModel.value = '';
   editingId.value = null;
   error.value = '';
@@ -85,6 +88,7 @@ function openEdit(p: LlmProvider) {
   });
   candidates.value = uniqSort([...(LLM_MODEL_CATALOG[p.type] ?? []), ...p.models]);
   discoverNote.value = '';
+  staleModels.value = [];
   customModel.value = '';
   editingId.value = p.id;
   error.value = '';
@@ -99,6 +103,7 @@ function onTypeChange() {
   form.selected = [];
   form.defaultModel = '';
   discoverNote.value = '';
+  staleModels.value = [];
   if (NATIVE_TYPES.includes(form.type)) form.baseUrl = ''; // use the built-in default; the field is hidden
 }
 
@@ -123,6 +128,7 @@ function addCustom() {
 async function fetchModels() {
   discovering.value = true;
   discoverNote.value = '';
+  staleModels.value = [];
   try {
     const body: Record<string, unknown> = { type: form.type, baseUrl: form.baseUrl };
     if (editingId.value) body.providerId = editingId.value;
@@ -130,7 +136,12 @@ async function fetchModels() {
     const { result } = await api.post<{ result: LlmModelsResult }>('/api/llm/discover', body);
     candidates.value = uniqSort([...candidates.value, ...result.models]);
     discoverNote.value = result.message;
-    if (result.source === 'live') toast.success(t('llmModelsView.foundModels', { count: result.models.length }));
+    if (result.source === 'live') {
+      // Flag any selected model the provider's live list no longer offers (retired/renamed) so it can be removed
+      // before it fails at call time with a 404.
+      staleModels.value = form.selected.filter((m) => !result.models.includes(m));
+      toast.success(t('llmModelsView.foundModels', { count: result.models.length }));
+    }
   } catch (e) {
     discoverNote.value = e instanceof ApiError ? e.message : t('llmModelsView.couldNotFetchModels');
   } finally {
@@ -264,6 +275,7 @@ async function remove(p: LlmProvider) {
           <label v-for="m in candidates" :key="m" class="model-opt">
             <input type="checkbox" :checked="form.selected.includes(m)" @change="toggleModel(m)" />
             <span>{{ m }}</span>
+            <span v-if="staleModels.includes(m)" class="badge error" :title="t('llmModelsView.retiredHint')">{{ t('llmModelsView.retired') }}</span>
           </label>
           <p v-if="candidates.length === 0" class="muted" style="padding: 0.4rem">
             {{ t('llmModelsView.noKnownModels') }}
