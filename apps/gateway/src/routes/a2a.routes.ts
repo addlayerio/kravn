@@ -18,15 +18,11 @@ import { rpcErrorOf } from '../a2a/a2a.service.js';
  *  - GET  /api/a2a/tasks                → recent A2A tasks for the operator's A2A view (settings.read).
  */
 export function a2aRoutes(app: FastifyInstance, s: Services): void {
-  // RFC 9728: on a 401 from /a2a, advertise the OAuth Protected Resource Metadata so A2A clients can run
-  // the same OAuth 2.1 connect flow MCP clients use.
-  app.addHook('onSend', async (req, reply, payload) => {
-    if (reply.statusCode === 401 && (req.raw.url ?? '') === '/a2a') {
-      const base = deriveBaseUrl(req, s.settings, s.env);
-      reply.header('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`);
-    }
-    return payload;
-  });
+  // NOTE: the RFC 9728 `WWW-Authenticate` challenge on a 401 is set INLINE in the /a2a handler below, NOT
+  // via a global `app.addHook('onSend', ...)`. Fastify 5.9 crashes the process (ERR_HTTP_HEADERS_SENT — a
+  // double writeHead) when TWO+ global onSend hooks are registered, and mcp.routes.ts already registers one.
+  // The /a2a route produces every one of its own 401s (manual bearer auth), so an inline header fully covers
+  // the case without adding a second global onSend hook. Do NOT reintroduce an onSend hook here.
 
   // ── Public discovery card ──────────────────────────────────────────────────────────────────────
   app.get('/.well-known/agent-card.json', async (req, reply) => {
@@ -46,6 +42,10 @@ export function a2aRoutes(app: FastifyInstance, s: Services): void {
     const token = bearerToken(req);
     const user = token ? await authenticateToken(token, s.jwt, s.repos) : null;
     if (!user) {
+      // RFC 9728: point A2A clients at the OAuth Protected Resource Metadata so they can run the OAuth 2.1
+      // connect flow (set inline rather than via an onSend hook — see the note at the top of this function).
+      const base = deriveBaseUrl(req, s.settings, s.env);
+      reply.header('WWW-Authenticate', `Bearer resource_metadata="${base}/.well-known/oauth-protected-resource"`);
       return reply.code(401).send({ error: { code: 'unauthenticated', message: 'Authentication required.' } });
     }
     if (!permissionMatches(user.permissions, 'a2a.invoke')) {
