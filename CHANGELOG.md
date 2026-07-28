@@ -12,6 +12,14 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [0.1.94] — 2026-07-28
+
+- 🐛 **Bodyless action requests no longer fail behind a proxy.** Some ingress/CDN layers stamp a
+  `Content-Type: application/json` header onto POSTs that have no body (e.g. **Clone endpoint**, **Sync
+  server**), which made the gateway reject the empty body with an opaque `Malformed or invalid request` (400).
+  The gateway now treats an empty JSON body as `{}`, so these one-click actions work regardless of proxy
+  behaviour. Malformed (non-empty) JSON is still rejected, and prototype-poisoning protection is unchanged.
+
 ## [0.1.93] — 2026-07-28
 
 - 🧩 **Tempo (capacity planner) native integration.** A new built-in **Tempo** plugin talks to the Tempo Cloud

@@ -158,6 +158,17 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
     }
   });
 
+  // Some ingress/proxies stamp `Content-Type: application/json` onto bodyless POSTs (e.g. no-body action
+  // endpoints like /clone or /sync). Fastify's default parser then rejects the empty body with
+  // FST_ERR_CTP_EMPTY_JSON_BODY — an opaque 400 "Malformed request". Treat an empty JSON body as {} so such
+  // requests reach their handler; non-empty bodies still go through the SECURE default parser (proto-poisoning
+  // protection intact, malformed JSON still 400s).
+  const defaultJsonParser = app.getDefaultJsonParser('error', 'error');
+  app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    if (typeof body !== 'string' || body.trim() === '') return done(null, {});
+    defaultJsonParser(req, body, done);
+  });
+
   registerAuth(app, {
     jwt: services.jwt,
     repos: services.repos,

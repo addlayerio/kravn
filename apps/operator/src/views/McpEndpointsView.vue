@@ -36,7 +36,9 @@ function openEdit(v: McpEndpoint) {
 // its pipeline overlay and per-team tool subsets — then open it for editing so you can tweak and enable it.
 async function cloneEndpoint(v: McpEndpoint) {
   try {
-    const { mcpEndpoint } = await api.post<{ mcpEndpoint: McpEndpoint }>(`/api/mcp-endpoints/${v.id}/clone`);
+    // Send an explicit {} body: a bodyless POST that still carries a JSON content-type trips Fastify's
+    // empty-JSON-body guard (400 "Malformed request"); a valid {} parses cleanly. The route ignores the body.
+    const { mcpEndpoint } = await api.post<{ mcpEndpoint: McpEndpoint }>(`/api/mcp-endpoints/${v.id}/clone`, {});
     toast.success(t('endpointsView.cloned'));
     router.push(`/mcp-endpoints/${mcpEndpoint.id}`);
   } catch {
