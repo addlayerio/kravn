@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Tempo (capacity planner) native integration.** A new built-in **Tempo** plugin talks to the Tempo Cloud
+  REST API v4 to manage your team's capacity plan (Tempo Planner). 14 tools: read plans and per-work-item
+  **allocations**, **create / update / delete** plans, get **user & team capacity** (work schedules), plus teams,
+  members, accounts, logged time (**worklogs**) and workload schemes. Add it under **Servers / Plugins**, paste a
+  Tempo **API integration** token (*Tempo → Settings → Data Access → API integration*; stored encrypted,
+  never shown to the model), and enable it.
+
 - 🐛 **Readable chat errors.** When the model provider rejects a request, the chat no longer shows the raw
   provider JSON (e.g. `LLM error HTTP 400: {"type":"invalid_request_error","message":"prompt is too long: …"}`).
   It now shows a short, actionable message — *“This conversation is too long for the model… start a new chat, or

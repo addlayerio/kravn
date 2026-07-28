@@ -904,6 +904,10 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     description: 'Query and read issues via the Jira REST API.',
   },
   {
+    id: 'kravn-tempo', name: 'Tempo', category: 'Project Management',
+    description: 'Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — read plans & allocations, create/update/delete plans, and compare against user & team capacity, logged time (worklogs), teams, accounts and workload schemes.',
+  },
+  {
     id: 'kravn-confluence', name: 'Confluence', category: 'Documentation',
     description: 'Search and read Confluence pages.',
   },
