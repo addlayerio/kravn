@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.93] — 2026-07-28
 
 - 🧩 **Tempo (capacity planner) native integration.** A new built-in **Tempo** plugin talks to the Tempo Cloud
   REST API v4 to manage your team's capacity plan (Tempo Planner). 14 tools: read plans and per-work-item
