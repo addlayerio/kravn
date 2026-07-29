@@ -14,6 +14,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **The Helm chart can now run Kravn under your own ServiceAccount** (`serviceAccount.create` / `.name` /
+  `.annotations` / `.automount`). This is what unlocks the Kubernetes integration's **in-cluster** mode: point the
+  plugin at an empty API server, run the pod as an SA you bound RBAC to, and no token or CA ever has to be pasted
+  into a config. Also the hook for IRSA / Workload Identity annotations. Defaults are unchanged — without these
+  values the pod keeps running as the namespace `default` SA.
+
 - 🧩 **Kubernetes native integration — governed cluster operations.** A new built-in **Kubernetes** plugin drives
   any cluster over the REST API: discover kinds, get/list resources, read pod **logs** and **events**, `top` pods,
   and **apply / delete / patch / scale / rollout-restart** any workload. Runs **in-cluster** with the pod

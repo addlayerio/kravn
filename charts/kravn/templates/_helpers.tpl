@@ -28,6 +28,19 @@ app.kubernetes.io/name: {{ include "kravn.name" . }}
 app.kubernetes.io/instance: {{ .Release.Name }}
 {{- end -}}
 
+{{/*
+ServiceAccount the gateway pod runs as. Matters for the native Kubernetes plugin in IN-CLUSTER mode
+(empty API server): the pod's mounted SA token + CA are what the k8s_* tools authenticate with, so this
+SA's RBAC is the hard ceiling. Bind the RBAC yourself — the chart never ships (Cluster)Roles.
+*/}}
+{{- define "kravn.serviceAccountName" -}}
+{{- if .Values.serviceAccount.create -}}
+{{- default (include "kravn.fullname" .) .Values.serviceAccount.name -}}
+{{- else -}}
+{{- default "default" .Values.serviceAccount.name -}}
+{{- end -}}
+{{- end -}}
+
 {{- define "kravn.image" -}}
 {{- $tag := .Values.image.tag | default .Chart.AppVersion -}}
 {{- printf "%s:%s" .Values.image.repository $tag -}}

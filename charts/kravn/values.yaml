@@ -233,6 +233,19 @@ resources:
   limits:
     memory: 1280Mi
 
+# ServiceAccount the gateway pod runs as. Only needed for the native **Kubernetes** integration in
+# IN-CLUSTER mode (plugin configured with an EMPTY API server): the tools then authenticate with this
+# pod's mounted SA token, so this SA's RBAC is the hard ceiling for every k8s_* tool.
+#
+# The chart deliberately does NOT ship (Cluster)Roles — you bind exactly the permissions you want.
+# See examples/kubernetes-rbac.yaml. Typical wiring for an SA you created yourself:
+#   serviceAccount: { create: false, name: kravn }
+serviceAccount:
+  create: false
+  name: ""              # empty + create:true -> the release fullname; empty + create:false -> "default"
+  annotations: {}       # e.g. IRSA / Workload Identity bindings
+  automount: true       # set false to deny the pod any SA token (blocks in-cluster mode entirely)
+
 podAnnotations: {}
 podSecurityContext:
   runAsNonRoot: true
