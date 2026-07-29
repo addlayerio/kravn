@@ -65,6 +65,7 @@ export async function atlassianFetch(
   method: 'GET' | 'POST' | 'PUT',
   path: string,
   jsonBody?: unknown,
+  extraHeaders?: Record<string, string>,
 ): Promise<any> {
   const res = await fetch(`${cfg.baseUrl}${path}`, {
     method,
@@ -72,6 +73,7 @@ export async function atlassianFetch(
       authorization: authHeader(cfg),
       accept: 'application/json',
       ...(jsonBody ? { 'content-type': 'application/json' } : {}),
+      ...(extraHeaders ?? {}), // e.g. JSM's `X-ExperimentalApi: opt-in` for the queue endpoints
     },
     body: jsonBody ? JSON.stringify(jsonBody) : undefined,
     redirect: 'error', // never follow a redirect with the token attached (anti-SSRF / anti-exfil)

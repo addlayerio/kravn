@@ -901,7 +901,7 @@ export interface NativeIntegration {
 export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   {
     id: 'kravn-jira', name: 'Jira', category: 'Project Management',
-    description: 'Query and read issues via the Jira REST API.',
+    description: 'Query and manage Jira issues (JQL search, detail, comments, create/transition) plus Jira Service Management — service desks, requests, SLAs, queues and organizations.',
   },
   {
     id: 'kravn-tempo', name: 'Tempo', category: 'Project Management',

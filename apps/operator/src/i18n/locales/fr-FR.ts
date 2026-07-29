@@ -226,7 +226,7 @@ export default {
     "contentsSummary": "{tools} tools · {resources} ressources · {prompts} prompts",
     "copyUrl": "Copier l'URL",
     "clone": "Cloner",
-    "cloned": "Endpoint cloné",
+    "cloned": "Endpoint cloné en copie désactivée — vérifiez-le et activez-le quand il est prêt",
     "cloneFailed": "Impossible de cloner l'endpoint.",
     "edit": "Modifier",
     "delete": "Supprimer",

@@ -12,6 +12,20 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 🧩 **Jira Service Management support in the native Jira integration.** The Jira plugin previously only saw Jira
+  Software/Core (the platform API); it now also speaks the JSM API (`servicedeskapi`) with 10 new `jsm_*` tools:
+  list **service desks**, **request types**, customer **requests** (filter by desk/status/ownership), get a
+  request + its **SLAs**, list **queues** and their issues, list **organizations**, and **create a request** /
+  **add a comment**. Same Jira credentials — nothing extra to configure. Note: the JSM tools require the API-token
+  account to be a licensed **agent** on the service desk (a Jira-Software-only account is rejected with a clear
+  hint).
+
+- 🐛 **Clone tells you the copy starts disabled.** The success toast after cloning an MCP endpoint now reads
+  *"cloned as a disabled copy — review it and enable it when ready"* instead of a bare "Endpoint cloned", so it's
+  obvious the fork won't serve (a plain 404 at its URL) until you flip **Enabled** on.
+
 ## [0.1.94] — 2026-07-28
 
 - 🐛 **Bodyless action requests no longer fail behind a proxy.** Some ingress/CDN layers stamp a

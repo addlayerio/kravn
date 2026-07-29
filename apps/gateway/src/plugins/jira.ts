@@ -8,6 +8,7 @@ import {
   adfToText,
   AtlassianError,
 } from './atlassian.js';
+import { JSM_TOOLS, callJsm } from './jira-sm.js';
 
 /**
  * Native Jira plugin — talk to Jira over MCP via the Jira REST API.
@@ -378,8 +379,10 @@ export function jiraPlugin(): McpServerPlugin {
       type: 'mcp-server',
       description:
         'Interact with Jira over MCP via the Jira REST API. Search issues with JQL, read issue detail and the ' +
-        'comment thread, list projects, and create issues / add comments / transition status. Requires a site URL, ' +
-        'account email and API token.',
+        'comment thread, list projects, and create issues / add comments / transition status. Also covers Jira ' +
+        'Service Management (jsm_* tools: service desks, request types, requests, SLAs, queues, organizations) — ' +
+        'the JSM tools require the API-token account to be a licensed agent on the service desk. Requires a site ' +
+        'URL, account email and API token.',
       author: 'Kravn',
       priority: 100,
       configSchema: {
@@ -398,10 +401,15 @@ export function jiraPlugin(): McpServerPlugin {
       },
     },
     server: {
-      listTools: () => TOOLS,
+      listTools: () => [...TOOLS, ...JSM_TOOLS],
       async callTool(name, args, config): Promise<McpToolResult> {
         try {
           const cfg = readAtlassianConfig(config, 'Jira');
+          // Jira Service Management tools (own REST API) live in ./jira-sm; callJsm returns null for non-jsm_ names.
+          if (name.startsWith('jsm_')) {
+            const r = await callJsm(cfg, name, args);
+            if (r) return r;
+          }
           switch (name) {
             case 'jira_search':
               return await search(cfg, args);
