@@ -14,6 +14,16 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **You can now change a server's transport when editing it** (Streamable HTTP ↔ SSE ↔ stdio). Previously the
+  transport was fixed at creation and hidden on the edit form, so a mismatch — e.g. a catalog preset of SSE
+  against a server that actually speaks Streamable HTTP — could only be fixed by deleting and re-adding. Switching
+  to/from stdio stays gated by the stdio permission, and a changed URL is re-validated against the new transport.
+
+- 🧩 **Cloudflare catalog servers use Streamable HTTP.** The bundled Cloudflare entries (Workers, Observability,
+  Docs) now point at their `/mcp` Streamable HTTP endpoint instead of the legacy `/sse`, which Cloudflare's
+  servers reject (405). Existing servers already added from the catalog: edit them and switch the transport to
+  Streamable HTTP + `/mcp` (now possible in place, see above).
+
 - 🐛 **Upstream OAuth works with strict authorization servers (e.g. Cloudflare).** When connecting to a remote
   MCP server whose token endpoint uses HTTP Basic client auth (`client_secret_basic`), Kravn no longer *also*
   put `client_id` in the request body. Strict providers — notably Cloudflare's OAuth provider — reject
@@ -26,8 +36,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   list **service desks**, **request types**, customer **requests** (filter by desk/status/ownership), get a
   request + its **SLAs**, list **queues** and their issues, list **organizations**, and **create a request** /
   **add a comment**. Same Jira credentials — nothing extra to configure. Note: the JSM tools require the API-token
-  account to be a licensed **agent** on the service desk (a Jira-Software-only account is rejected with a clear
-  hint).
+  account to hold the **agent role** on the project (commonly "Service Desk Team"), not a read-only role — JSM
+  permission schemes grant "Browse Projects" only to agents, so a read-only/Software-only account sees nothing. On
+  401/403 the tools return a precise hint covering the role, issue-level security, and scoped-token scopes.
 
 - 🐛 **Clone tells you the copy starts disabled.** The success toast after cloning an MCP endpoint now reads
   *"cloned as a disabled copy — review it and enable it when ready"* instead of a bare "Endpoint cloned", so it's

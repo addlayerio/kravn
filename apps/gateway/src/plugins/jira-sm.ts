@@ -10,8 +10,16 @@ import { type AtlassianConfig, atlassianFetch, toolText as text, toAdf, Atlassia
  * are merged into the same `kravn-jira` plugin, so they reuse the SAME config (site URL + email + API token) —
  * nothing extra to configure.
  *
- * PERMISSIONS: `servicedeskapi` requires the API-token account to be a licensed **agent** (or admin) on the
- * service desk. A Jira-Software-only account gets 403 — callJsm annotates that so the cause is obvious.
+ * PERMISSIONS (the #1 cause of empty results / 401 / 403 here): the API-token account must hold the JSM
+ * AGENT role on the project — commonly named "Service Desk Team" — NOT a read-only project role and NOT merely
+ * Jira Software access. JSM permission schemes grant "Browse Projects" only to the agent role (plus admins and
+ * portal customers), so a read-only / Software-only account can't even see the project via JQL or the API
+ * (`project = X` returns 0 issues; /queue and /sla return 401/403). Assigning the agent role also consumes a JSM
+ * agent license. Beware too of an issue-level Security scheme (a common JSM default): even WITH Browse Projects,
+ * if tickets carry a "Service Desk Team" security level a non-agent still sees only issues it reports or
+ * participates in. Scoped API tokens additionally need read:servicedesk-request, read:request.sla:jira-service-
+ * management and read:queue:jira-service-management (classic tokens inherit the account's permissions). callJsm
+ * annotates 401/403 with this so the cause is obvious.
  *
  * Docs: https://developer.atlassian.com/cloud/jira/service-desk/rest/
  */
@@ -380,9 +388,15 @@ export async function callJsm(cfg: AtlassianConfig, name: string, args: Record<s
   } catch (err) {
     if (err instanceof AtlassianError && /401\/403|rejected the credentials/.test(err.message)) {
       return text(
-        `${err.message}\n\nFor Jira Service Management, the API-token account must be a licensed AGENT (or admin) ` +
-          'on the service desk — a Jira-Software-only account is rejected here. Add it as an Agent under the JSM ' +
-          "project's People/Agents settings and retry.",
+        `${err.message}\n\n` +
+          'Jira Service Management access needs the AGENT role on the project — typically the "Service Desk Team" ' +
+          'role, NOT a read-only project role or plain Jira Software access. JSM permission schemes grant ' +
+          '"Browse Projects" only to the agent role (plus admins and portal customers), so a read-only account ' +
+          "can't see the project via JQL or the API at all (project = X → 0 issues; /queue and /sla → 401/403). " +
+          "Assign the agent role under the JSM project's People/Access settings (it consumes a JSM agent license), " +
+          'then retry. Note: an issue-level Security scheme may still limit a non-agent to tickets it reports or ' +
+          'participates in. Scoped API tokens also need read:servicedesk-request, ' +
+          'read:request.sla:jira-service-management and read:queue:jira-service-management.',
         true,
       );
     }

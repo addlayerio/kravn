@@ -52,7 +52,9 @@ export function serverRoutes(app: FastifyInstance, s: Services): void {
     if (!dto) return;
     const existing = await s.registry.getServer(id);
     if (!existing) return sendError(reply, 404, 'not_found', 'Server not found.');
-    if (stdioBlocked(req, reply, existing.transport === 'stdio')) return;
+    // Gate stdio on BOTH the existing transport AND a requested switch TO stdio — otherwise a PATCH could turn an
+    // http server into a command-executing stdio one, bypassing the create-time stdio guard.
+    if (stdioBlocked(req, reply, existing.transport === 'stdio' || dto.transport === 'stdio')) return;
     try {
       const server = await s.registry.updateServer(id, dto);
       if (!server) return sendError(reply, 404, 'not_found', 'Server not found.');

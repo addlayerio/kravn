@@ -261,7 +261,7 @@ export class ServersRepo {
   }
   async update(id: string, patch: Partial<Record<string, unknown>>): Promise<void> {
     const cols: Record<string, string> = {
-      name: 'name', slug: 'slug', description: 'description', url: 'url', command: 'command',
+      name: 'name', slug: 'slug', description: 'description', transport: 'transport', url: 'url', command: 'command',
       args: 'args', env: 'env', headers: 'headers', authType: 'auth_type',
       authValueEncrypted: 'auth_value', tlsCa: 'tls_ca', tlsClientCert: 'tls_client_cert',
       tlsClientKeyEncrypted: 'tls_client_key', enabled: 'enabled', status: 'status',

@@ -382,6 +382,9 @@ export type CreateServerRequest = z.infer<typeof createServerSchema>;
 export const updateServerSchema = z.object({
   name: z.string().min(1).max(120).optional(),
   description: z.string().max(2000).optional(),
+  // Transport is editable post-creation so a mismatch (e.g. an SSE catalog preset vs a server that actually
+  // speaks Streamable HTTP) can be fixed in place. Switching TO/FROM stdio stays gated by stdioBlocked in the route.
+  transport: transportSchema.optional(),
   url: z.string().max(2048).optional(),
   command: z.string().max(2000).optional(),
   args: z.array(z.string().max(2000)).max(100).optional(),

@@ -361,6 +361,7 @@ async function save() {
     const base = {
       name: form.name,
       description: form.description,
+      transport: form.transport,
       url: form.url,
       command: form.command,
       args,
@@ -635,7 +636,7 @@ async function remove(srv: UpstreamServer) {
         <label>{{ t('serversView.description') }}</label>
         <input v-model="form.description" maxlength="2000" />
       </div>
-      <div class="field" v-if="!editingId">
+      <div class="field">
         <label>{{ t('serversView.transport') }}</label>
         <select v-model="form.transport">
           <option value="streamable-http">Streamable HTTP</option>

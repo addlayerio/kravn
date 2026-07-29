@@ -236,7 +236,7 @@ export class RegistryService {
       patch.name = req.name;
       patch.slug = await this.uniqueSlug(req.name, id);
     }
-    for (const k of ['description', 'url', 'command', 'args', 'env', 'headers', 'enabled'] as const) {
+    for (const k of ['description', 'transport', 'url', 'command', 'args', 'env', 'headers', 'enabled'] as const) {
       if (req[k] !== undefined) patch[k] = req[k];
     }
     if (req.authType !== undefined) patch.authType = req.authType;
@@ -249,7 +249,10 @@ export class RegistryService {
     if (req.tlsClientCert !== undefined) patch.tlsClientCert = req.tlsClientCert;
     if (req.tlsClientKey) patch.tlsClientKeyEncrypted = this.d.encryptor.encrypt(req.tlsClientKey);
 
-    if (typeof patch.url === 'string' && patch.url && existing.transport !== 'stdio') {
+    // SSRF-check the url against the EFFECTIVE (possibly changed) transport — a switch from stdio to http/sse
+    // must still validate the new url.
+    const effTransport = req.transport ?? existing.transport;
+    if (typeof patch.url === 'string' && patch.url && effTransport !== 'stdio') {
       await this.d.ssrf.assertUrlAllowed(patch.url);
     }
 

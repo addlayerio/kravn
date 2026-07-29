@@ -59,13 +59,13 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'cloudflare-workers', name: 'Cloudflare Workers', category: 'Software Development',
     description: 'Serverless compute platform at the edge',
-    url: 'https://bindings.mcp.cloudflare.com/sse', transport: 'sse', auth: 'oauth', provider: 'Cloudflare',
+    url: 'https://bindings.mcp.cloudflare.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Cloudflare',
     tags: ['serverless', 'edge-computing', 'development'],
   },
   {
     id: 'cloudflare-observability', name: 'Cloudflare Observability', category: 'Observability',
     description: 'Monitor and analyze Cloudflare services',
-    url: 'https://observability.mcp.cloudflare.com/sse', transport: 'sse', auth: 'oauth', provider: 'Cloudflare',
+    url: 'https://observability.mcp.cloudflare.com/mcp', transport: 'streamable-http', auth: 'oauth', provider: 'Cloudflare',
     tags: ['monitoring', 'observability', 'analytics'],
   },
   {
@@ -341,7 +341,7 @@ export const MCP_SERVER_CATALOG: CatalogServer[] = [
   {
     id: 'cloudflare-docs', name: 'Cloudflare Docs', category: 'Documentation',
     description: 'Cloudflare documentation and guides',
-    url: 'https://docs.mcp.cloudflare.com/sse', transport: 'sse', auth: 'open', provider: 'Cloudflare',
+    url: 'https://docs.mcp.cloudflare.com/mcp', transport: 'streamable-http', auth: 'open', provider: 'Cloudflare',
     tags: ['documentation', 'cloudflare', 'reference'],
   },
   {
