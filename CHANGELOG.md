@@ -14,6 +14,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🐛 **Upstream OAuth works with strict authorization servers (e.g. Cloudflare).** When connecting to a remote
+  MCP server whose token endpoint uses HTTP Basic client auth (`client_secret_basic`), Kravn no longer *also*
+  put `client_id` in the request body. Strict providers — notably Cloudflare's OAuth provider — reject
+  credentials arriving by two channels with `invalid_request: Client must not use multiple authentication
+  methods` (RFC 6749 §2.3.1). The `client_id` already travels inside the Basic header, so token exchange and
+  refresh now succeed against those servers.
+
 - 🧩 **Jira Service Management support in the native Jira integration.** The Jira plugin previously only saw Jira
   Software/Core (the platform API); it now also speaks the JSM API (`servicedeskapi`) with 10 new `jsm_*` tools:
   list **service desks**, **request types**, customer **requests** (filter by desk/status/ownership), get a

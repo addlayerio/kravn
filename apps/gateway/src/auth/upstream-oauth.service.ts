@@ -355,8 +355,11 @@ async function tokenRequest(
   const headers: Record<string, string> = { 'content-type': 'application/x-www-form-urlencoded', accept: 'application/json' };
   const secret = clientInfo.client_secret;
   if (clientInfo.token_endpoint_auth_method === 'client_secret_basic' && secret) {
+    // Basic already carries client_id:client_secret in the header. Do NOT also send client_id (or the secret)
+    // in the body: strict authorization servers — notably Cloudflare's OAuth provider — reject credentials
+    // arriving by two channels with `invalid_request: Client must not use multiple authentication methods`
+    // (RFC 6749 §2.3.1: a client MUST NOT use more than one auth method per request).
     headers.authorization = `Basic ${Buffer.from(`${clientInfo.client_id}:${secret}`).toString('base64')}`;
-    body.set('client_id', clientInfo.client_id);
   } else {
     body.set('client_id', clientInfo.client_id);
     if (secret) body.set('client_secret', secret);
