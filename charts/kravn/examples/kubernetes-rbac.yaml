@@ -1,0 +1,71 @@
+# Example RBAC for the Kravn "Kubernetes" native integration.
+#
+# The ServiceAccount's RBAC is the HARD CEILING for every k8s_* tool — a tool can never do more than this grants.
+# Grant least-privilege: start read-only, add write verbs only for the kinds/namespaces you actually want the
+# LLM (governed by Kravn) to change. This example creates a dedicated ServiceAccount + a long-lived token you
+# paste into the plugin config (Servers → add Kubernetes → "ServiceAccount Token"). A dedicated SA works for ANY
+# cluster — including the one Kravn runs in — and is cleaner than reusing the namespace `default` SA.
+#
+#   kubectl apply -f kubernetes-rbac.yaml
+#   kubectl -n kube-system get secret kravn-k8s-token -o jsonpath='{.data.token}' | base64 -d   # -> paste as the token
+#   kubectl config view --raw -o jsonpath='{.clusters[0].cluster.certificate-authority-data}' | base64 -d  # -> CA (PEM)
+#
+# For IN-CLUSTER mode (empty API server), skip the token: instead set `serviceAccountName` on the Kravn
+# Deployment to this SA and leave the plugin's token/CA empty — the pod then uses the mounted SA + CA.
+---
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: kravn-k8s
+  namespace: kube-system
+---
+# A non-expiring token for the ServiceAccount (k8s 1.24+ no longer auto-creates one).
+apiVersion: v1
+kind: Secret
+metadata:
+  name: kravn-k8s-token
+  namespace: kube-system
+  annotations:
+    kubernetes.io/service-account.name: kravn-k8s
+type: kubernetes.io/service-account-token
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: kravn-k8s
+rules:
+  # ── READ (analysis, get/list, logs, events, top) — broad, safe ──────────────────────────────────
+  - apiGroups: ["", "apps", "batch", "networking.k8s.io", "autoscaling", "policy", "rbac.authorization.k8s.io", "apiextensions.k8s.io", "metrics.k8s.io"]
+    resources: ["*"]
+    verbs: ["get", "list", "watch"]
+  - apiGroups: [""]
+    resources: ["pods/log"]
+    verbs: ["get"]
+  # ── WRITE — scope this DOWN to what you actually want changed ────────────────────────────────────
+  # These grant k8s_apply / k8s_patch / k8s_scale / k8s_rollout_restart / k8s_delete on common workloads.
+  - apiGroups: ["apps"]
+    resources: ["deployments", "statefulsets", "daemonsets", "replicasets"]
+    verbs: ["create", "update", "patch", "delete"]
+  - apiGroups: [""]
+    resources: ["configmaps", "services"]
+    verbs: ["create", "update", "patch", "delete"]
+  # ── SECRETS — opt-in. Uncomment ONLY if you want k8s_get_secret / secret writes; pair with the ────
+  #    maker-checker approval gate on the endpoint. Reading secrets exposes credentials.
+  # - apiGroups: [""]
+  #   resources: ["secrets"]
+  #   verbs: ["get", "list", "create", "update", "patch", "delete"]
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRoleBinding
+metadata:
+  name: kravn-k8s
+roleRef:
+  apiGroup: rbac.authorization.k8s.io
+  kind: ClusterRole
+  name: kravn-k8s
+subjects:
+  - kind: ServiceAccount
+    name: kravn-k8s
+    namespace: kube-system
+# ── Tighter alternative: swap ClusterRole/ClusterRoleBinding for a namespaced Role/RoleBinding to
+#    confine the whole integration to a single namespace. ────────────────────────────────────────

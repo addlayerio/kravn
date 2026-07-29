@@ -91,6 +91,8 @@ const NATIVE = [
   { id: 'kravn-outlook', slug: 'microsoftoutlook' },
   { id: 'kravn-confluence', slug: 'confluence' },
   { id: 'kravn-jira', slug: 'jira' },
+  { id: 'kravn-kubernetes', slug: 'kubernetes' },
+  { id: 'kravn-argocd', slug: 'argo' },
   { id: 'kravn-odoo', slug: 'odoo' },
   { id: 'kravn-sharepoint', slug: 'microsoftsharepoint' },
   { id: 'kravn-teams', slug: 'microsoftteams' },
@@ -109,6 +111,9 @@ const ICONIFY = {
   'kravn-sharepoint': ['mdi:microsoft-sharepoint', '#038387'],
   'kravn-http': ['mdi:api', '#4b5563'],
   'kravn-linkedin': ['logos:linkedin-icon'],
+  // DevOps native plugins (fallbacks if simple-icons lacks/renames the brand)
+  'kravn-kubernetes': ['logos:kubernetes'],
+  'kravn-argocd': ['logos:argo'],
   // catalog entries with no simple-icons logo but a real brand mark on Iconify
   monday: ['logos:monday-icon'],
   canva: ['cib:canva', '#00C4CC'],

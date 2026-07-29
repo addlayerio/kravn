@@ -14,6 +14,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Kubernetes native integration — governed cluster operations.** A new built-in **Kubernetes** plugin drives
+  any cluster over the REST API: discover kinds, get/list resources, read pod **logs** and **events**, `top` pods,
+  and **apply / delete / patch / scale / rollout-restart** any workload. Runs **in-cluster** with the pod
+  ServiceAccount by default, or point it at other clusters with an API-server URL + token + CA (multi-cluster).
+  Governance is the point: `k8s_get` **redacts Secret values**, decoding is a separate gate-able `k8s_get_secret`,
+  and all mutating tools are named so an admin can hold them for **maker-checker approval** — the token's RBAC is
+  the hard ceiling. Turns "give an LLM kubectl" into governed, audited self-service.
+
+- 🧩 **Argo CD native integration — GitOps automation.** A new built-in **Argo CD** plugin over the Argo CD API:
+  list/get applications with sync & health, inspect rendered manifests and history, and **create / update / sync /
+  delete** apps, **roll back**, and create **ApplicationSets**. Headline: **`argocd_clone_app`** reads a live app
+  and stamps it into new environments (dev/qa/prod) in one call — self-service "clone app X across envs". Mutating
+  tools are named for the maker-checker approval gate; the token's Argo CD RBAC is the ceiling.
+
 - 🐛 **You can now change a server's transport when editing it** (Streamable HTTP ↔ SSE ↔ stdio). Previously the
   transport was fixed at creation and hidden on the edit form, so a mismatch — e.g. a catalog preset of SSE
   against a server that actually speaks Streamable HTTP — could only be fixed by deleting and re-adding. Switching

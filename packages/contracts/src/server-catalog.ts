@@ -904,6 +904,14 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     description: 'Query and manage Jira issues (JQL search, detail, comments, create/transition) plus Jira Service Management — service desks, requests, SLAs, queues and organizations.',
   },
   {
+    id: 'kravn-kubernetes', name: 'Kubernetes', category: 'DevOps',
+    description: 'Operate any Kubernetes cluster over the REST API — discover kinds, get/list resources, read pod logs & events, and apply/delete/patch/scale/restart workloads. In-cluster by default or per-cluster via API URL + token + CA. Mutating & secret-reading tools are governable behind the maker-checker approval gate.',
+  },
+  {
+    id: 'kravn-argocd', name: 'Argo CD', category: 'DevOps',
+    description: 'GitOps automation over the Argo CD API — list/get applications with health & sync status, create/update/sync/delete apps and ApplicationSets, inspect manifests, and roll back. Ideal for self-service: "clone app X into dev/qa/prod" from its live spec.',
+  },
+  {
     id: 'kravn-tempo', name: 'Tempo', category: 'Project Management',
     description: 'Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — read plans & allocations, create/update/delete plans, and compare against user & team capacity, logged time (worklogs), teams, accounts and workload schemes.',
   },
