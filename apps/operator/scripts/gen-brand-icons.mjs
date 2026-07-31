@@ -134,6 +134,8 @@ const ICONIFY = {
 // Without the token the generator PRESERVES the already-baked data URIs (see prevSrc), so a normal
 // regen never wipes them. The token is used only at build time and is never written to the output.
 const LOGODEV = {
+  // Native plugin: simple-icons has TestRail and Qase but not Testmo, and no Iconify set carries it.
+  'kravn-testmo': 'testmo.com',
   servicenow: 'servicenow.com', plaid: 'plaid.com', ramp: 'ramp.com', apify: 'apify.com',
   attio: 'attio.com', telnyx: 'telnyx.com', semgrep: 'semgrep.dev', thoughtspot: 'thoughtspot.com',
   morningstar: 'morningstar.com', stytch: 'stytch.com', 'close-crm': 'close.com', invideo: 'invideo.io',

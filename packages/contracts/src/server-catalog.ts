@@ -916,6 +916,10 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
     description: 'Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — read plans & allocations, create/update/delete plans, and compare against user & team capacity, logged time (worklogs), teams, accounts and workload schemes.',
   },
   {
+    id: 'kravn-testmo', name: 'Testmo', category: 'Testing',
+    description: 'Read-only test management over the Testmo REST API v1 — projects, milestones, manual test runs and their per-test results with failure notes, the test case repository and folders, CI automation runs and sources, exploratory sessions and users. Answer "why did last night\'s regression run fail" or "which cases have no automation" from chat.',
+  },
+  {
     id: 'kravn-confluence', name: 'Confluence', category: 'Documentation',
     description: 'Search and read Confluence pages.',
   },

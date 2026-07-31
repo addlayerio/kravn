@@ -39,13 +39,17 @@ reaches the service:
 | **Microsoft Teams** | Find people, read chats and channel posts, list teams/channels, and fetch a message's images — over Microsoft Graph. |
 | **Outlook** | Read **and send** email (search, read, send, reply/reply-all) over Microsoft 365 / Exchange Online (Graph). |
 | **Gmail** | Read **and send** email (search, read, send, reply into a thread) over the Gmail API. |
-| **Jira** | Query and read issues via the Jira REST API. |
+| **Jira** | Query and read issues via the Jira REST API, plus Jira Service Management — service desks, requests, SLAs, queues and organizations. |
+| **Tempo** | Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — plans & allocations, user/team capacity, logged time, teams, accounts and workload schemes. |
+| **Testmo** | Read-only test management over the Testmo REST API v1 — projects, milestones, manual runs and their per-test results with failure notes, the case repository and folders, CI automation runs and sources, exploratory sessions. |
 | **Confluence** | Search and read Confluence pages. |
 | **Odoo** | CRM & ERP over Odoo JSON-RPC — CRUD, server-side aggregation & counts, and search across leads, contacts, sales orders, invoices, products, tasks. |
 | **Zoho CRM** | Read/search/CRUD over any module plus COQL queries (GROUP BY + aggregates), over the Zoho v6 REST API. |
 | **Azure** | Read-only diagnostics & cost — Resource Graph (KQL over any resource), Log Analytics (KQL), Cost Management (spend by service), and Azure Monitor metrics. |
 | **AWS** | Read-only cost & diagnostics — Cost Explorer (spend by service), CloudWatch Logs Insights, and resource inventory. Requests signed with SigV4. |
 | **Google Cloud** | Read-only diagnostics & cost — Cloud Asset (any resource), Cloud Logging, Cloud Monitoring, and cost from the BigQuery billing export. |
+| **Kubernetes** | Operate any cluster over the Kubernetes REST API — discover kinds, get/list resources, read pod logs & events, `top` pods, and apply/delete/patch/scale/rollout-restart workloads. In-cluster by default, or per-cluster with an API URL + token + CA. Secret values are redacted by default and mutating tools are named for the maker-checker gate; the token's RBAC is the hard ceiling. |
+| **Argo CD** | GitOps automation over the Argo CD API — list/get applications with health & sync status, create/update/sync/delete apps and ApplicationSets, inspect manifests, and roll back. Includes `argocd_clone_app` to stamp a live app into new environments. |
 | **HTTP Request** | A configurable **API connector** with three lock levels — **Pinned** (fire one exact request the model can only trigger), **Scoped** (a base URL the client calls paths under, never another host), or **Open** (any public URL). Auth headers are encrypted, applied server-side, never shown to the model, and never leak across a cross-host redirect; a read-only toggle blocks writes. JSON responses come back as **TOML** and HTML as **Markdown** to save tokens. SSRF-guarded; add it again per API. |
 | **LinkedIn** | Read the authenticated member's profile and **publish posts/shares** on their behalf, over LinkedIn's official OAuth 2.0 API (OpenID Connect + Share on LinkedIn). Standard-app scope only — profile search, messaging and jobs need LinkedIn partner programs. Includes a mutating action (posting). |
 | **Code Interpreter** | Runs Python in a Pyodide/WASM sandbox (no host filesystem or network) to read and transform attached files — e.g. complete an Excel and return it as a download. |

@@ -14,6 +14,15 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 ## [Unreleased]
 
+- 🧩 **Testmo native integration — ask your test management questions in chat.** A new built-in **Testmo** plugin
+  reads a Testmo instance over its REST API v1: projects and milestones, manual test runs with their per-test
+  results (including the notes on failures), the test case repository and its folder tree, the **automation runs
+  your CI submits** and the sources submitting them, exploratory sessions and users. So "why did last night's
+  regression run fail" or "which cases still have no automation coverage" gets answered without opening Testmo.
+  **Read-only on purpose** — a test-management system is a compliance record, and writing results into it is a
+  separate risk decision. Needs a site URL + an API token (Testmo → your profile → API tokens); the token's own
+  permissions stay the ceiling.
+
 - 🧩 **The Helm chart can now run Kravn under your own ServiceAccount** (`serviceAccount.create` / `.name` /
   `.annotations` / `.automount`). This is what unlocks the Kubernetes integration's **in-cluster** mode: point the
   plugin at an empty API server, run the pod as an SA you bound RBAC to, and no token or CA ever has to be pasted
