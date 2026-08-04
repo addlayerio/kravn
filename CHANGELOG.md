@@ -12,7 +12,7 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
-## [Unreleased]
+## [0.1.95] — 2026-08-04
 
 - 🧩 **Testmo native integration — ask your test management questions in chat.** A new built-in **Testmo** plugin
   reads a Testmo instance over its REST API v1: projects and milestones, manual test runs with their per-test
