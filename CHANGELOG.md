@@ -19,9 +19,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   results (including the notes on failures), the test case repository and its folder tree, the **automation runs
   your CI submits** and the sources submitting them, exploratory sessions and users. So "why did last night's
   regression run fail" or "which cases still have no automation coverage" gets answered without opening Testmo.
-  **Read-only on purpose** — a test-management system is a compliance record, and writing results into it is a
-  separate risk decision. Needs a site URL + an API token (Testmo → your profile → API tokens); the token's own
-  permissions stay the ceiling.
+  Writing is **opt-in**: flip **Allow writes** and you also get create / update / delete for repository **cases
+  and folders** — which is everything the Testmo API can write (manual runs, milestones and results are
+  read-only there). With the toggle off the mutating tools aren't even listed, so an endpoint composed for
+  reading never sees them. They're bulk by nature — one call can change up to 100 rows and deletes are
+  permanent — so name them into the maker-checker approval gate. Needs a site URL + an API token (Testmo →
+  your profile → API tokens); the token's own permissions stay the ceiling.
 
 - 🧩 **The Helm chart can now run Kravn under your own ServiceAccount** (`serviceAccount.create` / `.name` /
   `.annotations` / `.automount`). This is what unlocks the Kubernetes integration's **in-cluster** mode: point the

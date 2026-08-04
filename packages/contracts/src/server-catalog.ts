@@ -917,7 +917,7 @@ export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   },
   {
     id: 'kravn-testmo', name: 'Testmo', category: 'Testing',
-    description: 'Read-only test management over the Testmo REST API v1 — projects, milestones, manual test runs and their per-test results with failure notes, the test case repository and folders, CI automation runs and sources, exploratory sessions and users. Answer "why did last night\'s regression run fail" or "which cases have no automation" from chat.',
+    description: 'Test management over the Testmo REST API v1 — projects, milestones, manual test runs and their per-test results with failure notes, the test case repository and folders, CI automation runs and sources, exploratory sessions and users. Answer "why did last night\'s regression run fail" from chat, and optionally (opt-in) create/update/delete repository cases and folders.',
   },
   {
     id: 'kravn-confluence', name: 'Confluence', category: 'Documentation',

@@ -15,10 +15,17 @@ import type { McpServerPlugin, McpToolResult, McpToolDef } from '@kravn/plugin-s
  * it goes through the same normalization the Atlassian plugins use (https-only, no loopback/link-local)
  * on top of the gateway's global SSRF-pinning dispatcher.
  *
- * READ-ONLY on purpose. Testmo also has write endpoints (create automation runs, bulk-patch cases,
- * upload attachments); those are deliberately not exposed — a test-management system is a compliance
- * record, and an LLM stamping results into it is a different risk decision than reading them. Adding
- * them later means new tool names so they can be held behind the maker-checker approval gate.
+ * WRITES ARE OPT-IN. The read tools are always exposed; the mutating ones (cases + folders CRUD) appear
+ * only when `allowWrites` is on, so an instance that already exists keeps its read-only behaviour until an
+ * admin deliberately turns writing on. They are named create/update/delete so an admin can additionally hold
+ * them behind the maker-checker approval gate. The token's own Testmo permissions remain the hard ceiling.
+ *
+ * What the API can and cannot write (verified against Testmo's OpenAPI-generated client, not guessed):
+ *  - repository CASES and FOLDERS: full create / update / delete, all BULK collection endpoints keyed by `ids`.
+ *  - manual RUNS, MILESTONES and RUN RESULTS: **GET only** — the API exposes no way to create or edit them.
+ *  - automation runs/threads: writable (create → thread → append tests → complete), deliberately NOT exposed
+ *    here; that is a CI submission contract, and an LLM appending test results fabricates a compliance record.
+ *  - attachments: writable, but need file bytes this plugin has no way to source.
  *
  * Every list endpoint shares one envelope: { page, prev_page, next_page, last_page, per_page, total,
  * result: [...] }. Single-resource GETs return the object (some wrapped in `result`) — `unwrap` handles both.
@@ -33,9 +40,13 @@ const MAX_RENDERED = 200;
 
 class TestmoError extends Error {}
 
+/** Testmo's bulk write endpoints cap a request at 100 items. */
+const MAX_BULK = 100;
+
 interface TestmoConfig {
   baseUrl: string;
   apiToken: string;
+  allowWrites: boolean;
 }
 
 function text(t: string, isError = false): McpToolResult {
@@ -72,19 +83,28 @@ function readConfig(config: Record<string, unknown>): TestmoConfig {
         '(Testmo → your profile → API tokens).',
     );
   }
-  return { baseUrl: normalizeBaseUrl(baseUrlRaw), apiToken };
+  return { baseUrl: normalizeBaseUrl(baseUrlRaw), apiToken, allowWrites: config.allowWrites === true };
 }
 
-async function testmoFetch(cfg: TestmoConfig, path: string): Promise<any> {
+async function testmoFetch(
+  cfg: TestmoConfig,
+  path: string,
+  method: 'GET' | 'POST' | 'PATCH' | 'DELETE' = 'GET',
+  jsonBody?: unknown,
+): Promise<any> {
   const res = await fetch(`${cfg.baseUrl}/api/v1${path}`, {
-    method: 'GET',
+    method,
     headers: {
       authorization: `Bearer ${cfg.apiToken}`,
       accept: 'application/json',
+      // Testmo answers 415 when a write arrives without an explicit JSON content-type.
+      ...(jsonBody !== undefined ? { 'content-type': 'application/json' } : {}),
     },
+    body: jsonBody !== undefined ? JSON.stringify(jsonBody) : undefined,
     redirect: 'error', // never follow a redirect with the token attached (anti-SSRF / anti-exfil)
     signal: AbortSignal.timeout(20_000),
   });
+  if (res.status === 204) return {}; // bulk delete answers 204 with no body
   if (res.status === 401 || res.status === 403) {
     throw new TestmoError(
       `Testmo rejected the request (${res.status}). Check the API token, and note that some endpoints ` +
@@ -103,10 +123,37 @@ async function testmoFetch(cfg: TestmoConfig, path: string): Promise<any> {
     data = {};
   }
   if (!res.ok) {
-    const msg = data?.error?.message || data?.message || `Testmo HTTP ${res.status}`;
-    throw new TestmoError(clip(String(msg)));
+    // 422 carries per-field validation detail — surface it, it's what makes a failed write fixable.
+    const fields = data?.errors && typeof data.errors === 'object'
+      ? Object.entries(data.errors).map(([k, v]) => `${k}: ${Array.isArray(v) ? v.join(', ') : String(v)}`).join('; ')
+      : '';
+    const msg = fields || data?.error?.message || data?.message || `Testmo HTTP ${res.status}`;
+    throw new TestmoError(clip(`HTTP ${res.status} — ${msg}`));
   }
   return data;
+}
+
+/** Parse a caller-supplied id list into the numeric array Testmo's bulk endpoints expect. */
+function idList(v: unknown, name: string): number[] {
+  const raw = Array.isArray(v) ? v : String(v ?? '').split(',');
+  const ids = raw.map((x) => Number(String(x).trim())).filter((n) => Number.isInteger(n) && n > 0);
+  if (!ids.length) throw new TestmoError(`${name} is required — pass one or more numeric ids.`);
+  if (ids.length > MAX_BULK) throw new TestmoError(`${name}: Testmo accepts at most ${MAX_BULK} ids per request (got ${ids.length}).`);
+  return ids;
+}
+
+/** Copy only the optional fields the caller actually set, so a PATCH never blanks an unmentioned field. */
+function pick(args: Record<string, unknown>, spec: Array<[string, string, 'string' | 'number' | 'strings' | 'numbers']>): Record<string, unknown> {
+  const out: Record<string, unknown> = {};
+  for (const [argName, apiName, kind] of spec) {
+    const v = args[argName];
+    if (v === undefined || v === null || v === '') continue;
+    if (kind === 'number') out[apiName] = Number(v);
+    else if (kind === 'string') out[apiName] = String(v);
+    else if (kind === 'numbers') out[apiName] = (Array.isArray(v) ? v : String(v).split(',')).map((x) => Number(String(x).trim())).filter(Number.isFinite);
+    else out[apiName] = (Array.isArray(v) ? v : String(v).split(',')).map((x) => String(x).trim()).filter(Boolean);
+  }
+  return out;
 }
 
 /** List envelope → rows. */
@@ -187,7 +234,7 @@ const STATUS_NOTE =
   'Testmo statuses are configurable per instance, so results carry a numeric `status_id` rather than a fixed ' +
   'name — correlate the ids across a run before drawing conclusions about pass/fail counts.';
 
-const TOOLS: McpToolDef[] = [
+const READ_TOOLS: McpToolDef[] = [
   {
     name: 'testmo_list_projects',
     description:
@@ -334,6 +381,145 @@ const TOOLS: McpToolDef[] = [
   },
 ];
 
+/**
+ * Mutating tools — exposed ONLY when `allowWrites` is on. All four Testmo write endpoints are BULK
+ * collection routes (one call touches up to 100 rows), which is why update/delete take an `ids` list
+ * rather than a single id: the API has no per-row write route.
+ */
+const LOOKUP_NOTE =
+  'Ids like folder_id / template_id / state_id are instance-specific — read them off an existing case or ' +
+  'folder (testmo_list_cases / testmo_list_folders) before passing them, rather than assuming a value.';
+
+const WRITE_TOOLS: McpToolDef[] = [
+  {
+    name: 'testmo_create_cases',
+    description:
+      'Create one or more repository test cases in a project (up to 100 per call). Only `name` is required per ' +
+      'case; everything else is optional. Returns the created ids. ' + LOOKUP_NOTE,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        cases: {
+          type: 'array',
+          description: 'The cases to create (max 100).',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Case title (required).' },
+              folderId: { type: 'number', description: 'Folder to file the case under.' },
+              templateId: { type: 'number', description: 'Case template id.' },
+              stateId: { type: 'number', description: 'Workflow state id.' },
+              estimate: { type: 'number', description: 'Estimate, in seconds.' },
+              tags: { type: 'array', items: { type: 'string' }, description: 'Tag names.' },
+              issues: { type: 'array', items: { type: 'number' }, description: 'Linked issue ids.' },
+              automationLinks: { type: 'array', items: { type: 'number' }, description: 'Linked automation test ids.' },
+            },
+            required: ['name'],
+          },
+        },
+      },
+      required: ['projectId', 'cases'],
+    },
+  },
+  {
+    name: 'testmo_update_cases',
+    description:
+      'Update repository test cases IN BULK: every field you pass is applied to EVERY id in `ids` (Testmo has no ' +
+      'per-case write route). Pass one id to edit a single case. Fields left out are untouched. Common use: move ' +
+      'cases to another folder, or set a workflow state across a batch. ' + LOOKUP_NOTE,
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        ids: { type: 'array', items: { type: 'number' }, description: 'Case ids to update (max 100). ALL of them get the same values.' },
+        name: { type: 'string', description: 'New title — careful, this sets the SAME title on every id.' },
+        folderId: { type: 'number', description: 'Move the cases into this folder.' },
+        stateId: { type: 'number', description: 'New workflow state id.' },
+        statusId: { type: 'number', description: 'New status id.' },
+        estimate: { type: 'number', description: 'New estimate, in seconds.' },
+        tags: { type: 'array', items: { type: 'string' }, description: 'Replace the tag list.' },
+        issues: { type: 'array', items: { type: 'number' }, description: 'Replace the linked issue ids.' },
+        automationLinks: { type: 'array', items: { type: 'number' }, description: 'Replace the linked automation test ids.' },
+      },
+      required: ['projectId', 'ids'],
+    },
+  },
+  {
+    name: 'testmo_delete_cases',
+    description:
+      'Permanently delete repository test cases by id (up to 100 per call). Destructive and not undoable from the ' +
+      'API — the deleted cases and their history leave the repository.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        ids: { type: 'array', items: { type: 'number' }, description: 'Case ids to delete (max 100).' },
+      },
+      required: ['projectId', 'ids'],
+    },
+  },
+  {
+    name: 'testmo_create_folders',
+    description:
+      'Create one or more case folders in a project (up to 100 per call). Pass `parentId` to nest under an ' +
+      'existing folder, or omit it for a root folder. Returns the created ids — use them as `folderId` when ' +
+      'creating cases.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        folders: {
+          type: 'array',
+          description: 'The folders to create (max 100).',
+          items: {
+            type: 'object',
+            properties: {
+              name: { type: 'string', description: 'Folder name (required).' },
+              parentId: { type: 'number', description: 'Parent folder id; omit for a root-level folder.' },
+              docs: { type: 'string', description: 'Optional description / notes.' },
+              displayOrder: { type: 'number', description: 'Optional display order.' },
+            },
+            required: ['name'],
+          },
+        },
+      },
+      required: ['projectId', 'folders'],
+    },
+  },
+  {
+    name: 'testmo_update_folders',
+    description:
+      'Update case folders IN BULK — every field you pass is applied to EVERY id in `ids`. Use it to rename a ' +
+      'folder (pass a single id) or re-parent a batch of folders.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        ids: { type: 'array', items: { type: 'number' }, description: 'Folder ids to update (max 100).' },
+        name: { type: 'string', description: 'New name — sets the SAME name on every id.' },
+        parentId: { type: 'number', description: 'Move the folders under this parent.' },
+        docs: { type: 'string', description: 'New description / notes.' },
+      },
+      required: ['projectId', 'ids'],
+    },
+  },
+  {
+    name: 'testmo_delete_folders',
+    description:
+      'Permanently delete case folders by id (up to 100 per call). Destructive: deleting a folder takes its ' +
+      'contents with it — list the folder\'s cases first if you are unsure.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        projectId: { type: 'string', description: 'Numeric project id.' },
+        ids: { type: 'array', items: { type: 'number' }, description: 'Folder ids to delete (max 100).' },
+      },
+      required: ['projectId', 'ids'],
+    },
+  },
+];
+
 // ─── Tool implementations ──────────────────────────────────────────────────────────────────────
 
 /** Shared shape for every list tool: fetch → render rows → append paging + truncation notes. */
@@ -474,6 +660,100 @@ export async function callTestmo(cfg: TestmoConfig, name: string, args: Record<s
         fields: ['email', 'is_active', 'is_admin'],
       });
 
+    // ── writes (only reachable when allowWrites is on — see callTool) ──────────────────────────
+    case 'testmo_create_cases': {
+      const pid = reqId(args.projectId, 'projectId');
+      const input = Array.isArray(args.cases) ? args.cases : [];
+      if (!input.length) return text('Error: `cases` must be a non-empty array.', true);
+      if (input.length > MAX_BULK) return text(`Error: at most ${MAX_BULK} cases per call (got ${input.length}).`, true);
+      const cases = input.map((c: any, i: number) => {
+        const name = String(c?.name ?? '').trim();
+        if (!name) throw new TestmoError(`cases[${i}].name is required.`);
+        return {
+          name,
+          ...pick(c ?? {}, [
+            ['folderId', 'folder_id', 'number'],
+            ['templateId', 'template_id', 'number'],
+            ['stateId', 'state_id', 'number'],
+            ['estimate', 'estimate', 'number'],
+            ['tags', 'tags', 'strings'],
+            ['issues', 'issues', 'numbers'],
+            ['automationLinks', 'automation_links', 'numbers'],
+          ]),
+        };
+      });
+      const created = rows(await testmoFetch(cfg, `/projects/${pid}/cases`, 'POST', { cases }));
+      const ids = created.map((c: any) => c?.id).filter((x: any) => x != null);
+      return text(`Created ${cases.length} case(s) in project ${pid}.${ids.length ? ` New ids: ${ids.join(', ')}.` : ''}`);
+    }
+
+    case 'testmo_update_cases': {
+      const pid = reqId(args.projectId, 'projectId');
+      const ids = idList(args.ids, 'ids');
+      const patch = pick(args, [
+        ['name', 'name', 'string'],
+        ['folderId', 'folder_id', 'number'],
+        ['stateId', 'state_id', 'number'],
+        ['statusId', 'status_id', 'number'],
+        ['estimate', 'estimate', 'number'],
+        ['tags', 'tags', 'strings'],
+        ['issues', 'issues', 'numbers'],
+        ['automationLinks', 'automation_links', 'numbers'],
+      ]);
+      if (!Object.keys(patch).length) return text('Error: pass at least one field to change.', true);
+      await testmoFetch(cfg, `/projects/${pid}/cases`, 'PATCH', { ids, ...patch });
+      return text(`Updated ${ids.length} case(s) in project ${pid} — set ${Object.keys(patch).join(', ')} on ids ${ids.join(', ')}.`);
+    }
+
+    case 'testmo_delete_cases': {
+      const pid = reqId(args.projectId, 'projectId');
+      const ids = idList(args.ids, 'ids');
+      await testmoFetch(cfg, `/projects/${pid}/cases`, 'DELETE', { ids });
+      return text(`Deleted ${ids.length} case(s) from project ${pid}: ${ids.join(', ')}.`);
+    }
+
+    case 'testmo_create_folders': {
+      const pid = reqId(args.projectId, 'projectId');
+      const input = Array.isArray(args.folders) ? args.folders : [];
+      if (!input.length) return text('Error: `folders` must be a non-empty array.', true);
+      if (input.length > MAX_BULK) return text(`Error: at most ${MAX_BULK} folders per call (got ${input.length}).`, true);
+      const folders = input.map((f: any, i: number) => {
+        const name = String(f?.name ?? '').trim();
+        if (!name) throw new TestmoError(`folders[${i}].name is required.`);
+        return {
+          name,
+          ...pick(f ?? {}, [
+            ['parentId', 'parent_id', 'number'],
+            ['docs', 'docs', 'string'],
+            ['displayOrder', 'display_order', 'number'],
+          ]),
+        };
+      });
+      const created = rows(await testmoFetch(cfg, `/projects/${pid}/folders`, 'POST', { folders }));
+      const ids = created.map((f: any) => f?.id).filter((x: any) => x != null);
+      return text(`Created ${folders.length} folder(s) in project ${pid}.${ids.length ? ` New ids: ${ids.join(', ')}.` : ''}`);
+    }
+
+    case 'testmo_update_folders': {
+      const pid = reqId(args.projectId, 'projectId');
+      const ids = idList(args.ids, 'ids');
+      const patch = pick(args, [
+        ['name', 'name', 'string'],
+        ['parentId', 'parent_id', 'number'],
+        ['docs', 'docs', 'string'],
+      ]);
+      if (!Object.keys(patch).length) return text('Error: pass at least one field to change.', true);
+      await testmoFetch(cfg, `/projects/${pid}/folders`, 'PATCH', { ids, ...patch });
+      return text(`Updated ${ids.length} folder(s) in project ${pid} — set ${Object.keys(patch).join(', ')} on ids ${ids.join(', ')}.`);
+    }
+
+    case 'testmo_delete_folders': {
+      const pid = reqId(args.projectId, 'projectId');
+      const ids = idList(args.ids, 'ids');
+      await testmoFetch(cfg, `/projects/${pid}/folders`, 'DELETE', { ids });
+      return text(`Deleted ${ids.length} folder(s) from project ${pid}: ${ids.join(', ')}.`);
+    }
+
     default:
       return text(`Unknown tool: ${name}`, true);
   }
@@ -490,8 +770,9 @@ export function testmoPlugin(): McpServerPlugin {
         'Read your Testmo test-management instance over MCP via the REST API v1: projects, milestones, manual ' +
         'test runs and their per-test results (with failure notes), the test case repository and its folders, ' +
         'CI automation runs and sources, exploratory sessions and users. Ask "why did last night\'s regression ' +
-        'run fail" or "which cases have no automation" without leaving the chat. Read-only. Requires a Testmo ' +
-        'API token: Testmo → your profile → API tokens.',
+        'run fail" or "which cases have no automation" without leaving the chat. Optionally (off by default) ' +
+        'enable writes to create / update / delete repository cases and folders. Requires a Testmo API token: ' +
+        'Testmo → your profile → API tokens.',
       author: 'Kravn',
       priority: 100,
       configSchema: {
@@ -511,15 +792,36 @@ export function testmoPlugin(): McpServerPlugin {
               'admin and return 403 otherwise. Stored encrypted, never shown to the model.',
             secret: true,
           },
+          allowWrites: {
+            type: 'boolean',
+            title: 'Allow writes (create / update / delete)',
+            description:
+              'Off by default: only the read tools are exposed. Turn it on to also expose create/update/delete ' +
+              'for repository CASES and FOLDERS — the only things the Testmo API can write (manual runs, ' +
+              'milestones and results are read-only in the API). Writes are BULK: one call can change up to 100 ' +
+              'rows, and deletes are permanent. Pair this with the maker-checker approval gate, and keep the ' +
+              'token\'s Testmo permissions as the real ceiling.',
+          },
         },
         required: ['baseUrl', 'apiToken'],
       },
     },
     server: {
-      listTools: () => TOOLS,
+      // Mutating tools are hidden entirely unless the instance opts in, so a model composed onto a
+      // read-only Testmo endpoint never even sees that writing is possible.
+      listTools: (config) => (config?.allowWrites === true ? [...READ_TOOLS, ...WRITE_TOOLS] : READ_TOOLS),
       async callTool(name, args, config): Promise<McpToolResult> {
         try {
-          return await callTestmo(readConfig(config), name, args);
+          const cfg = readConfig(config);
+          // Belt and braces: listTools already hides these, but a client can call any name it likes.
+          if (!cfg.allowWrites && WRITE_TOOLS.some((t) => t.name === name)) {
+            return text(
+              `${name} is a write tool and writes are disabled for this Testmo instance. An admin can enable ` +
+                '"Allow writes" in the plugin config.',
+              true,
+            );
+          }
+          return await callTestmo(cfg, name, args);
         } catch (err) {
           return text(err instanceof Error ? err.message : 'Testmo request failed.', true);
         }

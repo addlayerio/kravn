@@ -41,7 +41,7 @@ reaches the service:
 | **Gmail** | Read **and send** email (search, read, send, reply into a thread) over the Gmail API. |
 | **Jira** | Query and read issues via the Jira REST API, plus Jira Service Management — service desks, requests, SLAs, queues and organizations. |
 | **Tempo** | Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — plans & allocations, user/team capacity, logged time, teams, accounts and workload schemes. |
-| **Testmo** | Read-only test management over the Testmo REST API v1 — projects, milestones, manual runs and their per-test results with failure notes, the case repository and folders, CI automation runs and sources, exploratory sessions. |
+| **Testmo** | Test management over the Testmo REST API v1 — projects, milestones, manual runs and their per-test results with failure notes, the case repository and folders, CI automation runs and sources, exploratory sessions. Reads by default; an opt-in **Allow writes** toggle adds create/update/delete for repository cases and folders. |
 | **Confluence** | Search and read Confluence pages. |
 | **Odoo** | CRM & ERP over Odoo JSON-RPC — CRUD, server-side aggregation & counts, and search across leads, contacts, sales orders, invoices, products, tasks. |
 | **Zoho CRM** | Read/search/CRUD over any module plus COQL queries (GROUP BY + aggregates), over the Zoho v6 REST API. |
