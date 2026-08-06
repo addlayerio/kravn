@@ -26,6 +26,7 @@ import { llmRoutes } from './routes/llm.routes.js';
 import { teamRoutes } from './routes/teams.routes.js';
 import { agentRoutes } from './routes/agents.routes.js';
 import { chatRoutes } from './routes/chat.routes.js';
+import { hookRoutes } from './routes/hooks.routes.js';
 import { userRoutes } from './routes/users.routes.js';
 import { logRoutes } from './routes/logs.routes.js';
 import { auditRoutes } from './routes/audit.routes.js';
@@ -165,6 +166,12 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   // protection intact, malformed JSON still 400s).
   const defaultJsonParser = app.getDefaultJsonParser('error', 'error');
   app.addContentTypeParser('application/json', { parseAs: 'string' }, (req, body, done) => {
+    // Webhook signatures (GitHub/Jira HMAC) are computed over the EXACT bytes sent — re-serializing the parsed
+    // object would change them and every signature would fail. Keep the raw string, but only for the ingress
+    // path, so no other route pays the memory for a second copy of its body.
+    if (typeof body === 'string' && (req.raw.url ?? '').startsWith('/api/hooks/')) {
+      (req as typeof req & { rawBody?: string }).rawBody = body;
+    }
     if (typeof body !== 'string' || body.trim() === '') return done(null, {});
     defaultJsonParser(req, body, done);
   });
@@ -264,6 +271,9 @@ export async function buildApp(services: Services): Promise<FastifyInstance> {
   // End-user chat surface (the dedicated chat pod serves only this + the shared routes above).
   if (wantChat) {
     chatRoutes(app, services);
+    // Public webhook ingress for event automations. Lives with the chat role because that's where the
+    // scheduler and the runner live — the two triggers must land on the same pod that can execute a run.
+    hookRoutes(app, services);
   }
 
   services.log.info({ role }, 'HTTP routes registered for role');

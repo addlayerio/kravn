@@ -901,7 +901,7 @@ export interface NativeIntegration {
 export const NATIVE_INTEGRATIONS: NativeIntegration[] = [
   {
     id: 'kravn-jira', name: 'Jira', category: 'Project Management',
-    description: 'Query and manage Jira issues (JQL search, detail, comments, create/transition) plus Jira Service Management — service desks, requests, SLAs, queues and organizations.',
+    description: 'Query and manage Jira issues (JQL search, detail, comments, create/edit/transition — including custom fields like story points, by display name) plus Jira Service Management — service desks, requests, SLAs, queues and organizations.',
   },
   {
     id: 'kravn-kubernetes', name: 'Kubernetes', category: 'DevOps',

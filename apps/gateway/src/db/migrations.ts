@@ -1089,8 +1089,110 @@ const chatScheduleAgent: Migration = {
   },
 };
 
+// Scheduled tasks became **automations**: same engine, but the trigger is now pluggable (time OR event), so the
+// stored concept is no longer "a schedule". Pure rename — every column and row is carried over untouched.
+const chatAutomationsRename: Migration = {
+  name: '037_chat_automations_rename',
+  async up(knex) {
+    if ((await knex.schema.hasTable('chat_schedules')) && !(await knex.schema.hasTable('chat_automations'))) {
+      await knex.schema.renameTable('chat_schedules', 'chat_automations');
+    }
+    await createIfMissing(knex, 'chat_automations', (t) => {
+      t.string('id').primary();
+      t.string('user_id').notNullable();
+      t.string('name').notNullable();
+      t.text('prompt').notNullable();
+      t.string('provider_id').notNullable();
+      t.string('model').notNullable();
+      t.string('vserver_slug').notNullable().defaultTo('');
+      t.string('project_id').nullable();
+      t.string('agent_id').nullable();
+      t.string('kind').notNullable(); // 'cron' | 'once' | 'event'
+      t.string('cron').notNullable().defaultTo('');
+      t.string('run_at').notNullable().defaultTo('');
+      t.string('timezone').notNullable().defaultTo('UTC');
+      t.boolean('enabled').notNullable().defaultTo(true);
+      t.string('next_run_at').nullable();
+      t.string('last_run_at').nullable();
+      t.string('last_status').nullable();
+      t.text('last_error').nullable();
+      t.string('last_conversation_id').nullable();
+      t.string('created_at').notNullable();
+      t.string('updated_at').notNullable();
+      t.index('user_id');
+      t.index('next_run_at');
+    });
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_automations')) && !(await knex.schema.hasTable('chat_schedules'))) {
+      await knex.schema.renameTable('chat_automations', 'chat_schedules');
+    }
+  },
+};
+
+// Event trigger: an automation can be started by an inbound webhook instead of by the clock. `event_token` is the
+// unguessable URL segment; the secret is stored encrypted by the app (never returned by the API).
+const chatAutomationEvents: Migration = {
+  name: '038_chat_automation_events',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_automations'))) return;
+    // varchar (not text) for event_token — it's indexed, and TEXT can't be a key on MySQL/MSSQL.
+    if (!(await knex.schema.hasColumn('chat_automations', 'event_token'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.string('event_token', 64).nullable());
+    }
+    if (!(await knex.schema.hasColumn('chat_automations', 'event_auth'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.string('event_auth', 16).notNullable().defaultTo('none'));
+    }
+    if (!(await knex.schema.hasColumn('chat_automations', 'event_secret'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.text('event_secret').nullable());
+    }
+    if (!(await knex.schema.hasColumn('chat_automations', 'payload_template'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.text('payload_template').nullable());
+    }
+    if (!(await knex.schema.hasColumn('chat_automations', 'event_filter'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.text('event_filter').nullable());
+    }
+    if (!(await knex.schema.hasColumn('chat_automations', 'max_runs_per_hour'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.integer('max_runs_per_hour').notNullable().defaultTo(60));
+    }
+    // The ingress looks an automation up by this token on every delivery — and only ever by this token.
+    await knex.schema.alterTable('chat_automations', (t) => t.index('event_token'));
+  },
+  async down(knex) {
+    if (!(await knex.schema.hasTable('chat_automations'))) return;
+    for (const col of ['event_token', 'event_auth', 'event_secret', 'payload_template', 'event_filter', 'max_runs_per_hour']) {
+      if (await knex.schema.hasColumn('chat_automations', col)) {
+        await knex.schema.alterTable('chat_automations', (t) => t.dropColumn(col));
+      }
+    }
+  },
+};
+
+// Per-run history. `last_*` on the automation describes ONE run — fine for a weekly cron, useless for a webhook
+// that fires fifty times a day. Every run gets a row, and the conversation it produced is the trace of what it did.
+const chatAutomationRuns: Migration = {
+  name: '039_chat_automation_runs',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_automation_runs', (t) => {
+      t.string('id').primary();
+      t.string('automation_id').notNullable();
+      t.string('user_id').notNullable();
+      t.string('trigger').notNullable(); // 'cron' | 'once' | 'event' | 'manual'
+      t.string('status').notNullable(); // 'running' | 'ok' | 'error'
+      t.text('error').nullable();
+      t.string('conversation_id').nullable();
+      t.string('started_at').notNullable();
+      t.string('finished_at').nullable();
+      t.index(['automation_id', 'started_at']);
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_automation_runs')) await knex.schema.dropTable('chat_automation_runs');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

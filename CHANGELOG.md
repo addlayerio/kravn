@@ -12,6 +12,48 @@ rationale behind each change, see [SECURITY.md](SECURITY.md).
 The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions match the Helm chart
 `appVersion` and the `vX.Y.Z` git tags.
 
+## [Unreleased]
+
+- 📣 **Automations — an agent, an instruction, and a trigger.** "Scheduled tasks" is now **Automations**, and the
+  trigger is pluggable: **by time** (cron / one-off, exactly as before) or, new, **by event** — an inbound
+  webhook. Every automation gets its own URL (`POST /api/hooks/<token>`); paste it into Jira, GitHub or anything
+  that can call one, and the request body becomes the event your agent reacts to. The authoring surface is a
+  sentence, not a flow diagram: *"when a ticket is created, read the linked code on GitHub and set the story
+  points"* is one automation with two tools behind it. Existing scheduled tasks carry over untouched — same
+  rows, same next-run times, nothing to reconfigure.
+
+  Three optional controls turn one URL into a precise rule. **Only run when** takes one `path=value` condition
+  per line (`!=` negates) and acknowledges-and-drops anything that doesn't match — senders usually can't be
+  narrowed to a single event type, so this is what keeps one URL honest. **Payload template** turns the body into
+  the prompt (`{{ issue.fields.summary }}` reads any field by path, `{{ payload }}` takes all of it; empty
+  appends the whole payload). **Max runs per hour** is the loop backstop for the classic failure where the agent
+  writes back to the source and re-fires its own webhook — and it counts only deliveries that actually start a
+  run, so filtered noise never eats the budget.
+
+  A **sample-payload sandbox** renders the exact prompt and the filter verdict *without* spending a model call,
+  so a rule can be shaped before a real event ever arrives. And because `last run` describes exactly one run —
+  useless for a webhook firing fifty times a day — every execution now lands in a **run history** with its
+  status, its error and a link to the conversation it produced.
+
+- 🧩 **Jira can now edit an existing issue — including custom fields, by their display name.** The Jira plugin
+  could create, comment and transition, but had no way to change a field on a ticket that already exists. New
+  **`jira_update_issue`** closes that: `{"issueKey":"ABC-123","fields":{"Story Points Global":5}}`. You name
+  fields the way a human says them and values are coerced to what each one actually expects — a number field
+  takes `5` or `"5"`, a select becomes `{value}`, labels accept one string or a list, rich-text custom fields are
+  converted to Atlassian Document Format — with a pre-shaped object always passed through untouched as an escape
+  hatch. A name that matches nothing is refused *before* any write, and Jira's notorious "field is not on the
+  appropriate screen" rejection now comes back with what to do about it. This is what makes an automation like
+  *"when a ticket is created, read the linked code and set the story points"* actually able to finish.
+
+- 🔒 **A webhook can start work; it can never widen it.** An automation runs as the user who created it — their
+  role, their teams, their tool entitlements, re-evaluated live on every turn — so an event-triggered run is
+  governed and audited identically to that person typing the prompt in chat. Tools held for maker-checker
+  approval stay held. The ingress itself is authenticated by the unguessable URL token plus an optional shared
+  secret or **HMAC-SHA256 signature over the raw body** (what GitHub and Jira send when you set a webhook
+  secret); secrets are stored encrypted and never returned by the API, and rotating the URL revokes every sender
+  at once. Duplicate deliveries are recognised and dropped, so a retrying sender never runs the agent twice, and
+  the ingress answers in milliseconds and runs the agent detached — a slow model can't become a webhook timeout.
+
 ## [0.1.95] — 2026-08-04
 
 - 🧩 **Testmo native integration — ask your test management questions in chat.** A new built-in **Testmo** plugin

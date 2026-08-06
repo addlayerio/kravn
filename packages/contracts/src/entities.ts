@@ -314,10 +314,24 @@ export const chatConversationSchema = z.object({
 });
 export type ChatConversation = z.infer<typeof chatConversationSchema>;
 
-/** A scheduled task: runs a prompt on a cron/calendar schedule and drops the result into a new conversation. */
-export const scheduleKindSchema = z.enum(['cron', 'once']);
-export type ScheduleKind = z.infer<typeof scheduleKindSchema>;
-export const chatScheduleSchema = z.object({
+/**
+ * An **automation**: an agent + an instruction, started by a trigger instead of a person. The run happens in a
+ * new conversation owned by the automation's creator, with that user's tool access — so permissions and audit
+ * are identical to the same person typing the prompt in chat.
+ *
+ * Triggers (`kind`):
+ *  - `cron` / `once` — by time (the scheduler ticks and claims due fires).
+ *  - `event`         — by an inbound webhook at `/api/hooks/:eventToken`. Never fires by time, so `nextRunAt`
+ *                      stays null and the scheduler's due-query skips it.
+ */
+export const automationKindSchema = z.enum(['cron', 'once', 'event']);
+export type AutomationKind = z.infer<typeof automationKindSchema>;
+
+/** How an inbound webhook proves it's genuine. `none` relies on the unguessable token in the URL alone. */
+export const automationAuthSchema = z.enum(['none', 'secret', 'hmac']);
+export type AutomationAuth = z.infer<typeof automationAuthSchema>;
+
+export const chatAutomationSchema = z.object({
   id: z.string(),
   name: z.string(),
   prompt: z.string().default(''),
@@ -327,14 +341,35 @@ export const chatScheduleSchema = z.object({
   projectId: z.string().nullable().default(null),
   /** Optional org Agent to run this task as (its instructions + tool filter apply, entitlement re-checked live). */
   agentId: z.string().nullable().default(null),
-  kind: scheduleKindSchema,
+  kind: automationKindSchema,
   /** Cron expression (5-field), for kind='cron'. */
   cron: z.string().default(''),
   /** ISO datetime, for kind='once'. */
   runAt: z.string().default(''),
   timezone: z.string().default('UTC'),
   enabled: z.boolean().default(true),
-  /** Next fire time (ISO); null = will never run again (bad cron, or a past one-shot). */
+
+  // ── kind='event' (inbound webhook) ────────────────────────────────────────
+  /** Unguessable URL segment: POST /api/hooks/{eventToken}. Rotating it revokes every sender at once. */
+  eventToken: z.string().default(''),
+  /** How the sender authenticates. The secret itself is never returned by the API (write-only). */
+  eventAuth: automationAuthSchema.default('none'),
+  /** True when a secret is stored — lets the UI say "configured" without ever reading it back. */
+  hasEventSecret: z.boolean().default(false),
+  /**
+   * Turns the payload into the run's prompt. `{{ path.to.field }}` placeholders resolve against the JSON body
+   * (`{{ payload }}` = the whole thing, truncated). Empty = the automation's own `prompt` plus the raw payload.
+   */
+  payloadTemplate: z.string().default(''),
+  /**
+   * Optional gate, one `path=value` condition per line — ALL must match or the delivery is acknowledged and
+   * dropped. This is what keeps one URL per event type honest (e.g. `webhookEvent=jira:issue_created`).
+   */
+  eventFilter: z.string().default(''),
+  /** Runaway/loop backstop: deliveries past this many runs in a rolling hour are rejected (429). 0 = unlimited. */
+  maxRunsPerHour: z.number().int().min(0).max(10_000).default(60),
+
+  /** Next fire time (ISO); null = will never run again (bad cron, a past one-shot, or an event automation). */
   nextRunAt: z.string().nullable().default(null),
   lastRunAt: z.string().nullable().default(null),
   lastStatus: z.string().nullable().default(null),
@@ -343,7 +378,21 @@ export const chatScheduleSchema = z.object({
   createdAt: z.string(),
   updatedAt: z.string(),
 });
-export type ChatSchedule = z.infer<typeof chatScheduleSchema>;
+export type ChatAutomation = z.infer<typeof chatAutomationSchema>;
+
+/** One execution of an automation. Event automations fire far more often than `last*` fields can describe. */
+export const automationRunSchema = z.object({
+  id: z.string(),
+  automationId: z.string(),
+  /** What started it: 'cron' | 'once' | 'event' | 'manual' (a user pressing Run). */
+  trigger: z.string(),
+  status: z.string(),
+  error: z.string().nullable().default(null),
+  conversationId: z.string().nullable().default(null),
+  startedAt: z.string(),
+  finishedAt: z.string().nullable().default(null),
+});
+export type AutomationRun = z.infer<typeof automationRunSchema>;
 
 /** A user's personal, reusable prompt template (their own library — beyond any admin/MCP-provided prompts). */
 export const chatUserPromptSchema = z.object({

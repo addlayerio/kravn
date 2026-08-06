@@ -108,6 +108,31 @@ const TOOLS: McpToolDef[] = [
     },
   },
   {
+    name: 'jira_update_issue',
+    description:
+      'Edit fields on an existing Jira issue — base fields and CUSTOM fields alike, by their display name. ' +
+      'This is how you set an estimate, e.g. `{"issueKey":"ABC-123","fields":{"Story Points Global":5}}`, or ' +
+      'retitle/re-describe an issue. Values are coerced to what each field expects (number, select, labels, …), ' +
+      'so pass the plain human value. Use jira_get_issue first if you are unsure of a custom field\'s exact ' +
+      'display name — it lists every field set on that issue. Does NOT change status: use jira_transition_issue.',
+    inputSchema: {
+      type: 'object',
+      properties: {
+        issueKey: { type: 'string', description: 'Issue key, e.g. ABC-123.' },
+        fields: {
+          type: 'object',
+          description:
+            'Field display name (or id) → new value, e.g. {"Story Points Global": 5, "Labels": ["backend"], ' +
+            '"Priority": "High"}. Pass an already-shaped object/array to bypass coercion for exotic fields.',
+          additionalProperties: true,
+        },
+        summary: { type: 'string', description: 'Convenience shortcut for the summary field.' },
+        description: { type: 'string', description: 'Convenience shortcut for the description field (plain text).' },
+      },
+      required: ['issueKey'],
+    },
+  },
+  {
     name: 'jira_add_comment',
     description: 'Add a comment to an existing Jira issue.',
     inputSchema: {
@@ -319,6 +344,142 @@ async function createIssue(cfg: AtlassianConfig, args: Record<string, unknown>):
   return text(`Created ${k}: ${cfg.baseUrl}/browse/${k}`);
 }
 
+/** A writable Jira field: its id plus the schema that says what shape a value has to take. */
+interface WritableField {
+  id: string;
+  name: string;
+  type: string;
+  /** For custom fields, Atlassian's type key (e.g. `...:textarea`, `...:multiselect`) — finer than `type`. */
+  custom: string;
+  /** For `array` fields, the type of each item. */
+  items: string;
+}
+
+/**
+ * Resolve caller-supplied field tokens (display NAMES, as a human would say them, or raw ids) to writable
+ * fields, carrying each one's schema. Same catalog `resolveColumns` reads for search, but writing needs the
+ * schema too: Jira rejects `"5"` for a number field and `"High"` for a select that wants `{value:"High"}`.
+ */
+async function resolveWritableFields(cfg: AtlassianConfig, tokens: string[]): Promise<Map<string, WritableField>> {
+  const list: any[] = await atlassianFetch(cfg, 'GET', '/rest/api/3/field');
+  const byKey = new Map<string, WritableField>();
+  for (const fld of Array.isArray(list) ? list : []) {
+    if (!fld?.id) continue;
+    const entry: WritableField = {
+      id: String(fld.id),
+      name: String(fld.name ?? fld.id),
+      type: String(fld.schema?.type ?? ''),
+      custom: String(fld.schema?.custom ?? ''),
+      items: String(fld.schema?.items ?? ''),
+    };
+    byKey.set(entry.id.toLowerCase(), entry);
+    if (fld.name) byKey.set(String(fld.name).toLowerCase(), entry);
+  }
+  const out = new Map<string, WritableField>();
+  for (const tok of tokens) {
+    const hit = byKey.get(tok.trim().toLowerCase());
+    if (hit) out.set(tok, hit);
+  }
+  return out;
+}
+
+/**
+ * Shape a plain human value into what Jira's API wants for that field. The model should be able to say
+ * `"Story Points": 5` or `"Priority": "High"` and have it land; anything the rules below don't cover can still
+ * be passed pre-shaped as an object/array, which is returned untouched.
+ */
+function coerceFieldValue(field: WritableField, value: unknown): unknown {
+  if (value === null) return null; // explicit clear
+  // An object/array from the caller is assumed to be already in Jira's shape — escape hatch, never second-guessed.
+  if (typeof value === 'object' && !(value instanceof Date)) {
+    if (!Array.isArray(value)) return value;
+    if (field.type !== 'array') return value;
+    return (value as unknown[]).map((v) => (typeof v === 'object' ? v : coerceScalar(field.items, v)));
+  }
+  if (field.type === 'array') {
+    // A single scalar for a multi-value field is a list of one — the common "add this label" case.
+    return [coerceScalar(field.items, value)];
+  }
+  // Rich text (description and textarea custom fields) travels as an Atlassian Document, not a string.
+  if (field.id === 'description' || field.custom.endsWith(':textarea')) return toAdf(String(value));
+  return coerceScalar(field.type, value);
+}
+
+/** Scalar coercion by Jira schema type. Unknown types fall through as a string, which is what Jira defaults to. */
+function coerceScalar(type: string, value: unknown): unknown {
+  switch (type) {
+    case 'number': {
+      const n = Number(value);
+      return Number.isFinite(n) ? n : value; // let Jira reject a genuinely non-numeric value with its own message
+    }
+    case 'option':
+    case 'option-with-child':
+      return { value: String(value) };
+    case 'user':
+      // An accountId is the only thing the API accepts here; a display name would silently pick nobody.
+      return { accountId: String(value) };
+    case 'priority':
+    case 'resolution':
+    case 'issuetype':
+    case 'component':
+    case 'version':
+    case 'group':
+      return { name: String(value) };
+    case 'project':
+      return { key: String(value) };
+    default:
+      return String(value);
+  }
+}
+
+/**
+ * Edit fields on an existing issue. Names are resolved to ids and values coerced per field schema, then sent as
+ * one PUT so the whole edit lands atomically (Jira applies all-or-nothing).
+ */
+async function updateIssue(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
+  const key = String(args.issueKey ?? '').trim();
+  if (!key) return text('Error: issueKey is required.', true);
+
+  // The convenience shortcuts are just entries in the same map, so one code path handles everything.
+  const requested: Record<string, unknown> = { ...((args.fields as Record<string, unknown>) ?? {}) };
+  if (args.summary !== undefined) requested.summary = args.summary;
+  if (args.description !== undefined) requested.description = args.description;
+  const tokens = Object.keys(requested);
+  if (!tokens.length) return text('Error: nothing to update — pass `fields`, `summary` or `description`.', true);
+
+  const resolved = await resolveWritableFields(cfg, tokens);
+  const unknownNames = tokens.filter((t) => !resolved.has(t));
+  if (unknownNames.length) {
+    return text(
+      `No Jira field matches: ${unknownNames.join(', ')}. Call jira_get_issue on ${key} to see the exact display ` +
+      `names of the fields set on that issue, then use those.`,
+      true,
+    );
+  }
+
+  const fields: Record<string, unknown> = {};
+  for (const [token, value] of Object.entries(requested)) {
+    const f = resolved.get(token)!;
+    fields[f.id] = coerceFieldValue(f, value);
+  }
+
+  try {
+    await atlassianFetch(cfg, 'PUT', `/rest/api/3/issue/${encodeURIComponent(key)}`, { fields });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    // By far the most common Jira write failure, and the message alone doesn't say what to do about it.
+    if (/not on the appropriate screen|cannot be set/i.test(msg)) {
+      throw new AtlassianError(
+        `${msg} — in Jira, a field is only writable if it's on that issue type's Edit screen ` +
+        `(Project settings → Screens). Ask a Jira admin to add it, or set a field that already appears there.`,
+      );
+    }
+    throw err;
+  }
+  const names = [...resolved.values()].map((f) => f.name).join(', ');
+  return text(`Updated ${key} (${names}): ${cfg.baseUrl}/browse/${key}`);
+}
+
 async function addComment(cfg: AtlassianConfig, args: Record<string, unknown>): Promise<McpToolResult> {
   const key = String(args.issueKey ?? '').trim();
   const body = String(args.body ?? '');
@@ -379,7 +540,8 @@ export function jiraPlugin(): McpServerPlugin {
       type: 'mcp-server',
       description:
         'Interact with Jira over MCP via the Jira REST API. Search issues with JQL, read issue detail and the ' +
-        'comment thread, list projects, and create issues / add comments / transition status. Also covers Jira ' +
+        'comment thread, list projects, and create issues / edit fields (including custom fields such as story ' +
+        'points, by display name) / add comments / transition status. Also covers Jira ' +
         'Service Management (jsm_* tools: service desks, request types, requests, SLAs, queues, organizations) — ' +
         'the JSM tools require the API-token account to be a licensed agent on the service desk. Requires a site ' +
         'URL, account email and API token.',
@@ -421,6 +583,8 @@ export function jiraPlugin(): McpServerPlugin {
               return await listProjects(cfg, args);
             case 'jira_create_issue':
               return await createIssue(cfg, args);
+            case 'jira_update_issue':
+              return await updateIssue(cfg, args);
             case 'jira_add_comment':
               return await addComment(cfg, args);
             case 'jira_transition_issue':

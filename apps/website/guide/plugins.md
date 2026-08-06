@@ -39,7 +39,7 @@ reaches the service:
 | **Microsoft Teams** | Find people, read chats and channel posts, list teams/channels, and fetch a message's images — over Microsoft Graph. |
 | **Outlook** | Read **and send** email (search, read, send, reply/reply-all) over Microsoft 365 / Exchange Online (Graph). |
 | **Gmail** | Read **and send** email (search, read, send, reply into a thread) over the Gmail API. |
-| **Jira** | Query and read issues via the Jira REST API, plus Jira Service Management — service desks, requests, SLAs, queues and organizations. |
+| **Jira** | Query, read and write issues via the Jira REST API — JQL search, detail, comments, create, transition, and edit fields (custom fields such as story points are addressed by their display name). Plus Jira Service Management — service desks, requests, SLAs, queues and organizations. |
 | **Tempo** | Manage the team capacity plan (Tempo Planner) over the Tempo Cloud REST API v4 — plans & allocations, user/team capacity, logged time, teams, accounts and workload schemes. |
 | **Testmo** | Test management over the Testmo REST API v1 — projects, milestones, manual runs and their per-test results with failure notes, the case repository and folders, CI automation runs and sources, exploratory sessions. Reads by default; an opt-in **Allow writes** toggle adds create/update/delete for repository cases and folders. |
 | **Confluence** | Search and read Confluence pages. |

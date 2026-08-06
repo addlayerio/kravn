@@ -30,7 +30,8 @@ built for everyday work over **your** company's governed tools, not a public cha
   users or teams.
 - **Org agents** — an admin defines a preset once (instructions + model + tools) and shares it with teams or
   users, so a vetted way of working spreads without everyone reconfiguring it.
-- **Scheduled tasks** — let an agent run on a cadence against the same governed surface and report back.
+- **Automations** — an agent plus an instruction, started by a trigger instead of a person: on a schedule, or
+  by an inbound event. See below.
 
 ## A filter, never a grant
 
@@ -41,9 +42,54 @@ their gateway entitlements, never a tool they aren't entitled to.
 
 And it isn't a one-time check at setup. Entitlements are re-evaluated on **every turn**, against live gateway
 state. Revoke a team's access to a tool and the next message in an existing conversation — or the next
-scheduled run of an agent shared org-wide — can no longer reach it. The client can never become a side door
+automated run of an agent shared org-wide — can no longer reach it. The client can never become a side door
 around your policy, because it holds no authority of its own; it borrows the gateway's, every single time. If
 the gateway says no, the client says no.
+
+## Automations: the same agent, started by something other than a person
+
+An **automation** is an agent, an instruction, and a trigger. Nothing else — there is no canvas, no nodes, no
+field mapping. You pick the agent (which carries its own instructions and its own filtered set of tools), write
+what you want done in a sentence, and choose what starts it:
+
+- **By time** — a cron expression or a one-off date.
+- **By event** — an inbound webhook. Each automation gets its own URL (`/api/hooks/<token>`); you paste it into
+  Jira, GitHub, or anything else that can call one, and the request body becomes the event the agent reacts to.
+
+The point is that the *authoring* is a sentence, not a flow. "When a ticket is created, read the linked code on
+GitHub and set the story points" is one automation with two tools behind it — the kind of thing that is a
+multi-step diagram anywhere else.
+
+### Shaping the event
+
+Three optional controls turn one webhook URL into a precise rule:
+
+- **Only run when** — one `path=value` condition per line (use `!=` to negate); all must match or the delivery
+  is acknowledged and dropped. Senders often can't be narrowed to a single event type, so this is what makes
+  `webhookEvent=jira:issue_created` a rule rather than a firehose.
+- **Payload template** — turns the body into the prompt. <span v-pre>`{{ issue.fields.summary }}`</span> reads
+  any field by path, <span v-pre>`{{ payload }}`</span> drops in the whole thing. Leave it empty and the full
+  payload is appended to your instruction.
+- **Max runs per hour** — the loop backstop. If the agent writes back to the source and that fires the webhook
+  again, this bounds the blast radius. Only deliveries that actually start a run count against it.
+
+A **sample-payload sandbox** sits under the editor: paste a body, and a dry run renders the exact prompt and
+reports the filter verdict *without* spending a model call — so a rule can be shaped before a real event ever
+arrives. Every run, whatever started it, lands in the run history with its status and a link to the
+conversation it produced.
+
+### Why this stays governed
+
+An automation runs **as the person who created it**: their role, their teams, their tool entitlements, freshly
+re-evaluated on every turn. A webhook can start work; it can never widen what that work is allowed to touch.
+If a mutating tool is held for [maker-checker approval](/learn/mcp-governance), it is still held when an
+automation calls it.
+
+The webhook endpoint is deliberately unauthenticated in the session sense — the caller is Jira, not a Kravn
+user. What stands in for a session is the unguessable token in the URL, plus an optional shared secret or, better,
+an **HMAC-SHA256 signature** over the raw body (exactly what GitHub and Jira send when you configure a webhook
+secret). Secrets are stored encrypted and never returned by the API; rotating the URL revokes every sender at
+once. Duplicate deliveries are recognised and dropped, so a retrying sender never runs the agent twice.
 
 ## Why it matters
 

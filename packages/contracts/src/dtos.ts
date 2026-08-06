@@ -151,25 +151,44 @@ export const updateConversationSchema = z
   .refine((v) => Object.values(v).some((x) => x !== undefined), { message: 'Nothing to update' });
 export type UpdateConversationRequest = z.infer<typeof updateConversationSchema>;
 
-/** Create/update a scheduled task. */
-export const createScheduleSchema = z.object({
+/** Create/update an automation (an agent + an instruction, started by time or by an inbound event). */
+export const createAutomationSchema = z.object({
   name: z.string().min(1).max(120),
   prompt: z.string().min(1).max(20_000),
   providerId: z.string().min(1),
   model: z.string().min(1),
   vserverSlug: z.string().optional(),
   projectId: z.string().optional(),
-  /** Optional org Agent to run this scheduled task as. */
+  /** Optional org Agent to run this automation as. */
   agentId: z.string().optional(),
-  kind: z.enum(['cron', 'once']),
+  kind: z.enum(['cron', 'once', 'event']),
   cron: z.string().max(120).optional(),
   runAt: z.string().max(40).optional(),
   timezone: z.string().max(64).optional(),
   enabled: z.boolean().optional(),
+  // kind='event'
+  eventAuth: z.enum(['none', 'secret', 'hmac']).optional(),
+  /** Write-only. Sent once when setting/rotating; never returned. Empty string clears it. */
+  eventSecret: z.string().max(400).optional(),
+  payloadTemplate: z.string().max(20_000).optional(),
+  eventFilter: z.string().max(4_000).optional(),
+  maxRunsPerHour: z.number().int().min(0).max(10_000).optional(),
+  /** Mint a fresh URL token, revoking every sender configured against the old one. */
+  rotateToken: z.boolean().optional(),
 });
-export type CreateScheduleRequest = z.infer<typeof createScheduleSchema>;
-export const updateScheduleSchema = createScheduleSchema.partial();
-export type UpdateScheduleRequest = z.infer<typeof updateScheduleSchema>;
+export type CreateAutomationRequest = z.infer<typeof createAutomationSchema>;
+export const updateAutomationSchema = createAutomationSchema.partial();
+export type UpdateAutomationRequest = z.infer<typeof updateAutomationSchema>;
+
+/**
+ * Try an automation against a sample payload. `dryRun` (the default) renders the prompt and reports whether the
+ * filter matched WITHOUT spending a model call — the "does my template work" loop, with no ticket required.
+ */
+export const testAutomationSchema = z.object({
+  payload: z.unknown().optional(),
+  dryRun: z.boolean().default(true),
+});
+export type TestAutomationRequest = z.infer<typeof testAutomationSchema>;
 
 /** Create/update a personal prompt template. */
 export const createUserPromptSchema = z.object({

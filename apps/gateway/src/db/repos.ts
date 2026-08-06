@@ -18,8 +18,10 @@ import type {
   TeamRole,
   ChatProject,
   ProjectRole,
-  ChatSchedule,
-  ScheduleKind,
+  ChatAutomation,
+  AutomationKind,
+  AutomationAuth,
+  AutomationRun,
   ChatUserPrompt,
   ChatMemory,
   ChatAgent,
@@ -1754,7 +1756,7 @@ export interface Repos {
   pipeline: PipelineRepo;
   teams: TeamsRepo;
   chat: ChatRepo;
-  schedules: SchedulesRepo;
+  automations: AutomationsRepo;
   tokens: TokensRepo;
   sessions: SessionsRepo;
   oauth: OAuthRepo;
@@ -2209,36 +2211,65 @@ export class AuditLogRepo {
   }
 }
 
-function mapSchedule(r: any): ChatSchedule {
+/** Row → API shape. The stored webhook secret is deliberately NOT mapped — only whether one exists. */
+function mapAutomation(r: any): ChatAutomation {
   return {
     id: r.id, name: r.name, prompt: r.prompt ?? '', providerId: r.provider_id, model: r.model,
-    vserverSlug: r.vserver_slug ?? '', projectId: r.project_id ?? null, agentId: r.agent_id ?? null, kind: r.kind as ScheduleKind,
+    vserverSlug: r.vserver_slug ?? '', projectId: r.project_id ?? null, agentId: r.agent_id ?? null, kind: r.kind as AutomationKind,
     cron: r.cron ?? '', runAt: r.run_at ?? '', timezone: r.timezone ?? 'UTC', enabled: bool(r.enabled),
+    eventToken: r.event_token ?? '', eventAuth: (r.event_auth ?? 'none') as AutomationAuth,
+    hasEventSecret: !!(r.event_secret && String(r.event_secret).length),
+    payloadTemplate: r.payload_template ?? '', eventFilter: r.event_filter ?? '',
+    maxRunsPerHour: Number(r.max_runs_per_hour ?? 60),
     nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
     lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
     createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
 
-export class SchedulesRepo {
+/** What the public webhook ingress needs: the automation, its owner, and the still-encrypted secret to verify against. */
+export interface AutomationForIngress {
+  automation: ChatAutomation;
+  userId: string;
+  eventSecretEncrypted: string;
+}
+
+export class AutomationsRepo {
   constructor(private store: Store) {}
-  async listByUser(userId: string): Promise<ChatSchedule[]> {
-    const rows = await this.store.all<any>('SELECT * FROM chat_schedules WHERE user_id = ? ORDER BY created_at DESC, id DESC', [userId]);
-    return rows.map(mapSchedule);
+  async listByUser(userId: string): Promise<ChatAutomation[]> {
+    const rows = await this.store.all<any>('SELECT * FROM chat_automations WHERE user_id = ? ORDER BY created_at DESC, id DESC', [userId]);
+    return rows.map(mapAutomation);
   }
-  async get(userId: string, id: string): Promise<ChatSchedule | undefined> {
-    const r = await this.store.get<any>('SELECT * FROM chat_schedules WHERE id = ? AND user_id = ?', [id, userId]);
-    return r ? mapSchedule(r) : undefined;
+  async get(userId: string, id: string): Promise<ChatAutomation | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM chat_automations WHERE id = ? AND user_id = ?', [id, userId]);
+    return r ? mapAutomation(r) : undefined;
+  }
+  /** Owner + encrypted secret for a run started by the scheduler or the ingress (no user scope — the caller has none). */
+  async getForRun(id: string): Promise<AutomationForIngress | undefined> {
+    const r = await this.store.get<any>('SELECT * FROM chat_automations WHERE id = ?', [id]);
+    return r ? { automation: mapAutomation(r), userId: r.user_id as string, eventSecretEncrypted: r.event_secret ?? '' } : undefined;
+  }
+  /**
+   * Look an automation up by the token in the webhook URL. Unauthenticated callers reach this, so it is the
+   * ONLY lookup the ingress can do: no listing, no enumeration, and an empty token never matches.
+   */
+  async getByEventToken(token: string): Promise<AutomationForIngress | undefined> {
+    if (!token) return undefined;
+    const r = await this.store.get<any>('SELECT * FROM chat_automations WHERE event_token = ?', [token]);
+    return r ? { automation: mapAutomation(r), userId: r.user_id as string, eventSecretEncrypted: r.event_secret ?? '' } : undefined;
   }
   async create(userId: string, id: string, s: {
     name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
-    agentId: string | null; kind: ScheduleKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
-  }): Promise<ChatSchedule> {
+    agentId: string | null; kind: AutomationKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
+    eventToken: string; eventAuth: AutomationAuth; eventSecretEncrypted: string; payloadTemplate: string; eventFilter: string; maxRunsPerHour: number;
+  }): Promise<ChatAutomation> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_schedules (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
-      [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt, ts, ts],
+      `INSERT INTO chat_automations (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at,
+        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt,
+       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, ts, ts],
     );
     return (await this.get(userId, id))!;
   }
@@ -2246,7 +2277,9 @@ export class SchedulesRepo {
   async update(userId: string, id: string, patch: Record<string, unknown>): Promise<void> {
     const cols: Record<string, string> = {
       name: 'name', prompt: 'prompt', providerId: 'provider_id', model: 'model', vserverSlug: 'vserver_slug',
-      projectId: 'project_id', agentId: 'agent_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone', enabled: 'enabled', nextRunAt: 'next_run_at',
+      projectId: 'project_id', agentId: 'agent_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone',
+      enabled: 'enabled', nextRunAt: 'next_run_at', eventToken: 'event_token', eventAuth: 'event_auth',
+      eventSecretEncrypted: 'event_secret', payloadTemplate: 'payload_template', eventFilter: 'event_filter', maxRunsPerHour: 'max_runs_per_hour',
     };
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -2258,33 +2291,60 @@ export class SchedulesRepo {
     if (!sets.length) return;
     sets.push('updated_at = ?');
     vals.push(now(), id, userId);
-    await this.store.run(`UPDATE chat_schedules SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
+    await this.store.run(`UPDATE chat_automations SET ${sets.join(', ')} WHERE id = ? AND user_id = ?`, vals);
   }
   async delete(userId: string, id: string): Promise<void> {
-    await this.store.run('DELETE FROM chat_schedules WHERE id = ? AND user_id = ?', [id, userId]);
+    await this.store.run('DELETE FROM chat_automations WHERE id = ? AND user_id = ?', [id, userId]);
+    await this.store.run('DELETE FROM chat_automation_runs WHERE automation_id = ? AND user_id = ?', [id, userId]);
   }
-  /** Enabled schedules that are due (next_run_at set + <= now) across ALL users — for the scheduler.
-   *  Includes `userId` (needed to run as the owner). */
-  async due(nowIso: string): Promise<(ChatSchedule & { userId: string })[]> {
+  /** Enabled, time-triggered automations that are due across ALL users — for the scheduler.
+   *  Event automations are excluded twice over: they carry a null next_run_at AND are filtered by kind. */
+  async due(nowIso: string): Promise<(ChatAutomation & { userId: string })[]> {
     const rows = await this.store.all<any>(
-      'SELECT * FROM chat_schedules WHERE next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC',
+      "SELECT * FROM chat_automations WHERE kind <> 'event' AND next_run_at IS NOT NULL AND next_run_at <= ? ORDER BY next_run_at ASC",
       [nowIso],
     );
-    return rows.map((r) => ({ ...mapSchedule(r), userId: r.user_id as string })).filter((s) => s.enabled);
+    return rows.map((r) => ({ ...mapAutomation(r), userId: r.user_id as string })).filter((s) => s.enabled);
   }
   /** After claiming a run: advance the next fire time + mark it running. */
   async advance(id: string, nextRunAt: string | null, lastRunAt: string): Promise<void> {
     await this.store.run(
-      'UPDATE chat_schedules SET next_run_at = ?, last_run_at = ?, last_status = ?, last_error = ?, updated_at = ? WHERE id = ?',
+      'UPDATE chat_automations SET next_run_at = ?, last_run_at = ?, last_status = ?, last_error = ?, updated_at = ? WHERE id = ?',
       [nextRunAt, lastRunAt, 'running', null, now(), id],
     );
   }
   /** After a run completes: record outcome (never touches next_run_at). */
   async finish(id: string, status: string, error: string | null, conversationId: string | null): Promise<void> {
     await this.store.run(
-      'UPDATE chat_schedules SET last_status = ?, last_error = ?, last_conversation_id = ?, updated_at = ? WHERE id = ?',
+      'UPDATE chat_automations SET last_status = ?, last_error = ?, last_conversation_id = ?, updated_at = ? WHERE id = ?',
       [status, error, conversationId, now(), id],
     );
+  }
+
+  // ── Run history ────────────────────────────────────────────────────────────
+  /** Open a run row the moment work starts, so a run that never returns is still visible as 'running'. */
+  async startRun(id: string, automationId: string, userId: string, trigger: string): Promise<void> {
+    await this.store.run(
+      'INSERT INTO chat_automation_runs (id, automation_id, user_id, trigger, status, error, conversation_id, started_at, finished_at) VALUES (?,?,?,?,?,?,?,?,?)',
+      [id, automationId, userId, trigger, 'running', null, null, now(), null],
+    );
+  }
+  async finishRun(id: string, status: string, error: string | null, conversationId: string | null): Promise<void> {
+    await this.store.run(
+      'UPDATE chat_automation_runs SET status = ?, error = ?, conversation_id = ?, finished_at = ? WHERE id = ?',
+      [status, error, conversationId, now(), id],
+    );
+  }
+  async listRuns(userId: string, automationId: string, limit = 50): Promise<AutomationRun[]> {
+    const rows = await this.store.all<any>(
+      'SELECT * FROM chat_automation_runs WHERE automation_id = ? AND user_id = ? ORDER BY started_at DESC, id DESC',
+      [automationId, userId],
+    );
+    return rows.slice(0, limit).map((r) => ({
+      id: r.id, automationId: r.automation_id, trigger: r.trigger, status: r.status,
+      error: r.error ?? null, conversationId: r.conversation_id ?? null,
+      startedAt: r.started_at, finishedAt: r.finished_at ?? null,
+    }));
   }
 }
 
@@ -2441,7 +2501,7 @@ export function createRepos(store: Store): Repos {
     pipeline: new PipelineRepo(store),
     teams: new TeamsRepo(store),
     chat: new ChatRepo(store),
-    schedules: new SchedulesRepo(store),
+    automations: new AutomationsRepo(store),
     tokens: new TokensRepo(store),
     sessions: new SessionsRepo(store),
     oauth: new OAuthRepo(store),

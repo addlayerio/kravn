@@ -30,7 +30,8 @@ import { Metrics } from './metrics.js';
 import { PluginManager } from './plugins/manager.js';
 import { ChatService } from './chat/chat.service.js';
 import { A2AService } from './a2a/a2a.service.js';
-import { SchedulerService } from './schedules/scheduler.service.js';
+import { SchedulerService } from './automations/scheduler.service.js';
+import { AutomationRunner } from './automations/runner.service.js';
 import { PyodideExecutor, type CodeExecutor } from './interpreter/executor.js';
 import { nativePlugins } from './plugins/native.js';
 import { createSharedStore, type SharedStore } from './cluster/shared-store.js';
@@ -59,7 +60,9 @@ export interface Services {
   chat: ChatService;
   /** A2A (agent-to-agent) server: publishes an Agent Card and runs delegated tasks under governance. */
   a2a: A2AService;
-  /** Runs scheduled tasks (cron/calendar) — a prompt fired on a schedule, result → a new conversation. */
+  /** Executes an automation from ANY trigger (clock, inbound webhook, manual) as its owner. */
+  automationRunner: AutomationRunner;
+  /** The time trigger for automations (cron/calendar); the event trigger is the /api/hooks ingress. */
   scheduler: SchedulerService;
   interpreter: CodeExecutor;
   logstore: LogStore;
@@ -184,17 +187,18 @@ export async function createServices(env: Env = loadEnv()): Promise<Services> {
   const oauth = new OAuthService(repos, jwt, settings);
   const chat = new ChatService(repos, encryptor, registry, log, plugins, settings, usage);
   const a2a = new A2AService({ repos, chat, settings, ssrf, encryptor, audit, log });
-  const scheduler = new SchedulerService({ repos, sharedStore, chat, log });
+  const automationRunner = new AutomationRunner({ repos, chat, log });
+  const scheduler = new SchedulerService({ repos, sharedStore, runner: automationRunner, log });
 
   log.info({ db: env.db.kind, dataDir: env.dataDir }, 'Kravn services initialized');
 
-  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, a2a, scheduler, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
+  return { env, log, store, repos, settings, encryptor, jwt, auth, scim, sso, oauth, ssrf, upstream, registry, upstreamOAuth, events, downstream, plugins, chat, a2a, automationRunner, scheduler, interpreter, logstore, metrics, audit, approvals, usage, sharedStore };
 }
 
 /** Kick off background work after the HTTP server is listening. */
 export function startBackground(services: Services): void {
   services.registry.syncAll().catch((err) => services.log.warn({ err }, 'initial upstream sync failed'));
-  // Scheduled tasks run only in the chat data plane (role: all / chat), never on a gateway-only pod.
+  // Automations run only in the chat data plane (role: all / chat), never on a gateway-only pod.
   if (services.env.role === 'all' || services.env.role === 'chat') services.scheduler.start();
 }
 

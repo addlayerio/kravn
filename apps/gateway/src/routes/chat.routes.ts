@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import type { FastifyInstance } from 'fastify';
 import {
   createChatProjectSchema,
@@ -6,8 +7,9 @@ import {
   shareProjectSchema,
   createConversationSchema,
   updateConversationSchema,
-  createScheduleSchema,
-  updateScheduleSchema,
+  createAutomationSchema,
+  updateAutomationSchema,
+  testAutomationSchema,
   createUserPromptSchema,
   updateUserPromptSchema,
   createMemorySchema,
@@ -21,13 +23,23 @@ import { extractText } from '../chat/extract.js';
 import type { Services } from '../services.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { canUseAgent } from '../chat/agent-access.js';
-import { computeNextRun } from '../schedules/scheduler.service.js';
+import { computeNextRun } from '../automations/scheduler.service.js';
+import { renderPrompt, evaluateFilter } from '../automations/runner.service.js';
 import { parse, sendError } from './_helpers.js';
 import { openSse } from './_sse.js';
 
 // Same data-plane rule as the MCP endpoint (endpoint-access.ts): consumption is by team membership; platform
 // role/admin is not an axis. Keeps "which endpoints show in chat" identical to "which you can actually call".
 const canUseVs = canConsumeMcpEndpoint;
+
+/**
+ * The unguessable segment of an automation's webhook URL. 192 bits of randomness, URL-safe: it is the only
+ * thing standing between the open internet and an automation whose `eventAuth` is 'none', so it is generated
+ * the same way for every automation and rotatable on demand.
+ */
+function newHookToken(): string {
+  return crypto.randomBytes(24).toString('base64url');
+}
 
 /** Keep only the tool ids the caller is currently entitled to (via some consumable endpoint) — so pinning a
  *  project's tools can never grant access to a tool the user couldn't already reach. */
@@ -229,10 +241,14 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return reply.code(204).send();
   });
 
-  // Scheduled tasks — run a prompt on a cron/calendar schedule; the result lands in a new conversation.
-  app.get('/api/chat/schedules', auth, async (req) => ({ schedules: await s.repos.schedules.listByUser(currentUser(req).id) }));
-  app.post('/api/chat/schedules', auth, async (req, reply) => {
-    const dto = parse(reply, createScheduleSchema, req.body);
+  // ── Automations ────────────────────────────────────────────────────────────
+  // An agent + an instruction, started by a trigger instead of a person: by time (cron/once) or by an inbound
+  // event (a webhook at /api/hooks/:token). The run happens as the owner, so permissions and audit are the
+  // same as that person typing the prompt in chat.
+  app.get('/api/chat/automations', auth, async (req) => ({ automations: await s.repos.automations.listByUser(currentUser(req).id) }));
+
+  app.post('/api/chat/automations', auth, async (req, reply) => {
+    const dto = parse(reply, createAutomationSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
@@ -247,23 +263,34 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const timezone = dto.timezone || 'UTC';
     if (dto.kind === 'cron' && !cron.trim()) return sendError(reply, 400, 'bad_request', 'A cron expression is required.');
     if (dto.kind === 'once' && !runAt.trim()) return sendError(reply, 400, 'bad_request', 'A date/time is required.');
+    const eventAuth = dto.eventAuth ?? 'none';
+    if (dto.kind === 'event' && eventAuth !== 'none' && !dto.eventSecret?.trim()) {
+      return sendError(reply, 400, 'bad_request', 'A secret is required for this authentication mode.');
+    }
     const enabled = dto.enabled ?? true;
+    // Event automations never fire by the clock, so they carry no next run — computeNextRun returns null for them.
     const nextRunAt = enabled ? computeNextRun(dto.kind, cron, runAt, timezone, new Date()) : null;
     if (enabled && dto.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
-    const schedule = await s.repos.schedules.create(u.id, newId(), {
+    const automation = await s.repos.automations.create(u.id, newId(), {
       name: dto.name, prompt: dto.prompt, providerId: dto.providerId, model: dto.model,
       vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId ?? null, agentId: dto.agentId ?? null,
       kind: dto.kind, cron, runAt, timezone, enabled, nextRunAt,
+      // Every automation gets a token, so switching an existing one to 'event' later needs no extra step.
+      eventToken: newHookToken(), eventAuth,
+      eventSecretEncrypted: dto.eventSecret ? s.encryptor.encrypt(dto.eventSecret) : '',
+      payloadTemplate: dto.payloadTemplate ?? '', eventFilter: dto.eventFilter ?? '',
+      maxRunsPerHour: dto.maxRunsPerHour ?? 60,
     });
-    return reply.code(201).send({ schedule });
+    return reply.code(201).send({ automation });
   });
-  app.put('/api/chat/schedules/:id', auth, async (req, reply) => {
-    const dto = parse(reply, updateScheduleSchema, req.body);
+
+  app.put('/api/chat/automations/:id', auth, async (req, reply) => {
+    const dto = parse(reply, updateAutomationSchema, req.body);
     if (!dto) return;
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
-    const existing = await s.repos.schedules.get(u.id, id);
-    if (!existing) return sendError(reply, 404, 'not_found', 'Schedule not found.');
+    const existing = await s.repos.automations.get(u.id, id);
+    if (!existing) return sendError(reply, 404, 'not_found', 'Automation not found.');
     if (dto.projectId && !(await s.repos.chat.getProjectForUser(u.id, dto.projectId))) {
       return sendError(reply, 404, 'not_found', 'Project not found.');
     }
@@ -275,12 +302,56 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const enabled = dto.enabled ?? existing.enabled;
     const nextRunAt = enabled ? computeNextRun(m.kind, m.cron ?? '', m.runAt ?? '', m.timezone || 'UTC', new Date()) : null;
     if (enabled && m.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
-    await s.repos.schedules.update(u.id, id, { ...dto, nextRunAt });
-    return { schedule: await s.repos.schedules.get(u.id, id) };
+    if (m.kind === 'event' && m.eventAuth !== 'none' && !existing.hasEventSecret && !dto.eventSecret?.trim()) {
+      return sendError(reply, 400, 'bad_request', 'A secret is required for this authentication mode.');
+    }
+    const patch: Record<string, unknown> = { ...dto, nextRunAt };
+    // `eventSecret` is write-only: it never round-trips through a GET, so it's only written when explicitly sent.
+    delete patch.eventSecret;
+    delete patch.rotateToken;
+    if (dto.eventSecret !== undefined) patch.eventSecretEncrypted = dto.eventSecret ? s.encryptor.encrypt(dto.eventSecret) : '';
+    if (dto.rotateToken) patch.eventToken = newHookToken();
+    if (!existing.eventToken) patch.eventToken = newHookToken(); // backfill for automations created before events existed
+    await s.repos.automations.update(u.id, id, patch);
+    return { automation: await s.repos.automations.get(u.id, id) };
   });
-  app.delete('/api/chat/schedules/:id', auth, async (req, reply) => {
-    await s.repos.schedules.delete(currentUser(req).id, (req.params as { id: string }).id);
+
+  app.delete('/api/chat/automations/:id', auth, async (req, reply) => {
+    await s.repos.automations.delete(currentUser(req).id, (req.params as { id: string }).id);
     return reply.code(204).send();
+  });
+
+  /** Run history — `last*` on the automation describes one run; an event automation may fire fifty times a day. */
+  app.get('/api/chat/automations/:id/runs', auth, async (req, reply) => {
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    if (!(await s.repos.automations.get(u.id, id))) return sendError(reply, 404, 'not_found', 'Automation not found.');
+    return { runs: await s.repos.automations.listRuns(u.id, id) };
+  });
+
+  /**
+   * Try an automation against a sample payload — the "does my template actually work" loop, without waiting for
+   * a real ticket. `dryRun` (default) renders the prompt and reports the filter verdict without spending a model
+   * call; `dryRun: false` executes it for real, recorded in the history like any other run.
+   */
+  app.post('/api/chat/automations/:id/test', auth, async (req, reply) => {
+    const dto = parse(reply, testAutomationSchema, req.body ?? {});
+    if (!dto) return;
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    const automation = await s.repos.automations.get(u.id, id);
+    if (!automation) return sendError(reply, 404, 'not_found', 'Automation not found.');
+    const payload = dto.payload ?? {};
+    const filter = evaluateFilter(automation.eventFilter, payload);
+    if (dto.dryRun) {
+      return { dryRun: true, matched: filter.matched, failedCondition: filter.failed ?? null, prompt: renderPrompt(automation, payload) };
+    }
+    if (!filter.matched) return sendError(reply, 400, 'bad_request', `The filter would drop this payload (${filter.failed}).`);
+    // Detached, exactly like a real delivery: the model call outlives this request.
+    setImmediate(() => {
+      void s.automationRunner.run(automation, u.id, 'manual', payload);
+    });
+    return reply.code(202).send({ accepted: true });
   });
 
   // Personal prompt library — a user's own reusable prompt templates.

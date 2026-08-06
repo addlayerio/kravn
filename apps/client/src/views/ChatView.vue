@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute } from 'vue-router';
-import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatSchedule, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
+import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatAutomation, AutomationRun, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
 import { api, ApiError, postSse } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
@@ -32,7 +32,7 @@ const providers = ref<ProviderOpt[]>([]);
 const vservers = ref<VsOpt[]>([]);
 const conversations = ref<ChatConversation[]>([]);
 const projects = ref<ChatProject[]>([]);
-const schedules = ref<ChatSchedule[]>([]);
+const automations = ref<ChatAutomation[]>([]);
 const chatSearch = ref('');
 const activeTag = ref<string | null>(null);
 // Distinct tags across all chats, for the filter bar (case-insensitive de-dupe, sorted).
@@ -112,11 +112,11 @@ const newDoc = reactive({ name: '', content: '' });
 const docBusy = ref(false);
 // Project view opens CHATS-first; settings (instructions/documents/tools/sharing) live behind a gear toggle.
 const showProjectSettings = ref(false);
-// Scheduled tasks that belong to the open project (schedules already carry a projectId).
-const projectSchedules = computed(() => (project.value ? schedules.value.filter((s) => s.projectId === project.value!.project.id) : []));
+// Automations that belong to the open project (automations already carry a projectId).
+const projectAutomations = computed(() => (project.value ? automations.value.filter((s) => s.projectId === project.value!.project.id) : []));
 
 // Project TOOLS: the flat list of tools the user is entitled to (across every MCP endpoint) — the project pins
-// a subset that its chats/scheduled tasks are limited to. Governance stays server-side; this is just the picker.
+// a subset that its chats/automations are limited to. Governance stays server-side; this is just the picker.
 const availableTools = ref<AvailableTool[]>([]);
 const availableToolsLoaded = ref(false);
 const selectedToolIds = ref<string[]>([]);
@@ -200,25 +200,25 @@ async function unshareMember(m: ProjectMember) {
 }
 
 async function load() {
-  const [opts, convs, projs, scheds, ags] = await Promise.all([
+  const [opts, convs, projs, autos, ags] = await Promise.all([
     api.get<{ providers: ProviderOpt[]; mcpEndpoints: VsOpt[] }>('/api/chat/options'),
     api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations'),
     api.get<{ projects: ChatProject[] }>('/api/chat/projects'),
-    api.get<{ schedules: ChatSchedule[] }>('/api/chat/schedules'),
+    api.get<{ automations: ChatAutomation[] }>('/api/chat/automations'),
     api.get<{ agents: ClientAgent[] }>('/api/chat/agents'),
   ]);
   providers.value = opts.providers;
   vservers.value = opts.mcpEndpoints;
   conversations.value = convs.conversations;
   projects.value = projs.projects;
-  schedules.value = scheds.schedules;
+  automations.value = autos.automations;
   agents.value = ags.agents;
 }
-async function loadSchedules() {
-  schedules.value = (await api.get<{ schedules: ChatSchedule[] }>('/api/chat/schedules')).schedules;
+async function loadAutomations() {
+  automations.value = (await api.get<{ automations: ChatAutomation[] }>('/api/chat/automations')).automations;
 }
 // ── Deep linking ────────────────────────────────────────────────────────────
-// Each open chat / project / scheduled task owns a URL, so a refresh (F5) or a shared link reopens it.
+// Each open chat / project / automation owns a URL, so a refresh (F5) or a shared link reopens it.
 // syncUrl() pushes the URL to match the current view; applyRoute() opens whatever the URL points at
 // (on first load and on browser back/forward). Both are guarded so they don't loop.
 function syncUrl() {
@@ -226,8 +226,8 @@ function syncUrl() {
     ? { name: 'chat-conversation', params: { id: current.value.id } }
     : project.value
       ? { name: 'chat-project', params: { id: project.value.project.id } }
-      : scheduleView.value && editingScheduleId.value
-        ? { name: 'chat-schedule', params: { id: editingScheduleId.value } }
+      : automationView.value && editingAutomationId.value
+        ? { name: 'chat-automation', params: { id: editingAutomationId.value } }
         : { name: 'chat' };
   const curId = typeof route.params.id === 'string' ? route.params.id : undefined;
   if (route.name !== target.name || curId !== (target as { params?: { id?: string } }).params?.id) {
@@ -241,23 +241,23 @@ async function applyRoute() {
       if (current.value?.id !== id) await open({ id } as ChatConversation);
     } else if (route.name === 'chat-project' && id) {
       if (project.value?.project.id !== id) await openProject({ id } as ChatProject);
-    } else if (route.name === 'chat-schedule' && id) {
-      if (!(scheduleView.value && editingScheduleId.value === id)) {
-        const s = schedules.value.find((x) => x.id === id);
-        if (s) openSchedule(s);
+    } else if (route.name === 'chat-automation' && id) {
+      if (!(automationView.value && editingAutomationId.value === id)) {
+        const s = automations.value.find((x) => x.id === id);
+        if (s) openAutomation(s);
         else void router.replace({ name: 'chat' });
       }
     } else if (route.name === 'chat') {
       // Home ('/') — e.g. browser back from a chat: show the empty state.
       current.value = null;
       project.value = null;
-      scheduleView.value = false;
+      automationView.value = false;
     }
   } catch {
     // Stale/invalid id (deleted chat, bad link) → fall back to the home view.
     current.value = null;
     project.value = null;
-    scheduleView.value = false;
+    automationView.value = false;
     if (route.name !== 'chat') void router.replace({ name: 'chat' });
   }
 }
@@ -273,9 +273,20 @@ async function scrollDown() {
   if (thread.value) thread.value.scrollTop = thread.value.scrollHeight;
 }
 
-async function open(c: ChatConversation) {
+/**
+ * Open the conversation a run produced. It was created server-side after the sidebar was loaded, so the list
+ * is refreshed alongside it rather than assuming the entry is already there.
+ */
+async function openConversationById(id: string) {
+  await open({ id });
+  if (!conversations.value.some((c) => c.id === id)) {
+    conversations.value = (await api.get<{ conversations: ChatConversation[] }>('/api/chat/conversations')).conversations;
+  }
+}
+
+async function open(c: { id: string }) {
   project.value = null;
-  scheduleView.value = false;
+  automationView.value = false;
   editingTitle.value = false;
   pending.value = [];
   const res = await api.get<{ conversation: ChatConversation; messages: ChatMessage[]; attachments: ChatAttachment[] }>(`/api/chat/conversations/${c.id}`);
@@ -349,7 +360,7 @@ function removeTag(t: string) {
 // ── Projects ──────────────────────────────────────────────────────────────
 async function openProject(p: ChatProject) {
   current.value = null;
-  scheduleView.value = false;
+  automationView.value = false;
   showProjectSettings.value = false; // always open CHATS-first
   const res = await api.get<ProjectDetail>(`/api/chat/projects/${p.id}`);
   project.value = res;
@@ -613,50 +624,142 @@ function deleteFromProjMenu(p: ChatProject) {
 }
 
 // ── New chat ──────────────────────────────────────────────────────────────
-// ── Scheduled tasks ─────────────────────────────────────────────────────────
-const scheduleView = ref(false);
-const editingScheduleId = ref<string | null>(null);
-const savingSchedule = ref(false);
-const scheduleError = ref('');
+// ── Automations ─────────────────────────────────────────────────────────────
+const automationView = ref(false);
+const editingAutomationId = ref<string | null>(null);
+const savingAutomation = ref(false);
+const automationError = ref('');
 const sf = reactive({
   name: '', prompt: '', agentId: '', providerId: '', model: '', vserverSlug: '', projectId: '',
-  kind: 'cron' as 'cron' | 'once', cron: '0 9 * * 1', runAt: '', timezone: 'UTC', enabled: true,
+  kind: 'cron' as 'cron' | 'once' | 'event', cron: '0 9 * * 1', runAt: '', timezone: 'UTC', enabled: true,
+  // kind='event'. `eventSecret` is write-only: the server never returns it, so an empty box means "unchanged".
+  eventAuth: 'none' as 'none' | 'secret' | 'hmac', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60,
 });
-function scheduleById(id: string | null): ChatSchedule | undefined {
-  return id ? schedules.value.find((x) => x.id === id) : undefined;
+/**
+ * Payload-template code samples. They live here rather than in the locale files or inline in the template for
+ * two separate reasons: they're code (identical in every language), and a literal `}}` inside a template
+ * interpolation closes it early — so the braces have to reach the DOM from a JS string.
+ */
+const TEMPLATE_SAMPLE = 'Ticket {{ issue.key }}: {{ issue.fields.summary }}';
+const TPL_FIELD_SAMPLE = '{{ issue.fields.summary }}';
+const TPL_PAYLOAD_SAMPLE = '{{ payload }}';
+
+/** Run history + the payload sandbox, both scoped to the automation currently open in the editor. */
+const automationRuns = ref<AutomationRun[]>([]);
+const testPayload = ref('');
+const testResult = ref<{ matched: boolean; failedCondition: string | null; prompt: string } | null>(null);
+const testing = ref(false);
+const testError = ref('');
+
+/** Absolute URL the sender is configured with. Built from the browser's origin so it's copy-pasteable as shown. */
+const hookUrl = computed(() => {
+  const a = automationById(editingAutomationId.value);
+  return a?.eventToken ? `${window.location.origin}/api/hooks/${a.eventToken}` : '';
+});
+
+function automationById(id: string | null): ChatAutomation | undefined {
+  return id ? automations.value.find((x) => x.id === id) : undefined;
 }
-function openScheduleNew(projectId = '') {
+function resetAutomationSandbox() {
+  automationRuns.value = [];
+  testResult.value = null;
+  testError.value = '';
+  testPayload.value = '';
+}
+function openAutomationNew(projectId = '') {
   current.value = null;
   project.value = null;
-  editingScheduleId.value = null;
-  scheduleError.value = '';
+  editingAutomationId.value = null;
+  automationError.value = '';
+  resetAutomationSandbox();
   const p = providers.value[0];
   Object.assign(sf, {
     name: '', prompt: '', agentId: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
     vserverSlug: '', projectId, kind: 'cron', cron: '0 9 * * 1', runAt: '',
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', enabled: true,
+    eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60,
   });
-  scheduleView.value = true;
+  automationView.value = true;
 }
-function openSchedule(s: ChatSchedule) {
+function openAutomation(s: ChatAutomation) {
   current.value = null;
   project.value = null;
-  editingScheduleId.value = s.id;
-  scheduleError.value = '';
+  editingAutomationId.value = s.id;
+  automationError.value = '';
+  resetAutomationSandbox();
   Object.assign(sf, {
     name: s.name, prompt: s.prompt, agentId: s.agentId ?? '', providerId: s.providerId, model: s.model, vserverSlug: s.vserverSlug,
     projectId: s.projectId ?? '', kind: s.kind, cron: s.cron || '0 9 * * 1', runAt: s.runAt,
     timezone: s.timezone || 'UTC', enabled: s.enabled,
+    eventAuth: s.eventAuth, eventSecret: '', payloadTemplate: s.payloadTemplate, eventFilter: s.eventFilter,
+    maxRunsPerHour: s.maxRunsPerHour,
   });
-  scheduleView.value = true;
+  automationView.value = true;
+  void loadAutomationRuns(s.id);
   syncUrl();
 }
-function onScheduleProviderChange() {
+async function loadAutomationRuns(id: string) {
+  try {
+    automationRuns.value = (await api.get<{ runs: AutomationRun[] }>(`/api/chat/automations/${id}/runs`)).runs;
+  } catch {
+    automationRuns.value = [];
+  }
+}
+/**
+ * Try the automation against a sample payload. The dry run renders the prompt and reports the filter verdict
+ * WITHOUT a model call, so the template can be shaped without waiting for a real event to arrive.
+ */
+async function testAutomation(dryRun: boolean) {
+  const id = editingAutomationId.value;
+  if (!id) return;
+  testError.value = '';
+  testResult.value = null;
+  let payload: unknown = {};
+  if (testPayload.value.trim()) {
+    try {
+      payload = JSON.parse(testPayload.value);
+    } catch {
+      testError.value = t('chat.invalidJson');
+      return;
+    }
+  }
+  testing.value = true;
+  try {
+    if (dryRun) {
+      testResult.value = await api.post<{ matched: boolean; failedCondition: string | null; prompt: string }>(
+        `/api/chat/automations/${id}/test`, { payload, dryRun: true });
+    } else {
+      await api.post(`/api/chat/automations/${id}/test`, { payload, dryRun: false });
+      // The run is detached server-side; give it a beat before the history is worth re-reading.
+      setTimeout(() => void loadAutomationRuns(id), 1200);
+    }
+  } catch (e) {
+    testError.value = e instanceof ApiError ? e.message : t('chat.couldNotSaveAutomation');
+  } finally {
+    testing.value = false;
+  }
+}
+async function copyHookUrl() {
+  if (!hookUrl.value) return;
+  try {
+    await navigator.clipboard.writeText(hookUrl.value);
+  } catch {
+    /* clipboard blocked (insecure context) — the URL is on screen and selectable anyway */
+  }
+}
+async function rotateHookToken() {
+  const id = editingAutomationId.value;
+  if (!id || !confirm(t('chat.confirmRotateToken'))) return;
+  const res = await api.put<{ automation: ChatAutomation }>(`/api/chat/automations/${id}`, { rotateToken: true });
+  const i = automations.value.findIndex((x) => x.id === id);
+  if (i >= 0) automations.value[i] = res.automation;
+}
+function onAutomationProviderChange() {
   const p = providers.value.find((x) => x.id === sf.providerId);
   sf.model = p?.defaultModel ?? p?.models[0] ?? '';
 }
 /** Picking an agent pre-fills the task's provider + model; its instructions + tools apply server-side at run time. */
-function onScheduleAgentChange() {
+function onAutomationAgentChange() {
   const a = agents.value.find((x) => x.id === sf.agentId);
   if (!a) return;
   if (a.providerId && providers.value.some((p) => p.id === a.providerId)) {
@@ -666,46 +769,50 @@ function onScheduleAgentChange() {
     sf.model = a.model;
   }
 }
-async function saveSchedule() {
-  scheduleError.value = '';
+async function saveAutomation() {
+  automationError.value = '';
   if (!sf.name.trim() || !sf.prompt.trim() || !sf.providerId || !sf.model) {
-    scheduleError.value = t('chat.scheduleFieldsRequired');
+    automationError.value = t('chat.automationFieldsRequired');
     return;
   }
-  savingSchedule.value = true;
+  savingAutomation.value = true;
   try {
     const body = {
       name: sf.name.trim(), prompt: sf.prompt, providerId: sf.providerId, model: sf.model,
       vserverSlug: sf.vserverSlug, kind: sf.kind, cron: sf.cron, runAt: sf.runAt, timezone: sf.timezone, enabled: sf.enabled,
+      eventAuth: sf.eventAuth, payloadTemplate: sf.payloadTemplate, eventFilter: sf.eventFilter, maxRunsPerHour: sf.maxRunsPerHour,
+      // Only send the secret when the box was actually filled — an empty box means "leave what's stored alone".
+      ...(sf.eventSecret ? { eventSecret: sf.eventSecret } : {}),
       ...(sf.projectId ? { projectId: sf.projectId } : {}),
       ...(sf.agentId ? { agentId: sf.agentId } : {}),
     };
-    const res = editingScheduleId.value
-      ? await api.put<{ schedule: ChatSchedule }>(`/api/chat/schedules/${editingScheduleId.value}`, body)
-      : await api.post<{ schedule: ChatSchedule }>('/api/chat/schedules', body);
-    await loadSchedules();
-    editingScheduleId.value = res.schedule.id;
+    const res = editingAutomationId.value
+      ? await api.put<{ automation: ChatAutomation }>(`/api/chat/automations/${editingAutomationId.value}`, body)
+      : await api.post<{ automation: ChatAutomation }>('/api/chat/automations', body);
+    await loadAutomations();
+    editingAutomationId.value = res.automation.id;
+    sf.eventSecret = '';
   } catch (e) {
-    scheduleError.value = e instanceof ApiError ? e.message : t('chat.couldNotSaveTask');
+    automationError.value = e instanceof ApiError ? e.message : t('chat.couldNotSaveAutomation');
   } finally {
-    savingSchedule.value = false;
+    savingAutomation.value = false;
   }
 }
-async function deleteSchedule(s: ChatSchedule) {
-  if (!confirm(t('chat.confirmDeleteTask', { name: s.name }))) return;
+async function deleteAutomation(s: ChatAutomation) {
+  if (!confirm(t('chat.confirmDeleteAutomation', { name: s.name }))) return;
   try {
-    await api.del(`/api/chat/schedules/${s.id}`);
+    await api.del(`/api/chat/automations/${s.id}`);
   } catch (e) {
-    alert(e instanceof ApiError ? e.message : t('chat.couldNotDeleteTask'));
+    alert(e instanceof ApiError ? e.message : t('chat.couldNotDeleteAutomation'));
     return;
   }
-  schedules.value = schedules.value.filter((x) => x.id !== s.id);
-  if (editingScheduleId.value === s.id) scheduleView.value = false;
+  automations.value = automations.value.filter((x) => x.id !== s.id);
+  if (editingAutomationId.value === s.id) automationView.value = false;
 }
-async function toggleSchedule(s: ChatSchedule) {
-  const res = await api.put<{ schedule: ChatSchedule }>(`/api/chat/schedules/${s.id}`, { enabled: !s.enabled });
-  const i = schedules.value.findIndex((x) => x.id === s.id);
-  if (i >= 0) schedules.value[i] = res.schedule;
+async function toggleAutomation(s: ChatAutomation) {
+  const res = await api.put<{ automation: ChatAutomation }>(`/api/chat/automations/${s.id}`, { enabled: !s.enabled });
+  const i = automations.value.findIndex((x) => x.id === s.id);
+  if (i >= 0) automations.value[i] = res.automation;
 }
 
 // ── Personal prompt library ─────────────────────────────────────────────────
@@ -1107,19 +1214,19 @@ async function logout() {
         </div>
 
         <div class="side-section" style="margin-top: 6px">
-          <span>{{ t('nav.scheduled') }}</span>
-          <button class="add" :title="t('nav.newScheduledTask')" @click="openScheduleNew()">+</button>
+          <span>{{ t('nav.automations') }}</span>
+          <button class="add" :title="t('nav.newAutomation')" @click="openAutomationNew()">+</button>
         </div>
-        <div v-if="schedules.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noScheduledTasks') }}</div>
+        <div v-if="automations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noAutomations') }}</div>
         <div
-          v-for="s in schedules"
+          v-for="s in automations"
           :key="s.id"
           class="conv-item conv-row"
-          :class="{ active: scheduleView && editingScheduleId === s.id }"
-          @click="openSchedule(s)"
+          :class="{ active: automationView && editingAutomationId === s.id }"
+          @click="openAutomation(s)"
         >
           <span class="conv-item-title"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></span>
-          <button class="conv-del" :title="t('chatMenu.deleteTask')" :aria-label="t('chatMenu.deleteTask')" @click.stop="deleteSchedule(s)"><Trash2 :size="16" :stroke-width="2" /></button>
+          <button class="conv-del" :title="t('chatMenu.deleteAutomation')" :aria-label="t('chatMenu.deleteAutomation')" @click.stop="deleteAutomation(s)"><Trash2 :size="16" :stroke-width="2" /></button>
         </div>
 
         <div class="side-section archived-toggle" style="margin-top: 6px" @click="toggleArchivedView">
@@ -1289,13 +1396,13 @@ async function logout() {
           </span>
           <div class="btn-row">
             <button class="btn primary" @click="openNew(project.project.id)">{{ t('chat.newChatInProject') }}</button>
-            <button class="btn" @click="openScheduleNew(project.project.id)">{{ t('chat.newScheduledTaskInProject') }}</button>
+            <button class="btn" @click="openAutomationNew(project.project.id)">{{ t('chat.newAutomationInProject') }}</button>
             <button class="btn icon" :class="{ active: showProjectSettings }" :title="t('chat.projectSettings')" :aria-label="t('chat.projectSettings')" @click="showProjectSettings = !showProjectSettings"><Settings :size="16" :stroke-width="2" /></button>
             <button v-if="isOwner" class="btn" @click="deleteProject(project.project)">{{ t('chat.delete') }}</button>
           </div>
         </div>
 
-        <!-- CHATS-FIRST: the project's chats + scheduled tasks are the default view -->
+        <!-- CHATS-FIRST: the project's chats + automations are the default view -->
         <template v-if="!showProjectSettings">
           <div class="panel-card">
             <h3>{{ t('chat.chatsInProject') }} <span class="muted" style="font-weight: 400">({{ project.conversations.length }})</span></h3>
@@ -1303,9 +1410,9 @@ async function logout() {
             <div v-for="c in project.conversations" :key="c.id" class="conv-item" @click="open(c)"><MessageSquare :size="15" :stroke-width="2" /> {{ c.title || t('chat.newChat') }}</div>
           </div>
 
-          <div class="panel-card" v-if="projectSchedules.length">
-            <h3>{{ t('chat.scheduledTasks') }} <span class="muted" style="font-weight: 400">({{ projectSchedules.length }})</span></h3>
-            <div v-for="s in projectSchedules" :key="s.id" class="conv-item" @click="openSchedule(s)"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></div>
+          <div class="panel-card" v-if="projectAutomations.length">
+            <h3>{{ t('chat.automationsInProject') }} <span class="muted" style="font-weight: 400">({{ projectAutomations.length }})</span></h3>
+            <div v-for="s in projectAutomations" :key="s.id" class="conv-item" @click="openAutomation(s)"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></div>
           </div>
         </template>
 
@@ -1401,18 +1508,18 @@ async function logout() {
       </div>
 
       <!-- Empty -->
-      <!-- Scheduled task editor -->
-      <div v-else-if="scheduleView" class="project-panel">
+      <!-- Automation editor -->
+      <div v-else-if="automationView" class="project-panel">
         <div class="chat-head" style="padding: 0 0 0.75rem; border-bottom: 1px solid var(--border)">
-          <span><Clock :size="16" :stroke-width="2" /> {{ editingScheduleId ? t('chat.editScheduledTask') : t('chat.newScheduledTask') }}</span>
+          <span><Clock :size="16" :stroke-width="2" /> {{ editingAutomationId ? t('chat.editAutomation') : t('chat.newAutomation') }}</span>
         </div>
 
         <div class="panel-card">
-          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="sf.name" :placeholder="t('chat.taskNamePlaceholder')" /></div>
-          <div class="field"><label>{{ t('chat.promptWhatToRun') }}</label><textarea v-model="sf.prompt" rows="4" :placeholder="t('chat.taskPromptPlaceholder')"></textarea></div>
+          <div class="field"><label>{{ t('chat.name') }}</label><input v-model="sf.name" :placeholder="t('chat.automationNamePlaceholder')" /></div>
+          <div class="field"><label>{{ t('chat.promptWhatToRun') }}</label><textarea v-model="sf.prompt" rows="4" :placeholder="t('chat.automationPromptPlaceholder')"></textarea></div>
           <div v-if="agents.length" class="field">
             <label>{{ t('chat.agentOptional') }}</label>
-            <select v-model="sf.agentId" @change="onScheduleAgentChange">
+            <select v-model="sf.agentId" @change="onAutomationAgentChange">
               <option value="">{{ t('chat.noAgent') }}</option>
               <option v-for="a in agents" :key="a.id" :value="a.id">{{ a.name }}</option>
             </select>
@@ -1420,7 +1527,7 @@ async function logout() {
           </div>
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
             <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.provider') }}</label>
-              <select v-model="sf.providerId" @change="onScheduleProviderChange">
+              <select v-model="sf.providerId" @change="onAutomationProviderChange">
                 <option v-for="p in providers" :key="p.id" :value="p.id">{{ p.name }}</option>
               </select>
             </div>
@@ -1448,33 +1555,125 @@ async function logout() {
         </div>
 
         <div class="panel-card">
-          <h3>{{ t('chat.when') }}</h3>
-          <div class="row" style="gap: 1rem">
+          <h3>{{ t('chat.trigger') }}</h3>
+          <div class="row" style="gap: 1rem; flex-wrap: wrap">
             <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="cron" v-model="sf.kind" /> {{ t('chat.recurringCron') }}</label>
             <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="once" v-model="sf.kind" /> {{ t('chat.once') }}</label>
+            <label class="row" style="gap: 0.3rem; align-items: center"><input type="radio" value="event" v-model="sf.kind" /> {{ t('chat.byEvent') }}</label>
           </div>
-          <div v-if="sf.kind === 'cron'" class="field"><label>{{ t('chat.cronExpression') }}</label>
-            <input v-model="sf.cron" placeholder="0 9 * * 1" />
-            <small class="muted">{{ t('chat.cronHelp1') }} <code>*/30 * * * *</code> {{ t('chat.cronHelp2') }} <code>0 9 * * 1</code> {{ t('chat.cronHelp3') }}</small>
-          </div>
-          <div v-else class="field"><label>{{ t('chat.runAt') }}</label><input v-model="sf.runAt" type="datetime-local" /></div>
-          <div class="field"><label>{{ t('chat.timezone') }}</label><input v-model="sf.timezone" placeholder="UTC" /></div>
+
+          <!-- By time -->
+          <template v-if="sf.kind !== 'event'">
+            <div v-if="sf.kind === 'cron'" class="field"><label>{{ t('chat.cronExpression') }}</label>
+              <input v-model="sf.cron" placeholder="0 9 * * 1" />
+              <small class="muted">{{ t('chat.cronHelp1') }} <code>*/30 * * * *</code> {{ t('chat.cronHelp2') }} <code>0 9 * * 1</code> {{ t('chat.cronHelp3') }}</small>
+            </div>
+            <div v-else class="field"><label>{{ t('chat.runAt') }}</label><input v-model="sf.runAt" type="datetime-local" /></div>
+            <div class="field"><label>{{ t('chat.timezone') }}</label><input v-model="sf.timezone" placeholder="UTC" /></div>
+          </template>
+
+          <!-- By event: the URL only exists once the automation has been saved (it carries the token). -->
+          <template v-else>
+            <div v-if="hookUrl" class="field">
+              <label>{{ t('chat.webhookUrl') }}</label>
+              <div class="row" style="gap: 0.4rem; align-items: center">
+                <input :value="hookUrl" readonly style="flex: 1; font-family: ui-monospace, monospace; font-size: 12px" />
+                <button class="btn" type="button" @click="copyHookUrl">{{ t('chat.copy') }}</button>
+                <button class="btn" type="button" @click="rotateHookToken">{{ t('chat.rotate') }}</button>
+              </div>
+              <small class="muted">{{ t('chat.webhookUrlHint') }}</small>
+            </div>
+            <p v-else class="muted" style="font-size: 12px">{{ t('chat.saveToGetUrl') }}</p>
+
+            <div class="field">
+              <label>{{ t('chat.senderAuth') }}</label>
+              <select v-model="sf.eventAuth">
+                <option value="none">{{ t('chat.authNone') }}</option>
+                <option value="secret">{{ t('chat.authSecret') }}</option>
+                <option value="hmac">{{ t('chat.authHmac') }}</option>
+              </select>
+              <small class="muted">{{ t('chat.senderAuthHint') }}</small>
+            </div>
+            <div v-if="sf.eventAuth !== 'none'" class="field">
+              <label>{{ t('chat.secret') }}</label>
+              <input v-model="sf.eventSecret" type="password" autocomplete="new-password"
+                :placeholder="automationById(editingAutomationId)?.hasEventSecret ? t('chat.secretStored') : t('chat.secretPlaceholder')" />
+              <small class="muted">{{ t('chat.secretHint') }}</small>
+            </div>
+
+            <div class="field">
+              <label>{{ t('chat.eventFilter') }}</label>
+              <textarea v-model="sf.eventFilter" rows="2" placeholder="webhookEvent=jira:issue_created"></textarea>
+              <small class="muted">{{ t('chat.eventFilterHint') }}</small>
+            </div>
+            <div class="field">
+              <label>{{ t('chat.payloadTemplate') }}</label>
+              <!-- The samples are code, not prose: identical in every locale, and their braces would collide
+                   with vue-i18n interpolation if they lived in the message files. -->
+              <textarea v-model="sf.payloadTemplate" rows="3" :placeholder="TEMPLATE_SAMPLE"></textarea>
+              <small class="muted">
+                {{ t('chat.payloadTemplateHint') }}
+                <code>{{ TPL_FIELD_SAMPLE }}</code> · <code>{{ TPL_PAYLOAD_SAMPLE }}</code>
+              </small>
+            </div>
+            <div class="field">
+              <label>{{ t('chat.maxRunsPerHour') }}</label>
+              <input v-model.number="sf.maxRunsPerHour" type="number" min="0" max="10000" style="max-width: 140px" />
+              <small class="muted">{{ t('chat.maxRunsPerHourHint') }}</small>
+            </div>
+          </template>
+
           <label class="row" style="gap: 0.4rem; align-items: center; margin-top: 0.3rem"><input type="checkbox" v-model="sf.enabled" /> {{ t('chat.enabled') }}</label>
         </div>
 
-        <p v-if="scheduleError" class="muted" style="color: #e5484d; font-size: 12px">{{ scheduleError }}</p>
+        <p v-if="automationError" class="muted" style="color: #e5484d; font-size: 12px">{{ automationError }}</p>
         <div class="btn-row" style="justify-content: space-between">
-          <button v-if="scheduleById(editingScheduleId)" class="btn" @click="deleteSchedule(scheduleById(editingScheduleId)!)">{{ t('chat.delete') }}</button>
+          <button v-if="automationById(editingAutomationId)" class="btn" @click="deleteAutomation(automationById(editingAutomationId)!)">{{ t('chat.delete') }}</button>
           <span></span>
-          <button class="btn primary" :disabled="savingSchedule" @click="saveSchedule">{{ savingSchedule ? t('chat.saving') : t('chat.saveTask') }}</button>
+          <button class="btn primary" :disabled="savingAutomation" @click="saveAutomation">{{ savingAutomation ? t('chat.saving') : t('chat.saveAutomation') }}</button>
         </div>
 
-        <div v-if="scheduleById(editingScheduleId)" class="panel-card">
+        <!-- Payload sandbox: shape the template against a sample body instead of waiting for a real event. -->
+        <div v-if="sf.kind === 'event' && editingAutomationId" class="panel-card">
+          <h3>{{ t('chat.tryPayload') }}</h3>
+          <div class="field">
+            <textarea v-model="testPayload" rows="5" style="font-family: ui-monospace, monospace; font-size: 12px"
+              :placeholder="t('chat.tryPayloadPlaceholder')"></textarea>
+            <small class="muted">{{ t('chat.tryPayloadHint') }}</small>
+          </div>
+          <div class="btn-row" style="justify-content: flex-start; gap: 0.5rem">
+            <button class="btn" :disabled="testing" @click="testAutomation(true)">{{ t('chat.dryRun') }}</button>
+            <button class="btn" :disabled="testing" @click="testAutomation(false)">{{ t('chat.runNow') }}</button>
+          </div>
+          <p v-if="testError" class="muted" style="color: #e5484d; font-size: 12px">{{ testError }}</p>
+          <div v-if="testResult" style="margin-top: 0.5rem">
+            <p class="muted" style="font-size: 13px" :style="testResult.matched ? {} : { color: '#e5484d' }">
+              {{ testResult.matched ? t('chat.filterMatched') : t('chat.filterDropped', { condition: testResult.failedCondition }) }}
+            </p>
+            <pre style="white-space: pre-wrap; font-size: 12px; background: var(--panel, rgba(127,127,127,0.08)); padding: 0.6rem; border-radius: 6px; max-height: 240px; overflow: auto">{{ testResult.prompt }}</pre>
+          </div>
+        </div>
+
+        <!-- Run history: `last*` describes one run; an event automation can fire dozens of times a day. -->
+        <div v-if="editingAutomationId && automationRuns.length" class="panel-card">
+          <h3>{{ t('chat.runs') }}</h3>
+          <div style="display: flex; flex-direction: column; gap: 3px; font-size: 12px">
+            <div v-for="r in automationRuns" :key="r.id" class="row" style="gap: 0.5rem; align-items: center">
+              <span class="muted" style="min-width: 130px">{{ r.startedAt.replace('T', ' ').slice(0, 16) }}</span>
+              <span :style="r.status === 'error' ? { color: '#e5484d' } : {}">{{ r.status }}</span>
+              <span class="muted">{{ r.trigger }}</span>
+              <a v-if="r.conversationId" href="#" @click.prevent="openConversationById(r.conversationId!)">{{ t('chat.openConversation') }}</a>
+              <span v-if="r.error" class="muted" style="color: #e5484d">{{ r.error }}</span>
+            </div>
+          </div>
+        </div>
+
+        <div v-if="automationById(editingAutomationId)" class="panel-card">
           <h3>{{ t('chat.status') }}</h3>
           <div class="muted" style="font-size: 13px; display: flex; flex-direction: column; gap: 2px">
-            <span>{{ t('chat.nextRun') }} {{ scheduleById(editingScheduleId)?.nextRunAt || (scheduleById(editingScheduleId)?.enabled ? '—' : t('chat.paused')) }}</span>
-            <span v-if="scheduleById(editingScheduleId)?.lastRunAt">{{ t('chat.lastRun') }} {{ scheduleById(editingScheduleId)?.lastRunAt }} · {{ scheduleById(editingScheduleId)?.lastStatus }}</span>
-            <span v-if="scheduleById(editingScheduleId)?.lastError" style="color: #e5484d">{{ scheduleById(editingScheduleId)?.lastError }}</span>
+            <span>{{ t('chat.nextRun') }} {{ automationById(editingAutomationId)?.nextRunAt || (automationById(editingAutomationId)?.enabled ? '—' : t('chat.paused')) }}</span>
+            <span v-if="automationById(editingAutomationId)?.lastRunAt">{{ t('chat.lastRun') }} {{ automationById(editingAutomationId)?.lastRunAt }} · {{ automationById(editingAutomationId)?.lastStatus }}</span>
+            <span v-if="automationById(editingAutomationId)?.lastError" style="color: #e5484d">{{ automationById(editingAutomationId)?.lastError }}</span>
           </div>
         </div>
       </div>
