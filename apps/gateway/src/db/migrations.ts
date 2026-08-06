@@ -1191,8 +1191,31 @@ const chatAutomationRuns: Migration = {
   },
 };
 
+// The last few webhook bodies an automation received, whatever the ingress did with them. Kept so the filter
+// and the payload template can be built against a real payload instead of a guessed one — and so "why didn't
+// it run" has an answer. Bounded per automation (the repo prunes on write); never a growing log.
+const chatAutomationDeliveries: Migration = {
+  name: '040_chat_automation_deliveries',
+  async up(knex) {
+    await createIfMissing(knex, 'chat_automation_deliveries', (t) => {
+      t.string('id').primary();
+      t.string('automation_id').notNullable();
+      t.string('user_id').notNullable();
+      t.string('received_at').notNullable();
+      t.string('outcome').notNullable(); // 'accepted' | 'filtered' | 'disabled' | 'rate_limited'
+      t.text('reason').nullable();
+      t.text('payload').nullable();
+      t.boolean('truncated').notNullable().defaultTo(false);
+      t.index(['automation_id', 'received_at']);
+    });
+  },
+  async down(knex) {
+    if (await knex.schema.hasTable('chat_automation_deliveries')) await knex.schema.dropTable('chat_automation_deliveries');
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

@@ -60,23 +60,36 @@ The point is that the *authoring* is a sentence, not a flow. "When a ticket is c
 GitHub and set the story points" is one automation with two tools behind it — the kind of thing that is a
 multi-step diagram anywhere else.
 
-### Shaping the event
+### Shaping the event — starting from what actually arrived
 
-Three optional controls turn one webhook URL into a precise rule:
+You cannot write a rule for a payload you have never seen, and you cannot see one until the sender has fired.
+So Kravn keeps **the last events received at that URL** — including the ones it filtered out or that arrived
+while the automation was paused — and the editor builds the rule from them:
 
-- **Only run when** — one `path=value` condition per line (use `!=` to negate); all must match or the delivery
-  is acknowledged and dropped. Senders often can't be narrowed to a single event type, so this is what makes
-  `webhookEvent=jira:issue_created` a rule rather than a firehose.
-- **Payload template** — turns the body into the prompt. <span v-pre>`{{ issue.fields.summary }}`</span> reads
-  any field by path, <span v-pre>`{{ payload }}`</span> drops in the whole thing. Leave it empty and the full
-  payload is appended to your instruction.
+1. Save the automation and paste its URL into the sending system.
+2. Do one action there (create a test ticket, push a commit).
+3. Come back: the event is listed, with every field of its body laid out and searchable.
+4. Click **Filter** on a field to say "only run when this has this value", or **Tell** to include it in what
+   the agent is told. Both write into the boxes below, which stay fully editable.
+
+That turns two fields that used to demand knowledge of someone else's JSON schema into pointing at real data.
+It is also the answer to *"why didn't my automation run"* — a dropped delivery is stored with the exact
+condition that dropped it.
+
+The three controls themselves:
+
+- **Run only for some events** — one `path=value` condition per line (use `!=` to negate); all must match or
+  the delivery is acknowledged and dropped. Leave it empty and every event runs. One URL usually receives
+  several kinds of event, so this is what makes `webhookEvent=jira:issue_created` a rule rather than a firehose.
+- **What to tell the agent about the event** — turns the body into the prompt.
+  <span v-pre>`{{ issue.fields.summary }}`</span> reads any field by path, <span v-pre>`{{ payload }}`</span>
+  drops in the whole thing. Leave it empty and the agent receives the entire event.
 - **Max runs per hour** — the loop backstop. If the agent writes back to the source and that fires the webhook
   again, this bounds the blast radius. Only deliveries that actually start a run count against it.
 
-A **sample-payload sandbox** sits under the editor: paste a body, and a dry run renders the exact prompt and
-reports the filter verdict *without* spending a model call — so a rule can be shaped before a real event ever
-arrives. Every run, whatever started it, lands in the run history with its status and a link to the
-conversation it produced.
+A **sample-payload sandbox** sits under the editor: load a received event (or paste one), and a dry run renders
+the exact prompt and reports the filter verdict *without* spending a model call. Every run, whatever started
+it, lands in the run history with its status and a link to the conversation it produced.
 
 ### Why this stays governed
 

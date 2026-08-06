@@ -2,6 +2,7 @@ import crypto from 'node:crypto';
 import type { FastifyInstance, FastifyRequest } from 'fastify';
 import type { Services } from '../services.js';
 import { sendError } from './_helpers.js';
+import { newId } from '../crypto.js';
 import { evaluateFilter } from '../automations/runner.service.js';
 
 /**
@@ -18,6 +19,8 @@ const SECRET_HEADERS = ['x-kravn-secret', 'x-webhook-secret', 'x-hook-secret'];
 const DELIVERY_ID_HEADERS = ['x-github-delivery', 'x-atlassian-webhook-identifier', 'x-gitlab-event-uuid', 'x-idempotency-key', 'x-request-id', 'x-delivery-id'];
 const DEDUPE_WINDOW_WITH_ID = 3_600; // 1h — an explicit id is unique, so a wide window is safe
 const DEDUPE_WINDOW_BODY_HASH = 60; // 60s — only catches a retry storm, not a legitimate repeat
+/** How much of a body is kept for the "what arrived" view. Enough to build a rule from; not a copy of the log. */
+const MAX_STORED_PAYLOAD = 64 * 1024;
 
 function headerValue(req: FastifyRequest, names: string[]): { name: string; value: string } | null {
   for (const n of names) {
@@ -89,10 +92,8 @@ export function hookRoutes(app: FastifyInstance, s: Services): void {
       }
     }
 
-    // A paused automation acknowledges and drops — a 4xx here would make the sender retry forever.
-    if (!automation.enabled) return reply.code(200).send({ accepted: false, reason: 'disabled' });
-
     // ── Deduplicate the delivery ──────────────────────────────────────────────
+    // Ahead of everything below, so a retry storm can't multiply into stored deliveries or rate-limit hits.
     const delivery = headerValue(req, DELIVERY_ID_HEADERS);
     const rawBody = (req as FastifyRequest & { rawBody?: string }).rawBody ?? '';
     const dedupeKey = delivery
@@ -101,10 +102,37 @@ export function hookRoutes(app: FastifyInstance, s: Services): void {
     const { count: seen } = await s.sharedStore.incr(dedupeKey, delivery ? DEDUPE_WINDOW_WITH_ID : DEDUPE_WINDOW_BODY_HASH);
     if (seen !== 1) return reply.code(200).send({ accepted: false, reason: 'duplicate' });
 
-    // ── Filter ────────────────────────────────────────────────────────────────
     const payload = req.body ?? {};
+    /**
+     * Keep the body whatever happens to it next. A filtered or paused delivery is the MOST useful one to keep —
+     * it's the payload the owner needs to look at to understand why nothing ran, and the one they'll build the
+     * rule from. Never allowed to fail the request: this is a convenience, not part of accepting the webhook.
+     */
+    const keep = async (outcome: string, reason: string | null): Promise<void> => {
+      try {
+        const pretty = JSON.stringify(payload, null, 2) ?? '';
+        const truncated = pretty.length > MAX_STORED_PAYLOAD;
+        await s.repos.automations.recordDelivery(newId(), automation.id, userId, {
+          outcome, reason, payload: truncated ? pretty.slice(0, MAX_STORED_PAYLOAD) : pretty, truncated,
+        });
+      } catch (err) {
+        s.log.warn({ err, automation: automation.id }, 'could not store the received delivery');
+      }
+    };
+
+    // A paused automation acknowledges and drops — a 4xx here would make the sender retry forever. The body is
+    // still kept: "I set this up, turned it on later, what was I missing?" is a real question.
+    if (!automation.enabled) {
+      await keep('disabled', null);
+      return reply.code(200).send({ accepted: false, reason: 'disabled' });
+    }
+
+    // ── Filter ────────────────────────────────────────────────────────────────
     const filter = evaluateFilter(automation.eventFilter, payload);
-    if (!filter.matched) return reply.code(200).send({ accepted: false, reason: 'filtered', condition: filter.failed });
+    if (!filter.matched) {
+      await keep('filtered', filter.failed ?? null);
+      return reply.code(200).send({ accepted: false, reason: 'filtered', condition: filter.failed });
+    }
 
     // ── Loop / runaway backstop ───────────────────────────────────────────────
     // The classic failure: the agent writes back to the source, the source fires the webhook, and it never
@@ -118,9 +146,11 @@ export function hookRoutes(app: FastifyInstance, s: Services): void {
       const { count } = await s.sharedStore.incr(`hookrate:${automation.id}`, 3_600);
       if (count > automation.maxRunsPerHour) {
         s.log.warn({ automation: automation.id, count }, 'automation hourly ceiling hit — delivery rejected');
+        await keep('rate_limited', `ceiling of ${automation.maxRunsPerHour} runs/hour`);
         return sendError(reply, 429, 'rate_limited', `This automation has hit its ceiling of ${automation.maxRunsPerHour} runs/hour.`);
       }
     }
+    await keep('accepted', null);
 
     // ── Accept, then run detached ─────────────────────────────────────────────
     // The sender gets its 202 in milliseconds; the agent run continues in the background and records its own

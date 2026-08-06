@@ -16,8 +16,12 @@ export const router = createRouter({ history: createWebHistory(), routes });
 
 router.beforeEach(async (to) => {
   const auth = useAuthStore();
-  if (!auth.info) await auth.loadBootstrap();
-  if (!auth.ready) await auth.loadMe();
+  // Independent calls — /bootstrap describes the instance, /me describes the session. Awaiting them in
+  // sequence put a second round trip in front of every cold navigation, including the SSO callback.
+  await Promise.all([
+    auth.info ? null : auth.loadBootstrap(),
+    auth.ready ? null : auth.loadMe(),
+  ]);
   if (to.meta.public) {
     if (auth.isAuthenticated && to.path === '/login') return { name: 'chat' };
     return true;

@@ -380,6 +380,29 @@ export const chatAutomationSchema = z.object({
 });
 export type ChatAutomation = z.infer<typeof chatAutomationSchema>;
 
+/**
+ * One inbound webhook delivery, kept whatever became of it — accepted, filtered out, rejected by the ceiling.
+ *
+ * This exists so configuring an event automation stops being guesswork. You cannot write a filter or a template
+ * for a payload you have never seen, and you cannot see one until the sender has fired at least once. Keeping
+ * the last few deliveries turns that around: point the sender at the URL, do one action, and then build the
+ * rule against the JSON that actually arrived. It doubles as the answer to "why didn't my automation run".
+ */
+export const automationDeliverySchema = z.object({
+  id: z.string(),
+  automationId: z.string(),
+  receivedAt: z.string(),
+  /** 'accepted' | 'filtered' | 'disabled' | 'rate_limited' — what the ingress did with it. */
+  outcome: z.string(),
+  /** For 'filtered', the condition that failed — the direct answer to "why was this dropped". */
+  reason: z.string().nullable().default(null),
+  /** The JSON body as received (pretty-printed, truncated if huge). Empty when it wasn't JSON. */
+  payload: z.string().default(''),
+  /** True when the body was too large to keep in full, so the UI can say the tree is partial. */
+  truncated: z.boolean().default(false),
+});
+export type AutomationDelivery = z.infer<typeof automationDeliverySchema>;
+
 /** One execution of an automation. Event automations fire far more often than `last*` fields can describe. */
 export const automationRunSchema = z.object({
   id: z.string(),

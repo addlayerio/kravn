@@ -2,7 +2,7 @@
 import { computed, nextTick, onMounted, reactive, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { useRouter, useRoute } from 'vue-router';
-import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatAutomation, AutomationRun, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
+import type { ChatConversation, ChatMessage, ChatProject, ChatProjectDocument, ChatAttachment, ProjectMember, ChatAutomation, AutomationRun, AutomationDelivery, ChatUserPrompt, ChatMemory, ChatAgent, AvailableTool } from '@kravn/contracts';
 import { api, ApiError, postSse } from '../api';
 import { shouldShowAttribution } from '@kravn/contracts';
 import { useAuthStore } from '../stores/auth';
@@ -662,6 +662,9 @@ function automationById(id: string | null): ChatAutomation | undefined {
 }
 function resetAutomationSandbox() {
   automationRuns.value = [];
+  deliveries.value = [];
+  selectedDeliveryId.value = null;
+  leafSearch.value = '';
   testResult.value = null;
   testError.value = '';
   testPayload.value = '';
@@ -696,6 +699,7 @@ function openAutomation(s: ChatAutomation) {
   });
   automationView.value = true;
   void loadAutomationRuns(s.id);
+  if (s.kind === 'event') void loadAutomationDeliveries(s.id);
   syncUrl();
 }
 async function loadAutomationRuns(id: string) {
@@ -704,6 +708,88 @@ async function loadAutomationRuns(id: string) {
   } catch {
     automationRuns.value = [];
   }
+}
+
+// ── Received events: building the rule from what actually arrived ────────────
+// Nobody can write a filter or a template for a payload they've never seen, and they can't see one until the
+// sender has fired. So the received bodies are the anchor: point the sender at the URL, do one action, and
+// build the rule by clicking the fields that showed up.
+const deliveries = ref<AutomationDelivery[]>([]);
+const selectedDeliveryId = ref<string | null>(null);
+const leafSearch = ref('');
+/** A Jira body has hundreds of leaves; past this the list stops being a picker and becomes a wall. */
+const MAX_LEAVES = 300;
+
+async function loadAutomationDeliveries(id: string) {
+  try {
+    deliveries.value = (await api.get<{ deliveries: AutomationDelivery[] }>(`/api/chat/automations/${id}/deliveries`)).deliveries;
+    selectedDeliveryId.value = deliveries.value[0]?.id ?? null;
+  } catch {
+    deliveries.value = [];
+    selectedDeliveryId.value = null;
+  }
+}
+
+const selectedDelivery = computed(() => deliveries.value.find((d) => d.id === selectedDeliveryId.value) ?? null);
+
+/**
+ * Flatten a payload to `path -> scalar` pairs. A flat, searchable list beats an expandable tree here: the user
+ * already knows the field they want ("the issue key"), so finding it by typing is faster than unfolding to it.
+ */
+function flattenJson(value: unknown, prefix: string, out: { path: string; value: string }[], depth: number): void {
+  if (out.length >= MAX_LEAVES) return;
+  if (value === null || value === undefined || typeof value !== 'object') {
+    if (prefix) out.push({ path: prefix, value: String(value ?? '') });
+    return;
+  }
+  if (depth > 8) return; // deep enough for any real webhook; stops a pathological body from hanging the tab
+  const join = (k: string | number) => (prefix ? `${prefix}.${k}` : String(k));
+  if (Array.isArray(value)) {
+    // Only the first few entries: element 47 of a changelog is never the field someone is looking for.
+    value.slice(0, 5).forEach((v, i) => flattenJson(v, join(i), out, depth + 1));
+    return;
+  }
+  for (const [k, v] of Object.entries(value)) flattenJson(v, join(k), out, depth + 1);
+}
+
+const deliveryLeaves = computed(() => {
+  const d = selectedDelivery.value;
+  if (!d?.payload) return [];
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(d.payload);
+  } catch {
+    return []; // a truncated body is no longer valid JSON — the raw view below still shows it
+  }
+  const out: { path: string; value: string }[] = [];
+  flattenJson(parsed, '', out, 0);
+  const q = leafSearch.value.trim().toLowerCase();
+  const hits = q ? out.filter((l) => l.path.toLowerCase().includes(q) || l.value.toLowerCase().includes(q)) : out;
+  return hits.slice(0, MAX_LEAVES);
+});
+
+/** Add `path=value` to the filter, pre-filled with the value that actually arrived — the common case by far. */
+function addFilterCondition(leaf: { path: string; value: string }) {
+  const line = `${leaf.path}=${leaf.value}`;
+  const current = sf.eventFilter.trim();
+  if (current.split('\n').some((l) => l.trim() === line)) return;
+  sf.eventFilter = current ? `${current}\n${line}` : line;
+}
+
+/** Append a placeholder for this field to the template, labelled so the prompt reads as a sentence. */
+function insertPlaceholder(leaf: { path: string; value: string }) {
+  const label = leaf.path.split('.').pop() ?? leaf.path;
+  const snippet = `${label}: {{ ${leaf.path} }}`;
+  const current = sf.payloadTemplate;
+  if (current.includes(`{{ ${leaf.path} }}`)) return;
+  sf.payloadTemplate = current.trim() ? `${current.replace(/\s+$/, '')}\n${snippet}` : snippet;
+}
+
+/** Load a real body into the sandbox, so the dry run tests against the thing the sender actually sends. */
+function useDeliveryAsTest(d: AutomationDelivery) {
+  testPayload.value = d.payload;
+  testResult.value = null;
+  testError.value = '';
 }
 /**
  * Try the automation against a sample payload. The dry run renders the prompt and reports the filter verdict
@@ -1601,6 +1687,43 @@ async function logout() {
               <small class="muted">{{ t('chat.secretHint') }}</small>
             </div>
 
+            <!-- What actually arrived. This block is the anchor for the two fields below it: rather than
+                 writing paths from memory, you click the fields you can see in a real body. -->
+            <div v-if="editingAutomationId" class="field">
+              <label>{{ t('chat.receivedEvents') }}</label>
+              <p v-if="!deliveries.length" class="muted" style="font-size: 12px; margin: 0.2rem 0 0">
+                {{ t('chat.noEventsYet') }}
+                <a href="#" @click.prevent="loadAutomationDeliveries(editingAutomationId!)">{{ t('chat.checkAgain') }}</a>
+              </p>
+              <template v-else>
+                <div class="row" style="gap: 0.4rem; align-items: center; flex-wrap: wrap">
+                  <select v-model="selectedDeliveryId" style="flex: 1; min-width: 200px">
+                    <option v-for="d in deliveries" :key="d.id" :value="d.id">
+                      {{ d.receivedAt.replace('T', ' ').slice(0, 19) }} · {{ t(`chat.outcome_${d.outcome}`) }}
+                    </option>
+                  </select>
+                  <button class="btn" type="button" @click="loadAutomationDeliveries(editingAutomationId!)">{{ t('chat.refresh') }}</button>
+                  <button v-if="selectedDelivery" class="btn" type="button" @click="useDeliveryAsTest(selectedDelivery!)">{{ t('chat.useAsSample') }}</button>
+                </div>
+
+                <p v-if="selectedDelivery?.reason" class="muted" style="font-size: 12px; margin: 0.3rem 0 0; color: #e5484d">
+                  {{ t('chat.droppedBecause', { reason: selectedDelivery.reason }) }}
+                </p>
+                <p v-if="selectedDelivery?.truncated" class="muted" style="font-size: 12px; margin: 0.3rem 0 0">{{ t('chat.payloadTruncated') }}</p>
+
+                <input v-model="leafSearch" :placeholder="t('chat.searchFields')" style="margin-top: 0.4rem" />
+                <div v-if="deliveryLeaves.length" class="leaf-list">
+                  <div v-for="leaf in deliveryLeaves" :key="leaf.path" class="leaf-row">
+                    <code class="leaf-path" :title="leaf.path">{{ leaf.path }}</code>
+                    <span class="leaf-value muted" :title="leaf.value">{{ leaf.value }}</span>
+                    <button class="btn leaf-btn" type="button" :title="t('chat.addAsCondition')" @click="addFilterCondition(leaf)">{{ t('chat.filterVerb') }}</button>
+                    <button class="btn leaf-btn" type="button" :title="t('chat.addToTemplate')" @click="insertPlaceholder(leaf)">{{ t('chat.tellVerb') }}</button>
+                  </div>
+                </div>
+                <p v-else class="muted" style="font-size: 12px; margin: 0.4rem 0 0">{{ t('chat.noFieldsMatch') }}</p>
+              </template>
+            </div>
+
             <div class="field">
               <label>{{ t('chat.eventFilter') }}</label>
               <textarea v-model="sf.eventFilter" rows="2" placeholder="webhookEvent=jira:issue_created"></textarea>
@@ -1835,3 +1958,40 @@ async function logout() {
     </div>
   </div>
 </template>
+
+<style scoped>
+/* The received-event field picker. Fixed height with its own scroll: a Jira body has hundreds of leaves and
+   the form around it must stay navigable. */
+.leaf-list {
+  margin-top: 0.4rem;
+  max-height: 240px;
+  overflow-y: auto;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+}
+.leaf-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1.2fr) minmax(0, 1fr) auto auto;
+  gap: 0.4rem;
+  align-items: center;
+  padding: 0.25rem 0.4rem;
+  border-bottom: 1px solid var(--border);
+}
+.leaf-row:last-child {
+  border-bottom: none;
+}
+.leaf-path,
+.leaf-value {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 12px;
+}
+.leaf-path {
+  font-family: ui-monospace, monospace;
+}
+.leaf-btn {
+  padding: 0.1rem 0.45rem;
+  font-size: 11px;
+}
+</style>

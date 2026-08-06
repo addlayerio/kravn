@@ -22,6 +22,7 @@ import type {
   AutomationKind,
   AutomationAuth,
   AutomationRun,
+  AutomationDelivery,
   ChatUserPrompt,
   ChatMemory,
   ChatAgent,
@@ -2296,6 +2297,7 @@ export class AutomationsRepo {
   async delete(userId: string, id: string): Promise<void> {
     await this.store.run('DELETE FROM chat_automations WHERE id = ? AND user_id = ?', [id, userId]);
     await this.store.run('DELETE FROM chat_automation_runs WHERE automation_id = ? AND user_id = ?', [id, userId]);
+    await this.store.run('DELETE FROM chat_automation_deliveries WHERE automation_id = ? AND user_id = ?', [id, userId]);
   }
   /** Enabled, time-triggered automations that are due across ALL users — for the scheduler.
    *  Event automations are excluded twice over: they carry a null next_run_at AND are filtered by kind. */
@@ -2335,6 +2337,42 @@ export class AutomationsRepo {
       [status, error, conversationId, now(), id],
     );
   }
+  // ── Received deliveries ────────────────────────────────────────────────────
+  /**
+   * Keep an inbound webhook body so the rule can be built against it later. Bounded: after each write the
+   * automation keeps only its most recent `KEEP` deliveries, so a chatty sender can never grow this into a log.
+   * Pruning is done by explicit ids rather than `DELETE ... LIMIT` because that isn't portable across dialects.
+   */
+  async recordDelivery(
+    id: string,
+    automationId: string,
+    userId: string,
+    d: { outcome: string; reason: string | null; payload: string; truncated: boolean },
+  ): Promise<void> {
+    const KEEP = 20;
+    await this.store.run(
+      'INSERT INTO chat_automation_deliveries (id, automation_id, user_id, received_at, outcome, reason, payload, truncated) VALUES (?,?,?,?,?,?,?,?)',
+      [id, automationId, userId, now(), d.outcome, d.reason, d.payload, intify(d.truncated)],
+    );
+    const rows = await this.store.all<{ id: string }>(
+      'SELECT id FROM chat_automation_deliveries WHERE automation_id = ? ORDER BY received_at DESC, id DESC',
+      [automationId],
+    );
+    for (const stale of rows.slice(KEEP)) {
+      await this.store.run('DELETE FROM chat_automation_deliveries WHERE id = ?', [stale.id]);
+    }
+  }
+  async listDeliveries(userId: string, automationId: string, limit = 20): Promise<AutomationDelivery[]> {
+    const rows = await this.store.all<any>(
+      'SELECT * FROM chat_automation_deliveries WHERE automation_id = ? AND user_id = ? ORDER BY received_at DESC, id DESC',
+      [automationId, userId],
+    );
+    return rows.slice(0, limit).map((r) => ({
+      id: r.id, automationId: r.automation_id, receivedAt: r.received_at, outcome: r.outcome,
+      reason: r.reason ?? null, payload: r.payload ?? '', truncated: bool(r.truncated),
+    }));
+  }
+
   async listRuns(userId: string, automationId: string, limit = 50): Promise<AutomationRun[]> {
     const rows = await this.store.all<any>(
       'SELECT * FROM chat_automation_runs WHERE automation_id = ? AND user_id = ? ORDER BY started_at DESC, id DESC',

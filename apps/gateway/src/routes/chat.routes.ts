@@ -321,6 +321,18 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return reply.code(204).send();
   });
 
+  /**
+   * The webhook bodies this automation received, newest first — including the ones that were filtered out or
+   * arrived while it was paused. This is what makes the filter and the payload template configurable at all:
+   * you build them against a payload you can see, not one you have to imagine.
+   */
+  app.get('/api/chat/automations/:id/deliveries', auth, async (req, reply) => {
+    const u = currentUser(req);
+    const id = (req.params as { id: string }).id;
+    if (!(await s.repos.automations.get(u.id, id))) return sendError(reply, 404, 'not_found', 'Automation not found.');
+    return { deliveries: await s.repos.automations.listDeliveries(u.id, id) };
+  });
+
   /** Run history — `last*` on the automation describes one run; an event automation may fire fifty times a day. */
   app.get('/api/chat/automations/:id/runs', auth, async (req, reply) => {
     const u = currentUser(req);

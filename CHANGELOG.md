@@ -22,18 +22,27 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   points"* is one automation with two tools behind it. Existing scheduled tasks carry over untouched — same
   rows, same next-run times, nothing to reconfigure.
 
-  Three optional controls turn one URL into a precise rule. **Only run when** takes one `path=value` condition
-  per line (`!=` negates) and acknowledges-and-drops anything that doesn't match — senders usually can't be
-  narrowed to a single event type, so this is what keeps one URL honest. **Payload template** turns the body into
-  the prompt (`{{ issue.fields.summary }}` reads any field by path, `{{ payload }}` takes all of it; empty
-  appends the whole payload). **Max runs per hour** is the loop backstop for the classic failure where the agent
-  writes back to the source and re-fires its own webhook — and it counts only deliveries that actually start a
-  run, so filtered noise never eats the budget.
+  **You configure it by pointing at real data, not by reading someone else's JSON schema.** Kravn keeps the last
+  events received at that URL — including the ones it filtered out and the ones that arrived while the
+  automation was paused — and lays every field of the body out, searchable. Click **Filter** on a field for
+  "only run when this has this value", or **Tell** to include it in what the agent is told; both write into
+  boxes that stay fully editable. So the real flow is: save, paste the URL into Jira, create one test ticket,
+  come back and click the fields that showed up. It's also the answer to *"why didn't my automation run"* — a
+  dropped delivery is stored alongside the exact condition that dropped it.
 
-  A **sample-payload sandbox** renders the exact prompt and the filter verdict *without* spending a model call,
-  so a rule can be shaped before a real event ever arrives. And because `last run` describes exactly one run —
-  useless for a webhook firing fifty times a day — every execution now lands in a **run history** with its
-  status, its error and a link to the conversation it produced.
+  Three optional controls turn one URL into a precise rule, and **both of the fiddly ones default to something
+  sensible**: an empty filter runs for every event, and an empty template hands the agent the whole event.
+  **Run only for some events** takes one `path=value` condition per line (`!=` negates) and
+  acknowledges-and-drops anything that doesn't match — senders usually can't be narrowed to a single event type,
+  so this is what keeps one URL honest. **What to tell the agent** turns the body into the prompt
+  (`{{ issue.fields.summary }}` reads any field by path, `{{ payload }}` takes all of it). **Max runs per hour**
+  is the loop backstop for the classic failure where the agent writes back to the source and re-fires its own
+  webhook — and it counts only deliveries that actually start a run, so filtered noise never eats the budget.
+
+  A **sample-payload sandbox** renders the exact prompt and the filter verdict *without* spending a model call —
+  load a real received event into it in one click. And because `last run` describes exactly one run — useless
+  for a webhook firing fifty times a day — every execution lands in a **run history** with its status, its error
+  and a link to the conversation it produced.
 
 - 🧩 **Jira can now edit an existing issue — including custom fields, by their display name.** The Jira plugin
   could create, comment and transition, but had no way to change a field on a ticket that already exists. New

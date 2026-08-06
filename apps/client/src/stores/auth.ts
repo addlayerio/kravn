@@ -2,7 +2,7 @@ import { defineStore } from 'pinia';
 import type { AuthResponse, BootstrapInfo, LoginRequest } from '@kravn/contracts';
 import { api, getToken, setToken } from '../api';
 
-interface AuthUser {
+export interface AuthUser {
   id: string;
   email: string;
   name: string;
@@ -37,11 +37,19 @@ export const useAuthStore = defineStore('auth', {
         this.ready = true;
       }
     },
+    /**
+     * Adopt a session the server just handed us. Both `/api/auth/login` and the SSO `/api/auth/exchange`
+     * return the user alongside the token, so nothing here needs a follow-up `/api/auth/me` round trip.
+     */
+    applySession(token: string, user: AuthUser) {
+      this.token = token;
+      setToken(token);
+      this.user = user;
+      this.ready = true;
+    },
     async login(payload: LoginRequest) {
       const res = await api.post<AuthResponse>('/api/auth/login', payload);
-      this.token = res.token;
-      setToken(res.token);
-      this.user = res.user as AuthUser;
+      this.applySession(res.token, res.user as AuthUser);
     },
     async logout() {
       try {
