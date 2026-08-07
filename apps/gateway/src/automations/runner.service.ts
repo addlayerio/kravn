@@ -75,21 +75,56 @@ export interface FilterResult {
 }
 
 /**
- * Evaluate the automation's filter: one `path=value` (or `path!=value`) condition per line, ALL must hold.
- * An empty filter matches everything. Comparison is string equality on the trimmed values, case-insensitive —
- * enough to gate on an event type or a status without dragging in an expression language.
+ * Evaluate the automation's filter: one `path=value` (or `path!=value`) condition per line. An empty filter
+ * matches everything. Comparison is case-insensitive string equality on the trimmed values — enough to gate on
+ * an event type or a status without dragging in an expression language.
+ *
+ * **The same field repeated is OR; different fields are AND.** A field holds one value at a time, so
+ * AND-ing two `=` conditions on the same path could never match — anyone writing
+ *
+ *     webhookEvent=jira:issue_created
+ *     webhookEvent=jira:issue_updated
+ *     issue.fields.project.key=CO
+ *
+ * plainly means "created *or* updated, and from project CO", and that is what it does. Several values may also
+ * be written on one line with `|`, which is exactly the form a failure is reported in, so a reported condition
+ * can be pasted straight back into the box.
+ *
+ * `!=` stays AND throughout: `path!=a` plus `path!=b` means "neither", which is both satisfiable and the
+ * obvious reading.
  */
 export function evaluateFilter(filter: string, payload: unknown): FilterResult {
   const lines = (filter ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));
+  const allowed = new Map<string, string[]>(); // path -> any-of values
+  const denied: { path: string; value: string; line: string }[] = [];
+
   for (const line of lines) {
     const neg = line.includes('!=');
     const idx = neg ? line.indexOf('!=') : line.indexOf('=');
-    if (idx <= 0) return { matched: false, failed: line }; // malformed → fail closed, never fire on a bad gate
+    // Malformed → fail closed, never fire on a broken gate. The message names the line AND the expected shape:
+    // the reflex when a filter needs more power is to reach for `OR` or a boolean expression, and the reply to
+    // that has to be legible, not a bare echo of the word that didn't parse.
+    if (idx <= 0) return { matched: false, failed: `${line} — not a condition (expected field=value)` };
     const path = line.slice(0, idx).trim();
-    const expected = line.slice(idx + (neg ? 2 : 1)).trim();
-    const actual = stringifyValue(resolvePath(payload, path)).trim();
-    const equal = actual.toLowerCase() === expected.toLowerCase();
-    if (neg ? equal : !equal) return { matched: false, failed: line };
+    const values = line.slice(idx + (neg ? 2 : 1)).split('|').map((v) => v.trim()).filter(Boolean);
+    if (!values.length) return { matched: false, failed: `${line} — no value to compare against` };
+    if (neg) {
+      for (const value of values) denied.push({ path, value, line });
+    } else {
+      allowed.set(path, [...(allowed.get(path) ?? []), ...values]);
+    }
+  }
+
+  const read = (path: string) => stringifyValue(resolvePath(payload, path)).trim().toLowerCase();
+  // Positives first: "it wasn't the event I asked for" is the failure people hit, so it's the one worth naming.
+  for (const [path, values] of allowed) {
+    const actual = read(path);
+    if (!values.some((v) => v.toLowerCase() === actual)) {
+      return { matched: false, failed: `${path}=${values.join('|')}` };
+    }
+  }
+  for (const { path, value, line } of denied) {
+    if (read(path) === value.toLowerCase()) return { matched: false, failed: line };
   }
   return { matched: true };
 }

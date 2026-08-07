@@ -143,7 +143,7 @@ export default {
     "outcome_disabled": "arrivé en pause",
     "outcome_rate_limited": "au-delà du plafond horaire",
     "eventFilter": "Exécuter seulement pour certains événements",
-    "eventFilterHint": "Une même URL reçoit souvent plusieurs types d'événement. Vide = tous déclenchent. Cliquez Filtrer sur un champ ci-dessous, ou écrivez un chemin=valeur par ligne (!= nie) ; tous doivent correspondre.",
+    "eventFilterHint": "Une même URL reçoit souvent plusieurs types d'événement. Vide = tous déclenchent. Cliquez Filtrer sur un champ ci-dessous, ou écrivez un chemin=valeur par ligne. Répéter un champ signifie « l'un de ceux-ci » ; des champs différents doivent tous correspondre. Utilisez != pour exclure.",
     "payloadTemplate": "Quoi dire à l'agent à propos de l'événement",
     "payloadTemplateHint": "Vide = l'agent reçoit l'événement entier. Cliquez Dire sur un champ ci-dessous pour l'ajouter, ou écrivez le vôtre :",
     "maxRunsPerHour": "Exécutions max. par heure",

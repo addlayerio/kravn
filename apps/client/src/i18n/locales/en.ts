@@ -143,7 +143,7 @@ export default {
     "outcome_disabled": "arrived while paused",
     "outcome_rate_limited": "over the hourly ceiling",
     "eventFilter": "Run only for some events",
-    "eventFilterHint": "One URL usually receives several kinds of event. Empty = run for all of them. Click Filter on a field below, or write one path=value per line (!= negates); all must match.",
+    "eventFilterHint": "One URL usually receives several kinds of event. Empty = run for all of them. Click Filter on a field below, or write one path=value per line. Repeating a field means \"any of these\"; different fields must all match. Use != to exclude.",
     "payloadTemplate": "What to tell the agent about the event",
     "payloadTemplateHint": "Empty = the agent gets the whole event. Click Tell on a field below to add it, or write your own:",
     "maxRunsPerHour": "Max runs per hour",

@@ -143,7 +143,7 @@ export default {
     "outcome_disabled": "llegó en pausa",
     "outcome_rate_limited": "pasó el techo horario",
     "eventFilter": "Ejecutar solo para algunos eventos",
-    "eventFilterHint": "Una misma URL suele recibir varios tipos de evento. Vacío = corre con todos. Tocá Filtrar en un campo de abajo, o escribí un path=valor por línea (!= niega); deben cumplirse todos.",
+    "eventFilterHint": "Una misma URL suele recibir varios tipos de evento. Vacío = corre con todos. Tocá Filtrar en un campo de abajo, o escribí un path=valor por línea. Repetir un campo significa «cualquiera de estos»; campos distintos deben cumplirse todos. Usá != para excluir.",
     "payloadTemplate": "Qué contarle al agente sobre el evento",
     "payloadTemplateHint": "Vacío = el agente recibe el evento completo. Tocá Contar en un campo de abajo para agregarlo, o escribí lo tuyo:",
     "maxRunsPerHour": "Máx. ejecuciones por hora",

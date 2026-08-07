@@ -768,12 +768,25 @@ const deliveryLeaves = computed(() => {
   return hits.slice(0, MAX_LEAVES);
 });
 
-/** Add `path=value` to the filter, pre-filled with the value that actually arrived — the common case by far. */
+/**
+ * Add `path=value` to the filter, pre-filled with the value that actually arrived — the common case by far.
+ *
+ * Clicking the same field twice with different values (say `webhookEvent` on a created event and then on an
+ * updated one) means "either of these", so the values are merged into one `path=a|b` line rather than appended
+ * as a second condition. Two `=` lines on one path would read as AND and could never match.
+ */
 function addFilterCondition(leaf: { path: string; value: string }) {
-  const line = `${leaf.path}=${leaf.value}`;
-  const current = sf.eventFilter.trim();
-  if (current.split('\n').some((l) => l.trim() === line)) return;
-  sf.eventFilter = current ? `${current}\n${line}` : line;
+  const lines = sf.eventFilter.split('\n').map((l) => l.trim()).filter(Boolean);
+  const prefix = `${leaf.path}=`;
+  const at = lines.findIndex((l) => l.startsWith(prefix) && !l.includes('!='));
+  if (at === -1) {
+    lines.push(`${prefix}${leaf.value}`);
+  } else {
+    const values = lines[at].slice(prefix.length).split('|').map((v) => v.trim()).filter(Boolean);
+    if (values.some((v) => v.toLowerCase() === leaf.value.toLowerCase())) return;
+    lines[at] = `${prefix}${[...values, leaf.value].join('|')}`;
+  }
+  sf.eventFilter = lines.join('\n');
 }
 
 /** Append a placeholder for this field to the template, labelled so the prompt reads as a sentence. */
