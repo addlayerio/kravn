@@ -156,6 +156,7 @@ export default {
     "filterMatched": "El filtro coincide — este payload se ejecutaría.",
     "filterDropped": "El filtro descartaría este payload: {condition}",
     "runs": "Ejecuciones",
+    "runsLiveHere": "Estos chats viven acá y no en tu lista de Chats ({n} siguen acá). Entrá a uno y respondele para que pase a ser tuyo.",
     "openConversation": "Abrir conversación",
     "invalidJson": "Eso no es JSON válido.",
     "status": "Estado",
@@ -279,6 +280,7 @@ export default {
     "noAutomations": "No hay automatizaciones.",
     "archived": "Archivados",
     "noArchived": "No hay chats archivados.",
+    "resizeSidebar": "Redimensionar el panel",
     "signOut": "Cerrar sesión",
     "shared": "compartido",
     "paused": "en pausa"

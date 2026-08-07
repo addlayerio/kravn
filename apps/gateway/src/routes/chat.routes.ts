@@ -333,12 +333,19 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     return { deliveries: await s.repos.automations.listDeliveries(u.id, id) };
   });
 
-  /** Run history — `last*` on the automation describes one run; an event automation may fire fifty times a day. */
+  /**
+   * Run history — `last*` on the automation describes one run; an event automation may fire fifty times a day.
+   * Also returns the conversations those runs produced: they are deliberately kept out of the user's Chats
+   * list, so this is where they are reachable from.
+   */
   app.get('/api/chat/automations/:id/runs', auth, async (req, reply) => {
     const u = currentUser(req);
     const id = (req.params as { id: string }).id;
     if (!(await s.repos.automations.get(u.id, id))) return sendError(reply, 404, 'not_found', 'Automation not found.');
-    return { runs: await s.repos.automations.listRuns(u.id, id) };
+    return {
+      runs: await s.repos.automations.listRuns(u.id, id),
+      conversations: await s.repos.chat.listConversationsForAutomation(u.id, id),
+    };
   });
 
   /**

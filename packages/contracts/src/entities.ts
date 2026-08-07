@@ -303,6 +303,15 @@ export const chatConversationSchema = z.object({
   /** Optional: the org Agent this chat was started from (its instructions + tools resolve live per turn,
    *  re-validated against the caller's entitlement). */
   agentId: z.string().nullable().default(null),
+  /**
+   * Set when an automation produced this conversation. Such chats are listed under that automation's run
+   * history instead of the user's Chats — a rule that fires a hundred times would otherwise bury everything
+   * the person actually started.
+   *
+   * Cleared the moment the user sends their own message into it: replying is how you adopt the conversation,
+   * and from then on it is an ordinary chat of theirs.
+   */
+  automationId: z.string().nullable().default(null),
   /** Pinned chats sort to the top of the list. */
   pinned: z.boolean().default(false),
   /** Archived chats are hidden from the main list (shown under "Archived"). */

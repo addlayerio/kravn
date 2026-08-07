@@ -45,6 +45,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   for a webhook firing fifty times a day — every execution lands in a **run history** with its status, its error
   and a link to the conversation it produced.
 
+- 📣 **An automation's runs no longer bury your chats.** Every run opens a conversation — that is the audit
+  trail, and it is the point — but a webhook firing a hundred times used to drop a hundred entries on top of the
+  chats you actually started. Those conversations now live **under the automation**, in its run history,
+  alongside the status of the run that produced them. Reply inside one and it becomes an ordinary chat of yours,
+  listed in Chats from then on: replying is how you adopt it. Existing instances are tidied on upgrade — the
+  conversations already accumulated are filed retroactively from the run history, so the fix applies to the
+  mess you already have, not just to new runs.
+
+- 🐛 **A failed run now tells you where to look.** When a run broke, the run row recorded no conversation —
+  even though the conversation had been opened and held the prompt plus whatever the agent managed to do before
+  it failed. The one run you most want to open was the one you couldn't. The link is now recorded whether the
+  run succeeds or fails.
+
 - 🧩 **Jira can now edit an existing issue — including custom fields, by their display name.** The Jira plugin
   could create, comment and transition, but had no way to change a field on a ticket that already exists. New
   **`jira_update_issue`** closes that: `{"issueKey":"ABC-123","fields":{"Story Points Global":5}}`. You name

@@ -89,8 +89,16 @@ The three controls themselves:
   again, this bounds the blast radius. Only deliveries that actually start a run count against it.
 
 A **sample-payload sandbox** sits under the editor: load a received event (or paste one), and a dry run renders
-the exact prompt and reports the filter verdict *without* spending a model call. Every run, whatever started
-it, lands in the run history with its status and a link to the conversation it produced.
+the exact prompt and reports the filter verdict *without* spending a model call.
+
+### Where the runs live
+
+Every run, whatever started it, lands in the automation's run history with its status and a link to the
+conversation it produced — including the runs that failed, which are the ones worth opening.
+
+Those conversations are deliberately **kept out of your Chats list**: a rule that fires a hundred times would
+bury everything you actually started. They live under the automation instead. Open one and reply to it and it
+becomes an ordinary chat of yours, listed in Chats from then on — replying is how you adopt it.
 
 ### Why this stays governed
 

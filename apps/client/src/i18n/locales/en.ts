@@ -156,6 +156,7 @@ export default {
     "filterMatched": "The filter matches — this payload would run.",
     "filterDropped": "The filter would drop this payload: {condition}",
     "runs": "Runs",
+    "runsLiveHere": "These chats live here instead of your Chats list ({n} still filed here). Open one and reply to make it your own.",
     "openConversation": "Open conversation",
     "invalidJson": "That isn't valid JSON.",
     "status": "Status",
@@ -279,6 +280,7 @@ export default {
     "noAutomations": "No automations.",
     "archived": "Archived",
     "noArchived": "No archived chats.",
+    "resizeSidebar": "Resize the sidebar",
     "signOut": "Sign out",
     "shared": "shared",
     "paused": "paused"

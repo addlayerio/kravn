@@ -234,9 +234,15 @@ export class ChatService {
     content: string,
     attachmentIds: string[] = [],
     onProgress?: (p: ChatProgress) => void,
+    /** Set by non-human callers (the automation runner) so their own turn isn't mistaken for the user replying. */
+    opts: { automated?: boolean } = {},
   ): Promise<ChatMessage> {
     const conv = await this.repos.chat.getConversation(actor.id, conversationId);
     if (!conv) throw new Error('Conversation not found.');
+
+    // Replying to an automation's conversation is how you adopt it: from this turn on it is an ordinary chat
+    // of the user's and appears in their Chats list. Done before the model call so it sticks even if that fails.
+    if (!opts.automated && conv.automationId) await this.repos.chat.adoptConversation(actor.id, conversationId);
 
     const provider = await this.repos.llmProviders.getById(conv.providerId);
     if (!provider) throw new Error('The conversation has no valid LLM provider.');

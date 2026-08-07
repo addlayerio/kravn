@@ -1214,8 +1214,38 @@ const chatAutomationDeliveries: Migration = {
   },
 };
 
+// A conversation an automation produced belongs to that automation, not to the Chats list. An event automation
+// that fires a hundred times used to bury a hundred entries on top of the user's own chats; now it files them
+// under the rule that created them, where the run history already shows their status.
+//
+// Backfilled from chat_automation_runs, so an instance that has ALREADY accumulated automation conversations is
+// tidied by upgrading — the fix is retroactive, not just forward-looking.
+const chatConversationAutomation: Migration = {
+  name: '041_chat_conversation_automation',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_conversations'))) return;
+    if (!(await knex.schema.hasColumn('chat_conversations', 'automation_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.string('automation_id', 64).nullable());
+      await knex.schema.alterTable('chat_conversations', (t) => t.index('automation_id'));
+    }
+    if (!(await knex.schema.hasTable('chat_automation_runs'))) return;
+    const runs = await knex('chat_automation_runs').whereNotNull('conversation_id').select('automation_id', 'conversation_id');
+    for (const r of runs) {
+      await knex('chat_conversations')
+        .where({ id: r.conversation_id })
+        .whereNull('automation_id')
+        .update({ automation_id: r.automation_id });
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'automation_id'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('automation_id'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

@@ -199,6 +199,48 @@ async function unshareMember(m: ProjectMember) {
   project.value.members = project.value.members.filter((x) => x.userId !== m.userId);
 }
 
+/**
+ * Sidebar width — a CSS variable on the shell, which the grid's first column reads. Kept in localStorage so it
+ * survives a reload, and clamped so the panel can never be dragged to a width that hides its own content or
+ * swallows the conversation.
+ */
+const SIDEBAR_MIN = 210;
+const SIDEBAR_MAX = 560;
+const SIDEBAR_DEFAULT = 280;
+const sidebarWidth = ref(SIDEBAR_DEFAULT);
+
+/** Minimum the conversation itself must keep, so the sidebar can never be dragged over the whole window. */
+const MAIN_MIN = 320;
+function applySidebarWidth(px: number) {
+  const ceiling = Math.max(SIDEBAR_MIN, Math.min(SIDEBAR_MAX, window.innerWidth - MAIN_MIN));
+  sidebarWidth.value = Math.min(ceiling, Math.max(SIDEBAR_MIN, Math.round(px)));
+  document.documentElement.style.setProperty('--sidebar-w', `${sidebarWidth.value}px`);
+}
+function resetSidebarWidth() {
+  applySidebarWidth(SIDEBAR_DEFAULT);
+  localStorage.removeItem('kravn-sidebar-w');
+}
+function startSidebarResize(e: PointerEvent) {
+  e.preventDefault();
+  // Pointer capture keeps the drag alive over the thread, iframes and past the window edge — without it the
+  // handle loses the pointer the moment the cursor moves off it.
+  const handle = e.currentTarget as HTMLElement;
+  handle.setPointerCapture(e.pointerId);
+  document.body.classList.add('resizing-sidebar'); // suppresses text selection while dragging
+  const move = (ev: PointerEvent) => applySidebarWidth(ev.clientX);
+  const stop = () => {
+    handle.releasePointerCapture(e.pointerId);
+    handle.removeEventListener('pointermove', move);
+    handle.removeEventListener('pointerup', stop);
+    handle.removeEventListener('pointercancel', stop);
+    document.body.classList.remove('resizing-sidebar');
+    localStorage.setItem('kravn-sidebar-w', String(sidebarWidth.value));
+  };
+  handle.addEventListener('pointermove', move);
+  handle.addEventListener('pointerup', stop);
+  handle.addEventListener('pointercancel', stop);
+}
+
 async function load() {
   const [opts, convs, projs, autos, ags] = await Promise.all([
     api.get<{ providers: ProviderOpt[]; mcpEndpoints: VsOpt[] }>('/api/chat/options'),
@@ -262,6 +304,9 @@ async function applyRoute() {
   }
 }
 onMounted(async () => {
+  // Restore the saved sidebar width before the first paint of the list, so it doesn't visibly jump.
+  const saved = Number(localStorage.getItem('kravn-sidebar-w'));
+  if (Number.isFinite(saved) && saved > 0) applySidebarWidth(saved);
   await load();
   await applyRoute();
 });
@@ -662,6 +707,7 @@ function automationById(id: string | null): ChatAutomation | undefined {
 }
 function resetAutomationSandbox() {
   automationRuns.value = [];
+  automationConversations.value = [];
   deliveries.value = [];
   selectedDeliveryId.value = null;
   leafSearch.value = '';
@@ -704,11 +750,21 @@ function openAutomation(s: ChatAutomation) {
 }
 async function loadAutomationRuns(id: string) {
   try {
-    automationRuns.value = (await api.get<{ runs: AutomationRun[] }>(`/api/chat/automations/${id}/runs`)).runs;
+    const res = await api.get<{ runs: AutomationRun[]; conversations: ChatConversation[] }>(`/api/chat/automations/${id}/runs`);
+    automationRuns.value = res.runs;
+    automationConversations.value = res.conversations ?? [];
   } catch {
     automationRuns.value = [];
+    automationConversations.value = [];
   }
 }
+
+/**
+ * The conversations this automation produced. They are kept OUT of the Chats list on purpose — a rule that
+ * fires a hundred times would bury every chat the user actually started — so this panel is where they live.
+ * Opening one and replying to it adopts it, and from then on it shows up in Chats like any other.
+ */
+const automationConversations = ref<ChatConversation[]>([]);
 
 // ── Received events: building the rule from what actually arrived ────────────
 // Nobody can write a filter or a template for a payload they've never seen, and they can't see one until the
@@ -1302,6 +1358,7 @@ async function logout() {
           <span>{{ t('nav.projects') }}</span>
           <button class="add" :title="t('nav.newProject')" @click="openNewProject">+</button>
         </div>
+        <div class="side-list side-list-cap">
         <div v-if="projects.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noProjects') }}</div>
         <div
           v-for="p in projects"
@@ -1331,12 +1388,15 @@ async function logout() {
             </div>
           </template>
         </div>
+        </div>
 
         <template v-if="agents.length">
           <div class="side-section" style="margin-top: 6px"><span>{{ t('nav.agents') }}</span></div>
+          <div class="side-list side-list-cap">
           <div v-for="a in agents" :key="a.id" class="conv-item" :title="a.description || a.name" @click="startFromAgent(a)">
             <Bot :size="15" :stroke-width="2" /> {{ a.name }}
             <small class="muted" style="display: block; font-size: 11px">{{ t('nav.agentOrg') }}</small>
+          </div>
           </div>
         </template>
 
@@ -1350,6 +1410,7 @@ async function logout() {
             @click="toggleTagFilter(tag)"
           >{{ tag }}</button>
         </div>
+        <div class="side-list side-list-grow">
         <div v-if="conversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noChatsYet') }}</div>
         <div v-else-if="filteredConversations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noChatsMatch') }}</div>
         <div
@@ -1377,11 +1438,13 @@ async function logout() {
             <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span><Trash2 :size="15" :stroke-width="2" /></span> {{ t('chatMenu.delete') }}</button>
           </div>
         </div>
+        </div>
 
         <div class="side-section" style="margin-top: 6px">
           <span>{{ t('nav.automations') }}</span>
           <button class="add" :title="t('nav.newAutomation')" @click="openAutomationNew()">+</button>
         </div>
+        <div class="side-list side-list-cap">
         <div v-if="automations.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noAutomations') }}</div>
         <div
           v-for="s in automations"
@@ -1393,12 +1456,14 @@ async function logout() {
           <span class="conv-item-title"><Clock :size="15" :stroke-width="2" /> {{ s.name }}<span v-if="!s.enabled" class="muted"> · {{ t('nav.paused') }}</span></span>
           <button class="conv-del" :title="t('chatMenu.deleteAutomation')" :aria-label="t('chatMenu.deleteAutomation')" @click.stop="deleteAutomation(s)"><Trash2 :size="16" :stroke-width="2" /></button>
         </div>
+        </div>
 
         <div class="side-section archived-toggle" style="margin-top: 6px" @click="toggleArchivedView">
           <span><Archive :size="15" :stroke-width="2" /> {{ t('nav.archived') }}<span v-if="archived.length"> ({{ archived.length }})</span></span>
           <span class="caret"><component :is="showArchived ? ChevronDown : ChevronRight" :size="14" :stroke-width="2" /></span>
         </div>
         <template v-if="showArchived">
+          <div class="side-list side-list-cap">
           <div v-if="archived.length === 0" class="muted" style="padding: 0.25rem 0.7rem; font-size: 13px">{{ t('nav.noArchived') }}</div>
           <div
             v-for="c in archived"
@@ -1414,10 +1479,20 @@ async function logout() {
               <button class="conv-menu-item danger" @click="deleteFromMenu(c)"><span><Trash2 :size="15" :stroke-width="2" /></span> {{ t('chatMenu.delete') }}</button>
             </div>
           </div>
+          </div>
         </template>
       </div>
       <div v-if="menuFor" class="menu-backdrop" @click="closeMenu"></div>
       <div v-if="projMenuFor" class="menu-backdrop" @click="closeProjMenu"></div>
+      <!-- Drag the right edge to resize; double-click restores the default. -->
+      <div
+        class="sidebar-resizer"
+        role="separator"
+        aria-orientation="vertical"
+        :aria-label="t('nav.resizeSidebar')"
+        @pointerdown="startSidebarResize"
+        @dblclick="resetSidebarWidth"
+      ></div>
       <div class="foot">
         <button class="foot-user" :title="t('settings.title')" @click="showSettings = true">
           <span class="foot-email muted">{{ auth.user?.email }}</span>
@@ -1873,7 +1948,13 @@ async function logout() {
 
         <!-- Run history: `last*` describes one run; an event automation can fire dozens of times a day. -->
         <div v-if="editingAutomationId && automationRuns.length" class="panel-card">
-          <h3>{{ t('chat.runs') }}</h3>
+          <h3>
+            {{ t('chat.runs') }}
+            <span class="muted" style="font-weight: 400">({{ automationRuns.length }})</span>
+          </h3>
+          <!-- These chats are deliberately absent from the Chats list, so this is where they are reachable
+               from. Replying inside one adopts it and it starts appearing there like any other. -->
+          <p class="muted" style="font-size: 12px; margin: 0 0 0.4rem">{{ t('chat.runsLiveHere', { n: automationConversations.length }) }}</p>
           <div style="display: flex; flex-direction: column; gap: 3px; font-size: 12px">
             <div v-for="r in automationRuns" :key="r.id" class="row" style="gap: 0.5rem; align-items: center">
               <span class="muted" style="min-width: 130px">{{ r.startedAt.replace('T', ' ').slice(0, 16) }}</span>

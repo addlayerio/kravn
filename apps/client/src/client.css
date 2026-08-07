@@ -1,7 +1,8 @@
 /* Client chat layout — builds on the shared @kravn/ui design tokens. */
 .chat-shell {
   display: grid;
-  grid-template-columns: 280px 1fr;
+  /* Driven by --sidebar-w, which the drag handle writes (persisted in localStorage). */
+  grid-template-columns: var(--sidebar-w, 280px) 1fr;
   grid-template-rows: minmax(0, 1fr);
   height: 100vh;
   overflow: hidden;
@@ -12,13 +13,56 @@
   display: flex;
   flex-direction: column;
   min-height: 0;
+  position: relative; /* anchors the resize handle to the right edge */
 }
-/* Only the conversation list scrolls; brand, new-chat and the footer stay put instead of
-   compressing when the window gets short. */
+
+/* ── Resize handle ──────────────────────────────────────────────────────────────
+   A hairline that widens its HIT area beyond its visible one: 6px is comfortable to grab,
+   1px is all you should see. It only tints on hover/drag. */
+.sidebar-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  width: 6px;
+  height: 100%;
+  cursor: col-resize;
+  z-index: 5;
+  background: transparent;
+  transition: background 120ms ease;
+}
+.sidebar-resizer:hover,
+body.resizing-sidebar .sidebar-resizer {
+  background: linear-gradient(to right, transparent 2px, var(--accent) 2px, var(--accent) 3px, transparent 3px);
+}
+/* While dragging, nothing should highlight as text and the cursor must not flicker over the thread. */
+body.resizing-sidebar {
+  user-select: none;
+  cursor: col-resize;
+}
+
+/* The sidebar's sections each scroll on their own. Previously the whole column was one scroller, so a
+   hundred chats pushed Automations and Archived a hundred rows down — the headings stayed reachable only
+   by scrolling past everything. Now every heading is always on screen and only the list under it moves. */
 .convs {
   flex: 1;
   min-height: 0;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+.side-list {
   overflow-y: auto;
+  overscroll-behavior: contain; /* scrolling to the end of a list doesn't start scrolling its neighbour */
+  min-height: 0;
+}
+/* Chats take whatever height is left over: it's the list that grows without bound. */
+.side-list-grow {
+  flex: 1 1 auto;
+}
+/* The others are capped, so no single section can push the rest off screen. */
+.side-list-cap {
+  flex: 0 1 auto;
+  max-height: 30vh;
 }
 .chat-sidebar > *:not(.convs) {
   flex-shrink: 0;
@@ -818,4 +862,55 @@
 }
 .mode-chip-x:hover {
   opacity: 1;
+}
+
+
+/* ── Scrollbars ─────────────────────────────────────────────────────────────────
+   Thin, capsule-shaped, in Kravn's amber. The track is the accent at its established
+   low-alpha tint (--accent-bg) so it reads as a faint guide line rather than a gutter,
+   and the thumb is the accent itself. Both tokens already flip with the theme, so this
+   stays legible on light and dark without a second rule. */
+.side-list,
+.convs,
+.thread,
+.project-panel,
+.leaf-list {
+  scrollbar-width: thin; /* Firefox */
+  scrollbar-color: var(--accent) transparent;
+}
+.side-list::-webkit-scrollbar,
+.convs::-webkit-scrollbar,
+.thread::-webkit-scrollbar,
+.project-panel::-webkit-scrollbar,
+.leaf-list::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+.side-list::-webkit-scrollbar-track,
+.convs::-webkit-scrollbar-track,
+.thread::-webkit-scrollbar-track,
+.project-panel::-webkit-scrollbar-track,
+.leaf-list::-webkit-scrollbar-track {
+  background: var(--accent-bg);
+  border-radius: 999px;
+}
+.side-list::-webkit-scrollbar-thumb,
+.convs::-webkit-scrollbar-thumb,
+.thread::-webkit-scrollbar-thumb,
+.project-panel::-webkit-scrollbar-thumb,
+.leaf-list::-webkit-scrollbar-thumb {
+  background: var(--accent);
+  border-radius: 999px;
+}
+.side-list::-webkit-scrollbar-thumb:hover,
+.convs::-webkit-scrollbar-thumb:hover,
+.thread::-webkit-scrollbar-thumb:hover,
+.project-panel::-webkit-scrollbar-thumb:hover,
+.leaf-list::-webkit-scrollbar-thumb:hover {
+  background: var(--accent-hover);
+}
+/* A scrollbar corner in the accent tint would read as a stray dot. */
+.side-list::-webkit-scrollbar-corner,
+.thread::-webkit-scrollbar-corner {
+  background: transparent;
 }

@@ -1185,9 +1185,15 @@ export class ChatRepo {
     await this.store.run('DELETE FROM chat_project_documents WHERE id = ? AND project_id = ?', [docId, projectId]);
   }
 
+  /**
+   * The user's own chats. Conversations an automation produced are excluded — they live under that automation's
+   * run history until the user replies in one, which adopts it (see `adoptConversation`). A rule firing a
+   * hundred times must never bury the chats a person actually started.
+   */
   async listConversations(userId: string, opts: { archived?: boolean } = {}): Promise<ChatConversation[]> {
     // Default view hides archived chats and pins pinned ones to the top; the "archived" scope lists only those.
-    const where = opts.archived ? 'archived = 1' : '(archived IS NULL OR archived = 0)';
+    const owned = 'automation_id IS NULL';
+    const where = (opts.archived ? 'archived = 1' : '(archived IS NULL OR archived = 0)') + ` AND ${owned}`;
     const order = opts.archived ? 'updated_at DESC, id DESC' : 'pinned DESC, updated_at DESC, id DESC';
     const rows = await this.store.all<any>(`SELECT * FROM chat_conversations WHERE user_id = ? AND ${where} ORDER BY ${order}`, [userId]);
     return rows.map(mapConversation);
@@ -1198,14 +1204,34 @@ export class ChatRepo {
   }
   async createConversation(userId: string, c: {
     id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string; agentId?: string | null;
+    /** Set by the automation runner: files the conversation under that rule instead of the user's Chats. */
+    automationId?: string | null;
   }): Promise<ChatConversation> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, agent_id, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?)`,
-      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.agentId ?? null, ts, ts],
+      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, agent_id, automation_id, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
+      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.agentId ?? null, c.automationId ?? null, ts, ts],
     );
     return (await this.getConversation(userId, c.id))!;
+  }
+  /**
+   * Adopt an automation's conversation as the user's own — called when they send their own message into it.
+   * Idempotent and owner-scoped; a conversation that was never an automation's is untouched.
+   */
+  async adoptConversation(userId: string, id: string): Promise<void> {
+    await this.store.run(
+      'UPDATE chat_conversations SET automation_id = NULL, updated_at = ? WHERE id = ? AND user_id = ? AND automation_id IS NOT NULL',
+      [now(), id, userId],
+    );
+  }
+  /** Conversations produced by one automation, newest first — the list shown on the automation's page. */
+  async listConversationsForAutomation(userId: string, automationId: string, limit = 50): Promise<ChatConversation[]> {
+    const rows = await this.store.all<any>(
+      'SELECT * FROM chat_conversations WHERE user_id = ? AND automation_id = ? ORDER BY created_at DESC, id DESC',
+      [userId, automationId],
+    );
+    return rows.slice(0, limit).map(mapConversation);
   }
   /** User-scoped rename (inline title edit) — only the owner can rename their conversation. */
   async renameConversation(userId: string, id: string, title: string): Promise<void> {
@@ -1526,6 +1552,7 @@ function mapConversation(r: any): ChatConversation {
     vserverSlug: r.vserver_slug ?? '',
     tags: parseTags(r.tags),
     agentId: r.agent_id ?? null,
+    automationId: r.automation_id ?? null,
     pinned: bool(r.pinned),
     archived: bool(r.archived),
     webSearch: bool(r.web_search),

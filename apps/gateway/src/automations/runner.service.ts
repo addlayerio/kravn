@@ -3,6 +3,7 @@ import type { Repos } from '../db/repos.js';
 import type { ChatService } from '../chat/chat.service.js';
 import type { ChatAutomation } from '@kravn/contracts';
 import { toAuthUser } from '../auth/auth.service.js';
+import type { AuthUser } from '../auth/auth.service.js';
 import { newId } from '../crypto.js';
 
 /** Whole-payload placeholder budget. Webhook bodies routinely run to tens of KB; pasting one raw burns tokens
@@ -146,26 +147,38 @@ export class AutomationRunner {
   async run(automation: ChatAutomation, userId: string, trigger: string, payload?: unknown): Promise<{ runId: string; conversationId: string | null; ok: boolean }> {
     const runId = newId();
     await this.d.repos.automations.startRun(runId, automation.id, userId, trigger);
+    // Held outside the try so a FAILED run still records which conversation it opened. The failing run is the
+    // one worth opening — it holds the prompt and whatever the agent managed to do before it broke — and a
+    // conversation with no run pointing at it would also be invisible to the Chats-list filter.
+    let conversationId: string | null = null;
     try {
-      const conversationId = await this.execute(automation, userId, trigger, payload);
+      const actor = await this.resolveOwner(userId);
+      conversationId = await this.openConversation(automation, actor, trigger);
+      // `automated` keeps this turn from adopting the conversation: the runner sends AS the owner, so the flag
+      // is the only thing separating the machine's own message from the person later replying to it.
+      await this.d.chat.send(actor, conversationId, renderPrompt(automation, payload), [], undefined, { automated: true });
       await this.d.repos.automations.finishRun(runId, 'ok', null, conversationId);
       await this.d.repos.automations.finish(automation.id, 'ok', null, conversationId);
       return { runId, conversationId, ok: true };
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      await this.d.repos.automations.finishRun(runId, 'error', msg.slice(0, 500), null);
-      await this.d.repos.automations.finish(automation.id, 'error', msg.slice(0, 500), null);
+      await this.d.repos.automations.finishRun(runId, 'error', msg.slice(0, 500), conversationId);
+      await this.d.repos.automations.finish(automation.id, 'error', msg.slice(0, 500), conversationId);
       this.d.log.warn({ err, automation: automation.id, trigger }, 'automation run failed');
-      return { runId, conversationId: null, ok: false };
+      return { runId, conversationId, ok: false };
     }
   }
 
-  private async execute(automation: ChatAutomation, userId: string, trigger: string, payload: unknown): Promise<string> {
+  /** The automation runs as its creator — their role and teams are the ceiling on everything it can reach. */
+  private async resolveOwner(userId: string): Promise<AuthUser> {
     const user = await this.d.repos.users.getById(userId);
     if (!user) throw new Error('Automation owner no longer exists.');
     if (user.disabled) throw new Error('Automation owner is disabled.');
     const teams = await this.d.repos.teams.teamIdsForUser(user.id);
-    const actor = toAuthUser(user, teams); // run with the owner's role + team access
+    return toAuthUser(user, teams);
+  }
+
+  private async openConversation(automation: ChatAutomation, actor: AuthUser, trigger: string): Promise<string> {
     const convId = newId();
     const stamp = new Date().toISOString().replace('T', ' ').slice(0, 16);
     const icon = trigger === 'event' ? '⚡' : '⏱';
@@ -178,8 +191,9 @@ export class AutomationRunner {
       vserverSlug: automation.vserverSlug || '',
       // Run as the org Agent if one was chosen — its instructions + tool filter apply, re-checked live in send().
       agentId: automation.agentId || null,
+      // Files this conversation under the automation rather than the user's Chats. Cleared if they reply in it.
+      automationId: automation.id,
     });
-    await this.d.chat.send(actor, convId, renderPrompt(automation, payload));
     return convId;
   }
 }
