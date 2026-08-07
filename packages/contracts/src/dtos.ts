@@ -182,7 +182,7 @@ export type UpdateAutomationRequest = z.infer<typeof updateAutomationSchema>;
 
 /**
  * Try an automation against a sample payload. `dryRun` (the default) renders the prompt and reports whether the
- * filter matched WITHOUT spending a model call — the "does my template work" loop, with no ticket required.
+ * filter matched WITHOUT spending a model call — the "does my template work" loop, without waiting for a real event.
  */
 export const testAutomationSchema = z.object({
   payload: z.unknown().optional(),

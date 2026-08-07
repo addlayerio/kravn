@@ -640,8 +640,8 @@ const sf = reactive({
  * two separate reasons: they're code (identical in every language), and a literal `}}` inside a template
  * interpolation closes it early — so the braces have to reach the DOM from a JS string.
  */
-const TEMPLATE_SAMPLE = 'Ticket {{ issue.key }}: {{ issue.fields.summary }}';
-const TPL_FIELD_SAMPLE = '{{ issue.fields.summary }}';
+const TEMPLATE_SAMPLE = 'New {{ event.type }}: {{ data.title }}';
+const TPL_FIELD_SAMPLE = '{{ data.title }}';
 const TPL_PAYLOAD_SAMPLE = '{{ payload }}';
 
 /** Run history + the payload sandbox, both scoped to the automation currently open in the editor. */
@@ -679,7 +679,7 @@ function openAutomationNew(projectId = '') {
   Object.assign(sf, {
     name: '', prompt: '', agentId: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
     vserverSlug: '', projectId, kind: 'cron', cron: '0 9 * * 1', runAt: '',
-    timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC', enabled: true,
+    timezone: browserTimezone(), enabled: true,
     eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60,
   });
   automationView.value = true;
@@ -717,7 +717,7 @@ async function loadAutomationRuns(id: string) {
 const deliveries = ref<AutomationDelivery[]>([]);
 const selectedDeliveryId = ref<string | null>(null);
 const leafSearch = ref('');
-/** A Jira body has hundreds of leaves; past this the list stops being a picker and becomes a wall. */
+/** Real webhook bodies run to hundreds of leaves; past this the list stops being a picker and becomes a wall. */
 const MAX_LEAVES = 300;
 
 async function loadAutomationDeliveries(id: string) {
@@ -745,7 +745,7 @@ function flattenJson(value: unknown, prefix: string, out: { path: string; value:
   if (depth > 8) return; // deep enough for any real webhook; stops a pathological body from hanging the tab
   const join = (k: string | number) => (prefix ? `${prefix}.${k}` : String(k));
   if (Array.isArray(value)) {
-    // Only the first few entries: element 47 of a changelog is never the field someone is looking for.
+    // Only the first few entries: element 47 of a long list is never the field someone is looking for.
     value.slice(0, 5).forEach((v, i) => flattenJson(v, join(i), out, depth + 1));
     return;
   }
@@ -878,6 +878,9 @@ async function saveAutomation() {
     await loadAutomations();
     editingAutomationId.value = res.automation.id;
     sf.eventSecret = '';
+    // Saving is what turns "save first" into a live URL, so pull whatever has already arrived at it — an
+    // automation switched back to event mode can have deliveries from an earlier stint.
+    if (sf.kind === 'event') void loadAutomationDeliveries(res.automation.id);
   } catch (e) {
     automationError.value = e instanceof ApiError ? e.message : t('chat.couldNotSaveAutomation');
   } finally {
@@ -1027,6 +1030,69 @@ function modelsFor(providerId: string, current?: string): string[] {
   const list = providers.value.find((p) => p.id === providerId)?.models ?? [];
   return current && !list.includes(current) ? [current, ...list] : list;
 }
+
+/** The browser's own zone, which is also the default for a new automation. */
+function browserTimezone(): string {
+  try {
+    return Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+  } catch {
+    return 'UTC';
+  }
+}
+
+/** Label a zone with its current UTC offset: "America/Sao_Paulo" is unambiguous, "(GMT-3)" is what people
+ *  actually recognise. A zone ICU lists but can't format is shown bare rather than dropped. */
+function timezoneLabel(zone: string, now: Date): string {
+  try {
+    const parts = new Intl.DateTimeFormat('en', { timeZone: zone, timeZoneName: 'shortOffset' }).formatToParts(now);
+    const offset = parts.find((p) => p.type === 'timeZoneName')?.value ?? '';
+    return offset ? `${zone} (${offset})` : zone;
+  } catch {
+    return zone;
+  }
+}
+
+/**
+ * Every IANA time zone, from the browser's own ICU data — no bundled list to go stale when a country changes
+ * its rules.
+ *
+ * `Intl.supportedValuesOf('timeZone')` returns only **canonical** zones, and which names are canonical depends
+ * on the engine's ICU version. In practice that means the list can omit `UTC` entirely and render familiar
+ * zones under their pre-rename identifiers (`Asia/Calcutta`, `America/Buenos_Aires`). So the values this app
+ * can actually hold — `UTC`, which is the server-side default, and the browser's own zone — are pinned at the
+ * top regardless of whether ICU volunteered them; otherwise a user could be unable to *select* the very value
+ * their automation already has.
+ *
+ * Cached after the first build. On a browser without `supportedValuesOf` it comes back empty and the field
+ * falls back to the plain text input it used to be.
+ */
+let timezoneCache: { value: string; label: string }[] | null = null;
+function allTimezones(): { value: string; label: string }[] {
+  if (timezoneCache) return timezoneCache;
+  const supported = (Intl as unknown as { supportedValuesOf?: (k: string) => string[] }).supportedValuesOf;
+  if (typeof supported !== 'function') return (timezoneCache = []);
+  let zones: string[];
+  try {
+    zones = supported('timeZone');
+  } catch {
+    return (timezoneCache = []);
+  }
+  const now = new Date();
+  const pinned = [...new Set(['UTC', browserTimezone()])];
+  const rest = zones.filter((z) => !pinned.includes(z));
+  timezoneCache = [...pinned, ...rest].map((zone) => ({ value: zone, label: timezoneLabel(zone, now) }));
+  return timezoneCache;
+}
+
+/** The picker's options, with the stored value kept even if this browser's ICU doesn't list it (same rule as
+ *  models): editing an automation must never silently rewrite a setting the user didn't touch. A computed, not
+ *  a helper, so the ~400-entry scan runs once per change instead of twice per render. */
+const timezoneOptions = computed(() => {
+  const list = allTimezones();
+  if (!list.length) return [];
+  const current = sf.timezone;
+  return current && !list.some((z) => z.value === current) ? [{ value: current, label: current }, ...list] : list;
+});
 
 function openNew(projectId = '') {
   newError.value = '';
@@ -1655,7 +1721,16 @@ async function logout() {
               <small class="muted">{{ t('chat.cronHelp1') }} <code>*/30 * * * *</code> {{ t('chat.cronHelp2') }} <code>0 9 * * 1</code> {{ t('chat.cronHelp3') }}</small>
             </div>
             <div v-else class="field"><label>{{ t('chat.runAt') }}</label><input v-model="sf.runAt" type="datetime-local" /></div>
-            <div class="field"><label>{{ t('chat.timezone') }}</label><input v-model="sf.timezone" placeholder="UTC" /></div>
+            <div class="field">
+              <label>{{ t('chat.timezone') }}</label>
+              <!-- Falls back to the free-text field if this browser can't enumerate zones, so the setting is
+                   never unreachable. -->
+              <select v-if="timezoneOptions.length" v-model="sf.timezone">
+                <option v-for="z in timezoneOptions" :key="z.value" :value="z.value">{{ z.label }}</option>
+              </select>
+              <input v-else v-model="sf.timezone" placeholder="UTC" />
+              <small class="muted">{{ t('chat.timezoneHint') }}</small>
+            </div>
           </template>
 
           <!-- By event: the URL only exists once the automation has been saved (it carries the token). -->
@@ -1688,10 +1763,16 @@ async function logout() {
             </div>
 
             <!-- What actually arrived. This block is the anchor for the two fields below it: rather than
-                 writing paths from memory, you click the fields you can see in a real body. -->
-            <div v-if="editingAutomationId" class="field">
+                 writing paths from memory, you click the fields you can see in a real body.
+                 It is rendered in ALL THREE states, never hidden — on a brand-new automation this section is
+                 the only thing that explains where the two fields below get their values from, so hiding it
+                 until the first event arrives withheld the explanation exactly when it was needed most. -->
+            <div class="field">
               <label>{{ t('chat.receivedEvents') }}</label>
-              <p v-if="!deliveries.length" class="muted" style="font-size: 12px; margin: 0.2rem 0 0">
+              <p v-if="!editingAutomationId" class="muted" style="font-size: 12px; margin: 0.2rem 0 0">
+                {{ t('chat.saveFirstToSeeEvents') }}
+              </p>
+              <p v-else-if="!deliveries.length" class="muted" style="font-size: 12px; margin: 0.2rem 0 0">
                 {{ t('chat.noEventsYet') }}
                 <a href="#" @click.prevent="loadAutomationDeliveries(editingAutomationId!)">{{ t('chat.checkAgain') }}</a>
               </p>
@@ -1726,7 +1807,7 @@ async function logout() {
 
             <div class="field">
               <label>{{ t('chat.eventFilter') }}</label>
-              <textarea v-model="sf.eventFilter" rows="2" placeholder="webhookEvent=jira:issue_created"></textarea>
+              <textarea v-model="sf.eventFilter" rows="2" placeholder="event.type=created"></textarea>
               <small class="muted">{{ t('chat.eventFilterHint') }}</small>
             </div>
             <div class="field">
@@ -1960,7 +2041,7 @@ async function logout() {
 </template>
 
 <style scoped>
-/* The received-event field picker. Fixed height with its own scroll: a Jira body has hundreds of leaves and
+/* The received-event field picker. Fixed height with its own scroll: a real body has hundreds of leaves and
    the form around it must stay navigable. */
 .leaf-list {
   margin-top: 0.4rem;

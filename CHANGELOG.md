@@ -16,19 +16,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
 
 - 📣 **Automations — an agent, an instruction, and a trigger.** "Scheduled tasks" is now **Automations**, and the
   trigger is pluggable: **by time** (cron / one-off, exactly as before) or, new, **by event** — an inbound
-  webhook. Every automation gets its own URL (`POST /api/hooks/<token>`); paste it into Jira, GitHub or anything
-  that can call one, and the request body becomes the event your agent reacts to. The authoring surface is a
-  sentence, not a flow diagram: *"when a ticket is created, read the linked code on GitHub and set the story
-  points"* is one automation with two tools behind it. Existing scheduled tasks carry over untouched — same
-  rows, same next-run times, nothing to reconfigure.
+  webhook. Every automation gets its own URL (`POST /api/hooks/<token>`); paste it into anything that can call
+  a URL, and the request body becomes the event your agent reacts to. Nothing is tied to a particular product —
+  if it can send a webhook it can start an automation. The authoring surface is a sentence, not a flow diagram:
+  *"when a record is created over there, look up what it relates to and fill in the missing field"* is one
+  automation with two tools behind it. Existing scheduled tasks carry over untouched — same rows, same next-run
+  times, nothing to reconfigure.
 
   **You configure it by pointing at real data, not by reading someone else's JSON schema.** Kravn keeps the last
   events received at that URL — including the ones it filtered out and the ones that arrived while the
   automation was paused — and lays every field of the body out, searchable. Click **Filter** on a field for
   "only run when this has this value", or **Tell** to include it in what the agent is told; both write into
-  boxes that stay fully editable. So the real flow is: save, paste the URL into Jira, create one test ticket,
-  come back and click the fields that showed up. It's also the answer to *"why didn't my automation run"* — a
-  dropped delivery is stored alongside the exact condition that dropped it.
+  boxes that stay fully editable. So the real flow is: save, paste the URL into the sending system, do one
+  action there, come back and click the fields that showed up. It's also the answer to *"why didn't my
+  automation run"* — a dropped delivery is stored alongside the exact condition that dropped it.
 
   Three optional controls turn one URL into a precise rule, and **both of the fiddly ones default to something
   sensible**: an empty filter runs for every event, and an empty template hands the agent the whole event.
@@ -58,8 +59,9 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   role, their teams, their tool entitlements, re-evaluated live on every turn — so an event-triggered run is
   governed and audited identically to that person typing the prompt in chat. Tools held for maker-checker
   approval stay held. The ingress itself is authenticated by the unguessable URL token plus an optional shared
-  secret or **HMAC-SHA256 signature over the raw body** (what GitHub and Jira send when you set a webhook
-  secret); secrets are stored encrypted and never returned by the API, and rotating the URL revokes every sender
+  secret or **HMAC-SHA256 signature over the raw body** (what most systems send once you set a webhook secret;
+  every common signature header is accepted, so a shim is rarely needed). Secrets are stored encrypted and never
+  returned by the API, and rotating the URL revokes every sender
   at once. Duplicate deliveries are recognised and dropped, so a retrying sender never runs the agent twice, and
   the ingress answers in milliseconds and runs the agent detached — a slow model can't become a webhook timeout.
 

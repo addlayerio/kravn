@@ -54,11 +54,12 @@ what you want done in a sentence, and choose what starts it:
 
 - **By time** — a cron expression or a one-off date.
 - **By event** — an inbound webhook. Each automation gets its own URL (`/api/hooks/<token>`); you paste it into
-  Jira, GitHub, or anything else that can call one, and the request body becomes the event the agent reacts to.
+  any system that can call a URL, and the request body becomes the event the agent reacts to.
 
-The point is that the *authoring* is a sentence, not a flow. "When a ticket is created, read the linked code on
-GitHub and set the story points" is one automation with two tools behind it — the kind of thing that is a
-multi-step diagram anywhere else.
+The point is that the *authoring* is a sentence, not a flow. "When a record is created over there, look up what
+it relates to and fill in the missing field" is one automation with two tools behind it — the kind of thing that
+is a multi-step diagram anywhere else. Nothing about it is tied to a particular product: if it can send a
+webhook, it can start an automation, and whatever tools the agent holds are what it can act on.
 
 ### Shaping the event — starting from what actually arrived
 
@@ -67,7 +68,7 @@ So Kravn keeps **the last events received at that URL** — including the ones i
 while the automation was paused — and the editor builds the rule from them:
 
 1. Save the automation and paste its URL into the sending system.
-2. Do one action there (create a test ticket, push a commit).
+2. Do one action there — whatever makes that system fire.
 3. Come back: the event is listed, with every field of its body laid out and searchable.
 4. Click **Filter** on a field to say "only run when this has this value", or **Tell** to include it in what
    the agent is told. Both write into the boxes below, which stay fully editable.
@@ -80,10 +81,10 @@ The three controls themselves:
 
 - **Run only for some events** — one `path=value` condition per line (use `!=` to negate); all must match or
   the delivery is acknowledged and dropped. Leave it empty and every event runs. One URL usually receives
-  several kinds of event, so this is what makes `webhookEvent=jira:issue_created` a rule rather than a firehose.
+  several kinds of event, so this is what turns one URL into a rule rather than a firehose.
 - **What to tell the agent about the event** — turns the body into the prompt.
-  <span v-pre>`{{ issue.fields.summary }}`</span> reads any field by path, <span v-pre>`{{ payload }}`</span>
-  drops in the whole thing. Leave it empty and the agent receives the entire event.
+  <span v-pre>`{{ data.title }}`</span> reads any field by path, <span v-pre>`{{ payload }}`</span> drops in the
+  whole thing. Leave it empty and the agent receives the entire event.
 - **Max runs per hour** — the loop backstop. If the agent writes back to the source and that fires the webhook
   again, this bounds the blast radius. Only deliveries that actually start a run count against it.
 
@@ -98,11 +99,12 @@ re-evaluated on every turn. A webhook can start work; it can never widen what th
 If a mutating tool is held for [maker-checker approval](/learn/mcp-governance), it is still held when an
 automation calls it.
 
-The webhook endpoint is deliberately unauthenticated in the session sense — the caller is Jira, not a Kravn
-user. What stands in for a session is the unguessable token in the URL, plus an optional shared secret or, better,
-an **HMAC-SHA256 signature** over the raw body (exactly what GitHub and Jira send when you configure a webhook
-secret). Secrets are stored encrypted and never returned by the API; rotating the URL revokes every sender at
-once. Duplicate deliveries are recognised and dropped, so a retrying sender never runs the agent twice.
+The webhook endpoint is deliberately unauthenticated in the session sense — the caller is the sending system,
+not a Kravn user. What stands in for a session is the unguessable token in the URL, plus an optional shared
+secret or, better, an **HMAC-SHA256 signature** over the raw body (what most systems send once you configure a
+webhook secret; Kravn accepts every common signature header, so a shim is rarely needed). Secrets are stored
+encrypted and never returned by the API; rotating the URL revokes every sender at once. Duplicate deliveries
+are recognised and dropped, so a retrying sender never runs the agent twice.
 
 ## Why it matters
 

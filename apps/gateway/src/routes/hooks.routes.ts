@@ -6,8 +6,8 @@ import { newId } from '../crypto.js';
 import { evaluateFilter } from '../automations/runner.service.js';
 
 /**
- * Signature headers, in the order we trust them. GitHub sends `x-hub-signature-256`; Jira and Bitbucket send
- * `x-hub-signature`; the rest are common enough to be worth accepting so an operator rarely needs a shim.
+ * Signature headers, in the order we trust them. There is no single standard, so this is the union of what the
+ * common senders emit — accepting all of them means an operator rarely has to put a shim in front of Kravn.
  */
 const SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-hub-signature', 'x-signature-256', 'x-kravn-signature'];
 /** Plain shared-secret headers, for senders that can add a header but can't sign. */
@@ -44,8 +44,8 @@ function safeEqual(a: string, b: string): boolean {
 }
 
 /**
- * Verify an HMAC-SHA256 signature over the RAW body. Accepts both `sha256=<hex>` (GitHub/Jira style) and a
- * bare hex digest. The raw body is required — re-serializing the parsed JSON would change the bytes and every
+ * Verify an HMAC-SHA256 signature over the RAW body. Accepts both the `sha256=<hex>` prefix most senders use
+ * and a bare hex digest. The raw body is required — re-serializing the parsed JSON would change the bytes and every
  * signature would fail.
  */
 function verifyHmac(rawBody: string, secret: string, provided: string): boolean {
@@ -58,7 +58,7 @@ function verifyHmac(rawBody: string, secret: string, provided: string): boolean 
  * **Public webhook ingress** — the event trigger for automations.
  *
  * `POST /api/hooks/:token` starts the automation that owns `:token`, with the request body as the event
- * payload. Deliberately unauthenticated in the session sense: the caller is Jira or GitHub, not a Kravn user.
+ * payload. Deliberately unauthenticated in the session sense: the caller is the sending system, not a Kravn user.
  * What stands in for a session is (a) the unguessable token in the URL, (b) an optional shared secret or HMAC
  * signature, and (c) the fact that the run executes as the automation's OWNER — so the owner's role, teams and
  * tool entitlements remain the hard ceiling on anything the agent can do. A webhook can start work; it can
@@ -139,9 +139,9 @@ export function hookRoutes(app: FastifyInstance, s: Services): void {
     // stops. A per-automation ceiling bounds that blast radius regardless of which integration caused it.
     //
     // Counted LAST, so only deliveries that actually start a run consume the budget. Senders often can't be
-    // narrowed to one event type — subscribing to every Jira issue event and filtering down to `issue_created`
-    // is the normal shape — and charging those filtered deliveries would exhaust the ceiling on traffic that
-    // never costs a model call.
+    // narrowed to one event type at the source — subscribing to everything and filtering down here is the normal
+    // shape — and charging those filtered deliveries would exhaust the ceiling on traffic that never costs a
+    // model call.
     if (automation.maxRunsPerHour > 0) {
       const { count } = await s.sharedStore.incr(`hookrate:${automation.id}`, 3_600);
       if (count > automation.maxRunsPerHour) {

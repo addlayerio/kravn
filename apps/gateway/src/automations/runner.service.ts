@@ -5,13 +5,14 @@ import type { ChatAutomation } from '@kravn/contracts';
 import { toAuthUser } from '../auth/auth.service.js';
 import { newId } from '../crypto.js';
 
-/** Whole-payload placeholder budget. A Jira webhook is ~50 KB of JSON; pasting it raw burns tokens and buries the ask. */
+/** Whole-payload placeholder budget. Webhook bodies routinely run to tens of KB; pasting one raw burns tokens
+ *  and buries the actual ask under boilerplate the agent doesn't need. */
 const MAX_PAYLOAD_CHARS = 8_000;
 /** Cap for a single `{{ field }}` substitution, so one giant description can't blow out the prompt either. */
 const MAX_FIELD_CHARS = 2_000;
 
 /**
- * Resolve a dot path against the payload: `issue.fields.summary`, `changelog.items.0.toString`.
+ * Resolve a dot path against the payload: `data.title`, `changes.items.0.field` — any shape a sender emits.
  * Returns undefined for anything missing — a template that references a field the sender didn't send
  * renders as empty rather than throwing a delivery away.
  */
@@ -76,7 +77,7 @@ export interface FilterResult {
 /**
  * Evaluate the automation's filter: one `path=value` (or `path!=value`) condition per line, ALL must hold.
  * An empty filter matches everything. Comparison is string equality on the trimmed values, case-insensitive —
- * enough to gate `webhookEvent=jira:issue_created` without dragging in an expression language.
+ * enough to gate on an event type or a status without dragging in an expression language.
  */
 export function evaluateFilter(filter: string, payload: unknown): FilterResult {
   const lines = (filter ?? '').split('\n').map((l) => l.trim()).filter((l) => l && !l.startsWith('#'));

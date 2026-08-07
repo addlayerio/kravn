@@ -363,7 +363,7 @@ export const chatAutomationSchema = z.object({
   payloadTemplate: z.string().default(''),
   /**
    * Optional gate, one `path=value` condition per line — ALL must match or the delivery is acknowledged and
-   * dropped. This is what keeps one URL per event type honest (e.g. `webhookEvent=jira:issue_created`).
+   * dropped. This is what narrows one URL down to the events you actually care about (e.g. `event.type=created`).
    */
   eventFilter: z.string().default(''),
   /** Runaway/loop backstop: deliveries past this many runs in a rolling hour are rejected (429). 0 = unlimited. */
