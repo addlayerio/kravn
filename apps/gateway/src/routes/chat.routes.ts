@@ -280,6 +280,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       eventSecretEncrypted: dto.eventSecret ? s.encryptor.encrypt(dto.eventSecret) : '',
       payloadTemplate: dto.payloadTemplate ?? '', eventFilter: dto.eventFilter ?? '',
       maxRunsPerHour: dto.maxRunsPerHour ?? 60,
+      historyLimit: dto.historyLimit ?? 10,
     });
     return reply.code(201).send({ automation });
   });

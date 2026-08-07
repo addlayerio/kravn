@@ -166,6 +166,15 @@ export class AutomationRunner {
       await this.d.repos.automations.finish(automation.id, 'error', msg.slice(0, 500), conversationId);
       this.d.log.warn({ err, automation: automation.id, trigger }, 'automation run failed');
       return { runId, conversationId, ok: false };
+    } finally {
+      // Trim on the way out, success or failure. This is the only part of an automation that grows without
+      // bound — a rule firing a few hundred times a day accumulates a conversation and its messages per fire.
+      // Best-effort: housekeeping must never turn into the reason a run is reported as failed.
+      try {
+        await this.d.repos.automations.pruneRuns(automation.id, automation.historyLimit);
+      } catch (err) {
+        this.d.log.warn({ err, automation: automation.id }, 'could not prune automation history');
+      }
     }
   }
 

@@ -1244,8 +1244,26 @@ const chatConversationAutomation: Migration = {
   },
 };
 
+// How much history each automation keeps. Runs, the conversations they opened and the received deliveries all
+// grow with every fire; at a few hundred runs a day that is the only part of an automation that is unbounded.
+// A per-automation count (default 10) bounds all three, and the owner can raise it where the trail matters.
+const chatAutomationHistoryLimit: Migration = {
+  name: '042_chat_automation_history_limit',
+  async up(knex) {
+    if (!(await knex.schema.hasTable('chat_automations'))) return;
+    if (!(await knex.schema.hasColumn('chat_automations', 'history_limit'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.integer('history_limit').notNullable().defaultTo(10));
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_automations')) && (await knex.schema.hasColumn('chat_automations', 'history_limit'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.dropColumn('history_limit'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

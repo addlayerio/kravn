@@ -173,6 +173,8 @@ export const createAutomationSchema = z.object({
   payloadTemplate: z.string().max(20_000).optional(),
   eventFilter: z.string().max(4_000).optional(),
   maxRunsPerHour: z.number().int().min(0).max(10_000).optional(),
+  /** Runs + deliveries kept per automation; older ones are deleted as new ones arrive. */
+  historyLimit: z.number().int().min(1).max(100).optional(),
   /** Mint a fresh URL token, revoking every sender configured against the old one. */
   rotateToken: z.boolean().optional(),
 });

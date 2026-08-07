@@ -53,6 +53,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   conversations already accumulated are filed retroactively from the run history, so the fix applies to the
   mess you already have, not just to new runs.
 
+- 📣 **Automations keep a bounded history (default: the last 10).** Runs, the conversations they opened and the
+  received events were the only part of an automation that grew forever — a rule firing a few hundred times a
+  day accumulated a conversation and all its messages per fire. Each automation now keeps its most recent N of
+  each (1–100, set per automation) and deletes the rest as new ones arrive; lowering the number prunes down
+  immediately. **A conversation you replied to is never pruned** — adopting it made it yours, and housekeeping
+  for machine history must never delete a person's chat.
+
 - 🐛 **A failed run now tells you where to look.** When a run broke, the run row recorded no conversation —
   even though the conversation had been opened and held the prompt plus whatever the agent managed to do before
   it failed. The one run you most want to open was the one you couldn't. The link is now recorded whether the

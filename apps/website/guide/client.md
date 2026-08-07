@@ -87,6 +87,10 @@ The three controls themselves:
   whole thing. Leave it empty and the agent receives the entire event.
 - **Max runs per hour** — the loop backstop. If the agent writes back to the source and that fires the webhook
   again, this bounds the blast radius. Only deliveries that actually start a run count against it.
+- **History to keep** (default 10) — the last N runs, the conversations they opened and the last N received
+  events. Older ones are deleted as new ones arrive. This is the only part of an automation that grows without
+  bound: a rule firing a few hundred times a day would otherwise accumulate a conversation and its messages per
+  fire, forever. A conversation you replied to is yours and is never pruned.
 
 A **sample-payload sandbox** sits under the editor: load a received event (or paste one), and a dry run renders
 the exact prompt and reports the filter verdict *without* spending a model call.

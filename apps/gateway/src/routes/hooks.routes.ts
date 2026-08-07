@@ -114,7 +114,7 @@ export function hookRoutes(app: FastifyInstance, s: Services): void {
         const truncated = pretty.length > MAX_STORED_PAYLOAD;
         await s.repos.automations.recordDelivery(newId(), automation.id, userId, {
           outcome, reason, payload: truncated ? pretty.slice(0, MAX_STORED_PAYLOAD) : pretty, truncated,
-        });
+        }, automation.historyLimit);
       } catch (err) {
         s.log.warn({ err, automation: automation.id }, 'could not store the received delivery');
       }

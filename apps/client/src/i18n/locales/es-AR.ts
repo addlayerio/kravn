@@ -148,6 +148,8 @@ export default {
     "payloadTemplateHint": "Vacío = el agente recibe el evento completo. Tocá Contar en un campo de abajo para agregarlo, o escribí lo tuyo:",
     "maxRunsPerHour": "Máx. ejecuciones por hora",
     "maxRunsPerHourHint": "Freno ante loops — si el agente escribe en el origen y eso vuelve a disparar este webhook. 0 = sin límite.",
+    "historyLimit": "Historial a conservar",
+    "historyLimitHint": "Las últimas N corridas (con los chats que abrieron) y los últimos N eventos recibidos. Lo más viejo se borra solo — es la única parte de una automatización que crece para siempre. Un chat al que le respondiste es tuyo y no se borra nunca.",
     "tryPayload": "Probar con un payload de ejemplo",
     "tryPayloadPlaceholder": "Pegá un cuerpo de evento de ejemplo en JSON",
     "tryPayloadHint": "La prueba en seco arma el prompt y evalúa el filtro sin llamar al modelo.",

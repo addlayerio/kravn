@@ -148,6 +148,8 @@ export default {
     "payloadTemplateHint": "Vazio = o agente recebe o evento completo. Clique em Contar num campo abaixo para o adicionar, ou escreva o seu:",
     "maxRunsPerHour": "Máx. execuções por hora",
     "maxRunsPerHourHint": "Travão contra ciclos — se o agente escreve na origem e isso volta a acionar este webhook. 0 = sem limite.",
+    "historyLimit": "Histórico a manter",
+    "historyLimitHint": "As últimas N execuções (com as conversas que abriram) e os últimos N eventos recebidos. O mais antigo é apagado automaticamente — é a única parte de uma automação que cresce para sempre. Uma conversa a que respondeu é sua e nunca é apagada.",
     "tryPayload": "Testar com um payload de exemplo",
     "tryPayloadPlaceholder": "Cole um corpo de evento de exemplo em JSON",
     "tryPayloadHint": "A execução a seco constrói o prompt e avalia o filtro sem chamar o modelo.",

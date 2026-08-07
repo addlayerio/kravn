@@ -148,6 +148,8 @@ export default {
     "payloadTemplateHint": "Empty = the agent gets the whole event. Click Tell on a field below to add it, or write your own:",
     "maxRunsPerHour": "Max runs per hour",
     "maxRunsPerHourHint": "Backstop against loops — if the agent writes back to the source and that fires this webhook again. 0 = unlimited.",
+    "historyLimit": "History to keep",
+    "historyLimitHint": "The last N runs (with the chats they opened) and the last N received events. Older ones are deleted automatically — this is the only part of an automation that grows forever. A chat you replied to is yours and is never deleted.",
     "tryPayload": "Try a sample payload",
     "tryPayloadPlaceholder": "Paste a sample event body as JSON",
     "tryPayloadHint": "Dry run renders the prompt and checks the filter without calling the model.",

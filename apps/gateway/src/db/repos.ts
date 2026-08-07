@@ -2249,6 +2249,7 @@ function mapAutomation(r: any): ChatAutomation {
     hasEventSecret: !!(r.event_secret && String(r.event_secret).length),
     payloadTemplate: r.payload_template ?? '', eventFilter: r.event_filter ?? '',
     maxRunsPerHour: Number(r.max_runs_per_hour ?? 60),
+    historyLimit: Number(r.history_limit ?? 10),
     nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
     lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
     createdAt: r.created_at, updatedAt: r.updated_at,
@@ -2290,14 +2291,15 @@ export class AutomationsRepo {
     name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
     agentId: string | null; kind: AutomationKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
     eventToken: string; eventAuth: AutomationAuth; eventSecretEncrypted: string; payloadTemplate: string; eventFilter: string; maxRunsPerHour: number;
+    historyLimit: number;
   }): Promise<ChatAutomation> {
     const ts = now();
     await this.store.run(
       `INSERT INTO chat_automations (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at,
-        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, history_limit, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt,
-       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, ts, ts],
+       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, s.historyLimit, ts, ts],
     );
     return (await this.get(userId, id))!;
   }
@@ -2308,6 +2310,7 @@ export class AutomationsRepo {
       projectId: 'project_id', agentId: 'agent_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone',
       enabled: 'enabled', nextRunAt: 'next_run_at', eventToken: 'event_token', eventAuth: 'event_auth',
       eventSecretEncrypted: 'event_secret', payloadTemplate: 'payload_template', eventFilter: 'event_filter', maxRunsPerHour: 'max_runs_per_hour',
+      historyLimit: 'history_limit',
     };
     const sets: string[] = [];
     const vals: unknown[] = [];
@@ -2375,8 +2378,8 @@ export class AutomationsRepo {
     automationId: string,
     userId: string,
     d: { outcome: string; reason: string | null; payload: string; truncated: boolean },
+    keep: number,
   ): Promise<void> {
-    const KEEP = 20;
     await this.store.run(
       'INSERT INTO chat_automation_deliveries (id, automation_id, user_id, received_at, outcome, reason, payload, truncated) VALUES (?,?,?,?,?,?,?,?)',
       [id, automationId, userId, now(), d.outcome, d.reason, d.payload, intify(d.truncated)],
@@ -2385,8 +2388,13 @@ export class AutomationsRepo {
       'SELECT id FROM chat_automation_deliveries WHERE automation_id = ? ORDER BY received_at DESC, id DESC',
       [automationId],
     );
-    for (const stale of rows.slice(KEEP)) {
-      await this.store.run('DELETE FROM chat_automation_deliveries WHERE id = ?', [stale.id]);
+    const stale = rows.slice(Math.max(1, keep)).map((r) => r.id);
+    if (stale.length) {
+      // One statement rather than a delete per row: this runs on EVERY delivery, and senders can be chatty.
+      await this.store.run(
+        `DELETE FROM chat_automation_deliveries WHERE id IN (${stale.map(() => '?').join(',')})`,
+        stale,
+      );
     }
   }
   async listDeliveries(userId: string, automationId: string, limit = 20): Promise<AutomationDelivery[]> {
@@ -2398,6 +2406,39 @@ export class AutomationsRepo {
       id: r.id, automationId: r.automation_id, receivedAt: r.received_at, outcome: r.outcome,
       reason: r.reason ?? null, payload: r.payload ?? '', truncated: bool(r.truncated),
     }));
+  }
+
+  /**
+   * Trim an automation's history to its most recent `keep` runs, deleting the conversations those older runs
+   * opened along with their messages and attachments.
+   *
+   * A conversation the user ADOPTED (replied in, so `automation_id` is now null) is deliberately left alone:
+   * it stopped being the automation's the moment they made it theirs, and pruning machine history must never
+   * delete a person's chat. The run row goes; their chat stays.
+   */
+  async pruneRuns(automationId: string, keep: number): Promise<void> {
+    const rows = await this.store.all<{ id: string; user_id: string; conversation_id: string | null }>(
+      'SELECT id, user_id, conversation_id FROM chat_automation_runs WHERE automation_id = ? ORDER BY started_at DESC, id DESC',
+      [automationId],
+    );
+    const stale = rows.slice(Math.max(1, keep));
+    if (!stale.length) return;
+    for (const run of stale) {
+      if (run.conversation_id) {
+        // Scoped by automation_id so an adopted conversation (automation_id NULL) can never match.
+        const owned = await this.store.get<{ id: string }>(
+          'SELECT id FROM chat_conversations WHERE id = ? AND automation_id = ?',
+          [run.conversation_id, automationId],
+        );
+        if (owned) {
+          await this.store.run('DELETE FROM chat_messages WHERE conversation_id = ?', [run.conversation_id]);
+          await this.store.run('DELETE FROM chat_attachments WHERE conversation_id = ?', [run.conversation_id]);
+          await this.store.run('DELETE FROM chat_conversations WHERE id = ?', [run.conversation_id]);
+        }
+      }
+    }
+    const ids = stale.map((r) => r.id);
+    await this.store.run(`DELETE FROM chat_automation_runs WHERE id IN (${ids.map(() => '?').join(',')})`, ids);
   }
 
   async listRuns(userId: string, automationId: string, limit = 50): Promise<AutomationRun[]> {

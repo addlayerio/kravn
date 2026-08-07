@@ -148,6 +148,8 @@ export default {
     "payloadTemplateHint": "Vide = l'agent reçoit l'événement entier. Cliquez Dire sur un champ ci-dessous pour l'ajouter, ou écrivez le vôtre :",
     "maxRunsPerHour": "Exécutions max. par heure",
     "maxRunsPerHourHint": "Garde-fou contre les boucles — si l'agent réécrit dans la source et redéclenche ce webhook. 0 = illimité.",
+    "historyLimit": "Historique à conserver",
+    "historyLimitHint": "Les N dernières exécutions (avec les conversations qu'elles ont ouvertes) et les N derniers événements reçus. Le reste est supprimé automatiquement — c'est la seule partie d'une automatisation qui grandit indéfiniment. Une conversation à laquelle vous avez répondu est la vôtre et n'est jamais supprimée.",
     "tryPayload": "Tester avec un payload",
     "tryPayloadPlaceholder": "Collez un corps d'événement d'exemple en JSON",
     "tryPayloadHint": "Le test à blanc construit le prompt et évalue le filtre sans appeler le modèle.",

@@ -377,6 +377,15 @@ export const chatAutomationSchema = z.object({
   eventFilter: z.string().default(''),
   /** Runaway/loop backstop: deliveries past this many runs in a rolling hour are rejected (429). 0 = unlimited. */
   maxRunsPerHour: z.number().int().min(0).max(10_000).default(60),
+  /**
+   * How much history to keep: the last N runs (with the conversations they opened) and the last N received
+   * deliveries. Everything older is deleted as new ones arrive.
+   *
+   * This is the only unbounded part of an automation — a rule firing a few hundred times a day would otherwise
+   * accumulate a conversation and its messages per fire, forever. A conversation the user ADOPTED by replying
+   * is never pruned: it stopped being the automation's the moment they made it theirs.
+   */
+  historyLimit: z.number().int().min(1).max(100).default(10),
 
   /** Next fire time (ISO); null = will never run again (bad cron, a past one-shot, or an event automation). */
   nextRunAt: z.string().nullable().default(null),
