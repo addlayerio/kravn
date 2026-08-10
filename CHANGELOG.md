@@ -53,6 +53,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   conversations already accumulated are filed retroactively from the run history, so the fix applies to the
   mess you already have, not just to new runs.
 
+- 🐛 **A run in progress can be opened.** The conversation id was written to the run row only when the run
+  *finished*, and an automation's conversations are deliberately absent from the Chats list — so for the whole
+  time a run was working there was no way in, by either route. Exactly the run you want to watch. The link is
+  now published the moment the conversation is opened, and it already holds the rendered prompt, which answers
+  "what did it actually ask?" before any reply exists.
+
+- 🐛 **Automation conversations keep their title.** The first message of a chat becomes its title, which is
+  right for a chat a person started and wrong for a run: the automation had already titled it
+  "⚡ Name · timestamp", and auto-titling replaced that with 60 characters of the rendered prompt — so every
+  run of a rule ended up with the same prefix and no timestamp, and the run history became unreadable.
+  Automated turns no longer retitle.
+
 - 📣 **Pick an automation's tools on the automation.** Scoping what an automation could call used to mean
   creating an org **Agent** or an MCP **endpoint** — and both of those need admin permissions, so anyone
   building a single-purpose automation had to file a ticket or abuse a chat project as a bag of tools. The

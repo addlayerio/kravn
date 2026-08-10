@@ -2367,6 +2367,16 @@ export class AutomationsRepo {
       [id, automationId, userId, trigger, 'running', null, null, now(), null],
     );
   }
+  /**
+   * Link the conversation to its run the moment it is opened, not when the run ends.
+   *
+   * A run in progress is exactly the one someone wants to watch — and its conversation is hidden from the Chats
+   * list by design, so if the run row has no link yet there is no way in at all. It also already holds the
+   * rendered prompt, which answers "what did it actually ask?" before the reply exists.
+   */
+  async attachConversation(runId: string, conversationId: string): Promise<void> {
+    await this.store.run('UPDATE chat_automation_runs SET conversation_id = ? WHERE id = ?', [conversationId, runId]);
+  }
   async finishRun(id: string, status: string, error: string | null, conversationId: string | null, summary: string | null = null): Promise<void> {
     await this.store.run(
       'UPDATE chat_automation_runs SET status = ?, error = ?, conversation_id = ?, summary = ?, finished_at = ? WHERE id = ?',

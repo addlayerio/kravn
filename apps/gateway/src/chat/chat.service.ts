@@ -265,11 +265,14 @@ export class ChatService {
     if (attachmentIds.length) {
       await this.repos.chat.linkAttachmentsToMessage(actor.id, conversationId, userMsg.id, attachmentIds);
     }
-    // First message becomes the title.
+    // First message becomes the title — for a chat a PERSON started. An automation's run already has a title
+    // it chose ("⚡ Name · timestamp"), and its first message is a rendered prompt with the event payload in
+    // it; auto-titling from that would give every run of a rule the same 60-character prefix and no timestamp,
+    // making the run history unreadable. Still touch it so the conversation's updated_at moves.
     const existing = await this.repos.chat.listMessages(conversationId);
-    if (existing.filter((m) => m.role === 'user').length === 1) {
-      await this.repos.chat.touchConversation(conversationId, content.slice(0, 60));
-    }
+    const isFirstUserTurn = existing.filter((m) => m.role === 'user').length === 1;
+    if (isFirstUserTurn && !opts.automated) await this.repos.chat.touchConversation(conversationId, content.slice(0, 60));
+    else await this.repos.chat.touchConversation(conversationId);
 
     // The code interpreter is a native PLUGIN; when enabled, auto-offer its registry tools (it's also
     // composable into virtual servers like any mcp-server plugin). No special-casing of execution.

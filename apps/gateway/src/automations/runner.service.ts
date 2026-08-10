@@ -196,6 +196,9 @@ export class AutomationRunner {
     try {
       const actor = await this.resolveOwner(userId);
       conversationId = await this.openConversation(automation, actor, trigger);
+      // Publish the link NOW: the run is about to spend minutes in the model, and until this lands there is no
+      // way to open the conversation — it isn't in the Chats list either.
+      await this.d.repos.automations.attachConversation(runId, conversationId);
       // What earlier runs decided, so a repeated judgement stays consistent instead of restarting from nothing.
       const memory = automation.memoryEnabled
         ? await this.d.repos.automations.recentSummaries(automation.id, MEMORY_RECALL)
