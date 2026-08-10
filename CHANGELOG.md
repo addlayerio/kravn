@@ -53,6 +53,17 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   conversations already accumulated are filed retroactively from the run history, so the fix applies to the
   mess you already have, not just to new runs.
 
+- 📣 **Automations can remember what earlier runs decided.** A rule that makes the same judgement over and over
+  — how many points is this ticket, which queue does this belong in — used to answer from nothing every time, so
+  two near-identical inputs could get very different answers a day apart. Turn on **Remember previous runs** and
+  each run is shown the notes the last ten left, and is asked to leave a one-line note of its own.
+
+  The notes are the agent's own words, visible in the run history, pruned along with it, and off by default —
+  nothing is ever collected silently. They are injected as *prior cases to weigh*, explicitly not as rules to
+  obey: an event payload can influence what a run writes down, so a note must never be able to become a standing
+  order for every run after it. Only successful runs contribute; a run that broke halfway has nothing worth
+  carrying forward.
+
 - 📣 **Automations keep a bounded history (default: the last 10).** Runs, the conversations they opened and the
   received events were the only part of an automation that grew forever — a rule firing a few hundred times a
   day accumulated a conversation and all its messages per fire. Each automation now keeps its most recent N of

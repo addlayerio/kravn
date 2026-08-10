@@ -150,6 +150,8 @@ export default {
     "maxRunsPerHourHint": "Backstop against loops — if the agent writes back to the source and that fires this webhook again. 0 = unlimited.",
     "historyLimit": "History to keep",
     "historyLimitHint": "The last N runs (with the chats they opened) and the last N received events. Older ones are deleted automatically — this is the only part of an automation that grows forever. A chat you replied to is yours and is never deleted.",
+    "memoryEnabled": "Remember previous runs",
+    "memoryEnabledHint": "Each run is shown what the last 10 runs decided, and is asked to leave a one-line note of its own. Use it when the automation makes the SAME judgement over and over (an estimate, a classification) and you want it answered consistently. The notes are the agent's own words and appear below in the run history.",
     "tryPayload": "Try a sample payload",
     "tryPayloadPlaceholder": "Paste a sample event body as JSON",
     "tryPayloadHint": "Dry run renders the prompt and checks the filter without calling the model.",

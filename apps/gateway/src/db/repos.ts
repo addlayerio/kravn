@@ -2250,6 +2250,7 @@ function mapAutomation(r: any): ChatAutomation {
     payloadTemplate: r.payload_template ?? '', eventFilter: r.event_filter ?? '',
     maxRunsPerHour: Number(r.max_runs_per_hour ?? 60),
     historyLimit: Number(r.history_limit ?? 10),
+    memoryEnabled: bool(r.memory_enabled),
     nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
     lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
     createdAt: r.created_at, updatedAt: r.updated_at,
@@ -2291,15 +2292,15 @@ export class AutomationsRepo {
     name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
     agentId: string | null; kind: AutomationKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
     eventToken: string; eventAuth: AutomationAuth; eventSecretEncrypted: string; payloadTemplate: string; eventFilter: string; maxRunsPerHour: number;
-    historyLimit: number;
+    historyLimit: number; memoryEnabled: boolean;
   }): Promise<ChatAutomation> {
     const ts = now();
     await this.store.run(
       `INSERT INTO chat_automations (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at,
-        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, history_limit, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, history_limit, memory_enabled, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt,
-       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, s.historyLimit, ts, ts],
+       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, s.historyLimit, intify(s.memoryEnabled), ts, ts],
     );
     return (await this.get(userId, id))!;
   }
@@ -2310,14 +2311,14 @@ export class AutomationsRepo {
       projectId: 'project_id', agentId: 'agent_id', kind: 'kind', cron: 'cron', runAt: 'run_at', timezone: 'timezone',
       enabled: 'enabled', nextRunAt: 'next_run_at', eventToken: 'event_token', eventAuth: 'event_auth',
       eventSecretEncrypted: 'event_secret', payloadTemplate: 'payload_template', eventFilter: 'event_filter', maxRunsPerHour: 'max_runs_per_hour',
-      historyLimit: 'history_limit',
+      historyLimit: 'history_limit', memoryEnabled: 'memory_enabled',
     };
     const sets: string[] = [];
     const vals: unknown[] = [];
     for (const [k, col] of Object.entries(cols)) {
       if (patch[k] === undefined) continue;
       sets.push(`${col} = ?`);
-      vals.push(k === 'enabled' ? intify(patch[k] as boolean) : (patch[k] as unknown));
+      vals.push(k === 'enabled' || k === 'memoryEnabled' ? intify(patch[k] as boolean) : (patch[k] as unknown));
     }
     if (!sets.length) return;
     sets.push('updated_at = ?');
@@ -2361,11 +2362,23 @@ export class AutomationsRepo {
       [id, automationId, userId, trigger, 'running', null, null, now(), null],
     );
   }
-  async finishRun(id: string, status: string, error: string | null, conversationId: string | null): Promise<void> {
+  async finishRun(id: string, status: string, error: string | null, conversationId: string | null, summary: string | null = null): Promise<void> {
     await this.store.run(
-      'UPDATE chat_automation_runs SET status = ?, error = ?, conversation_id = ?, finished_at = ? WHERE id = ?',
-      [status, error, conversationId, now(), id],
+      'UPDATE chat_automation_runs SET status = ?, error = ?, conversation_id = ?, summary = ?, finished_at = ? WHERE id = ?',
+      [status, error, conversationId, summary, now(), id],
     );
+  }
+  /**
+   * The notes recent runs left, newest first — what the next run is shown as memory. Only successful runs
+   * count: a run that failed halfway has nothing worth carrying forward, and its half-finished reasoning would
+   * skew every judgement after it.
+   */
+  async recentSummaries(automationId: string, limit: number): Promise<string[]> {
+    const rows = await this.store.all<{ summary: string | null }>(
+      "SELECT summary FROM chat_automation_runs WHERE automation_id = ? AND status = 'ok' AND summary IS NOT NULL ORDER BY started_at DESC, id DESC",
+      [automationId],
+    );
+    return rows.slice(0, limit).map((r) => (r.summary ?? '').trim()).filter(Boolean);
   }
   // ── Received deliveries ────────────────────────────────────────────────────
   /**
@@ -2448,7 +2461,7 @@ export class AutomationsRepo {
     );
     return rows.slice(0, limit).map((r) => ({
       id: r.id, automationId: r.automation_id, trigger: r.trigger, status: r.status,
-      error: r.error ?? null, conversationId: r.conversation_id ?? null,
+      error: r.error ?? null, conversationId: r.conversation_id ?? null, summary: r.summary ?? null,
       startedAt: r.started_at, finishedAt: r.finished_at ?? null,
     }));
   }

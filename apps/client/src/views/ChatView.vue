@@ -679,7 +679,7 @@ const sf = reactive({
   kind: 'cron' as 'cron' | 'once' | 'event', cron: '0 9 * * 1', runAt: '', timezone: 'UTC', enabled: true,
   // kind='event'. `eventSecret` is write-only: the server never returns it, so an empty box means "unchanged".
   eventAuth: 'none' as 'none' | 'secret' | 'hmac', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60,
-  historyLimit: 10,
+  historyLimit: 10, memoryEnabled: false,
 });
 /**
  * Payload-template code samples. They live here rather than in the locale files or inline in the template for
@@ -727,7 +727,7 @@ function openAutomationNew(projectId = '') {
     name: '', prompt: '', agentId: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
     vserverSlug: '', projectId, kind: 'cron', cron: '0 9 * * 1', runAt: '',
     timezone: browserTimezone(), enabled: true,
-    eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60, historyLimit: 10,
+    eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60, historyLimit: 10, memoryEnabled: false,
   });
   automationView.value = true;
 }
@@ -742,7 +742,7 @@ function openAutomation(s: ChatAutomation) {
     projectId: s.projectId ?? '', kind: s.kind, cron: s.cron || '0 9 * * 1', runAt: s.runAt,
     timezone: s.timezone || 'UTC', enabled: s.enabled,
     eventAuth: s.eventAuth, eventSecret: '', payloadTemplate: s.payloadTemplate, eventFilter: s.eventFilter,
-    maxRunsPerHour: s.maxRunsPerHour, historyLimit: s.historyLimit,
+    maxRunsPerHour: s.maxRunsPerHour, historyLimit: s.historyLimit, memoryEnabled: s.memoryEnabled,
   });
   automationView.value = true;
   void loadAutomationRuns(s.id);
@@ -937,7 +937,7 @@ async function saveAutomation() {
       name: sf.name.trim(), prompt: sf.prompt, providerId: sf.providerId, model: sf.model,
       vserverSlug: sf.vserverSlug, kind: sf.kind, cron: sf.cron, runAt: sf.runAt, timezone: sf.timezone, enabled: sf.enabled,
       eventAuth: sf.eventAuth, payloadTemplate: sf.payloadTemplate, eventFilter: sf.eventFilter, maxRunsPerHour: sf.maxRunsPerHour,
-      historyLimit: sf.historyLimit,
+      historyLimit: sf.historyLimit, memoryEnabled: sf.memoryEnabled,
       // Only send the secret when the box was actually filled — an empty box means "leave what's stored alone".
       ...(sf.eventSecret ? { eventSecret: sf.eventSecret } : {}),
       ...(sf.projectId ? { projectId: sf.projectId } : {}),
@@ -1923,6 +1923,13 @@ async function logout() {
             <small class="muted">{{ t('chat.historyLimitHint') }}</small>
           </div>
 
+          <div class="field">
+            <label class="row" style="gap: 0.4rem; align-items: center">
+              <input type="checkbox" v-model="sf.memoryEnabled" /> {{ t('chat.memoryEnabled') }}
+            </label>
+            <small class="muted">{{ t('chat.memoryEnabledHint') }}</small>
+          </div>
+
           <label class="row" style="gap: 0.4rem; align-items: center; margin-top: 0.3rem"><input type="checkbox" v-model="sf.enabled" /> {{ t('chat.enabled') }}</label>
         </div>
 
@@ -1970,6 +1977,7 @@ async function logout() {
               <span class="muted">{{ r.trigger }}</span>
               <a v-if="r.conversationId" href="#" @click.prevent="openConversationById(r.conversationId!)">{{ t('chat.openConversation') }}</a>
               <span v-if="r.error" class="muted" style="color: #e5484d">{{ r.error }}</span>
+              <span v-if="r.summary" class="muted" :title="r.summary" style="flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap">💭 {{ r.summary }}</span>
             </div>
           </div>
         </div>

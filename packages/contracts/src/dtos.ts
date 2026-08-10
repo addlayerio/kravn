@@ -175,6 +175,8 @@ export const createAutomationSchema = z.object({
   maxRunsPerHour: z.number().int().min(0).max(10_000).optional(),
   /** Runs + deliveries kept per automation; older ones are deleted as new ones arrive. */
   historyLimit: z.number().int().min(1).max(100).optional(),
+  /** Show each run what the previous ones decided, and ask it to leave a note of its own. */
+  memoryEnabled: z.boolean().optional(),
   /** Mint a fresh URL token, revoking every sender configured against the old one. */
   rotateToken: z.boolean().optional(),
 });

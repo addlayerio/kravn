@@ -91,6 +91,13 @@ The three controls themselves:
   events. Older ones are deleted as new ones arrive. This is the only part of an automation that grows without
   bound: a rule firing a few hundred times a day would otherwise accumulate a conversation and its messages per
   fire, forever. A conversation you replied to is yours and is never pruned.
+- **Remember previous runs** (off by default) — each run is shown what the last ten decided and is asked to
+  leave a one-line note of its own. Turn it on when the automation makes the *same judgement* over and over —
+  an estimate, a classification — and you want it answered consistently instead of from scratch every time.
+
+  The notes are the agent's own words, shown in the run history and deleted with it. They are injected as prior
+  cases to weigh, never as rules to obey: a payload can influence what a run writes, so a note must never be
+  able to become a standing order.
 
 A **sample-payload sandbox** sits under the editor: load a received event (or paste one), and a dry run renders
 the exact prompt and reports the filter verdict *without* spending a model call.

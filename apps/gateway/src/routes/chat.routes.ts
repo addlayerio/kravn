@@ -24,7 +24,7 @@ import type { Services } from '../services.js';
 import { canConsumeMcpEndpoint } from '../mcp/endpoint-access.js';
 import { canUseAgent } from '../chat/agent-access.js';
 import { computeNextRun } from '../automations/scheduler.service.js';
-import { renderPrompt, evaluateFilter } from '../automations/runner.service.js';
+import { renderPrompt, evaluateFilter, MEMORY_RECALL } from '../automations/runner.service.js';
 import { parse, sendError } from './_helpers.js';
 import { openSse } from './_sse.js';
 
@@ -281,6 +281,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       payloadTemplate: dto.payloadTemplate ?? '', eventFilter: dto.eventFilter ?? '',
       maxRunsPerHour: dto.maxRunsPerHour ?? 60,
       historyLimit: dto.historyLimit ?? 10,
+      memoryEnabled: dto.memoryEnabled ?? false,
     });
     return reply.code(201).send({ automation });
   });
@@ -364,7 +365,9 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     const payload = dto.payload ?? {};
     const filter = evaluateFilter(automation.eventFilter, payload);
     if (dto.dryRun) {
-      return { dryRun: true, matched: filter.matched, failedCondition: filter.failed ?? null, prompt: renderPrompt(automation, payload) };
+      // Include the memory block: a preview that omits it would not be the prompt the real run sends.
+      const memory = automation.memoryEnabled ? await s.repos.automations.recentSummaries(id, MEMORY_RECALL) : [];
+      return { dryRun: true, matched: filter.matched, failedCondition: filter.failed ?? null, prompt: renderPrompt(automation, payload, memory) };
     }
     if (!filter.matched) return sendError(reply, 400, 'bad_request', `The filter would drop this payload (${filter.failed}).`);
     // Detached, exactly like a real delivery: the model call outlives this request.

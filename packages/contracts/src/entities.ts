@@ -386,6 +386,14 @@ export const chatAutomationSchema = z.object({
    * is never pruned: it stopped being the automation's the moment they made it theirs.
    */
   historyLimit: z.number().int().min(1).max(100).default(10),
+  /**
+   * When on, each run is shown what the most recent runs decided, and is asked to leave a one-line note of its
+   * own. This is what makes a repeated judgement consistent: without it every run starts from nothing, so two
+   * near-identical inputs can get very different answers a day apart.
+   *
+   * The notes are the agent's own words, visible and deletable in the run history — never a hidden input.
+   */
+  memoryEnabled: z.boolean().default(false),
 
   /** Next fire time (ISO); null = will never run again (bad cron, a past one-shot, or an event automation). */
   nextRunAt: z.string().nullable().default(null),
@@ -430,6 +438,8 @@ export const automationRunSchema = z.object({
   status: z.string(),
   error: z.string().nullable().default(null),
   conversationId: z.string().nullable().default(null),
+  /** The one-line note this run left for the next one (memory). Null when memory is off or none was given. */
+  summary: z.string().nullable().default(null),
   startedAt: z.string(),
   finishedAt: z.string().nullable().default(null),
 });

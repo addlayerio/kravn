@@ -1262,8 +1262,35 @@ const chatAutomationHistoryLimit: Migration = {
   },
 };
 
+// Memory between runs: each run can leave a one-line note about what it decided, and the next run is shown the
+// most recent ones. Without it a rule that makes the SAME judgement over and over — "how many points is this" —
+// answers differently every time, because every run starts from nothing.
+const chatAutomationMemory: Migration = {
+  name: '043_chat_automation_memory',
+  async up(knex) {
+    if (await knex.schema.hasTable('chat_automations')) {
+      if (!(await knex.schema.hasColumn('chat_automations', 'memory_enabled'))) {
+        await knex.schema.alterTable('chat_automations', (t) => t.boolean('memory_enabled').notNullable().defaultTo(false));
+      }
+    }
+    if (await knex.schema.hasTable('chat_automation_runs')) {
+      if (!(await knex.schema.hasColumn('chat_automation_runs', 'summary'))) {
+        await knex.schema.alterTable('chat_automation_runs', (t) => t.text('summary').nullable());
+      }
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_automations')) && (await knex.schema.hasColumn('chat_automations', 'memory_enabled'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.dropColumn('memory_enabled'));
+    }
+    if ((await knex.schema.hasTable('chat_automation_runs')) && (await knex.schema.hasColumn('chat_automation_runs', 'summary'))) {
+      await knex.schema.alterTable('chat_automation_runs', (t) => t.dropColumn('summary'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit, chatAutomationMemory];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

@@ -150,6 +150,8 @@ export default {
     "maxRunsPerHourHint": "Travão contra ciclos — se o agente escreve na origem e isso volta a acionar este webhook. 0 = sem limite.",
     "historyLimit": "Histórico a manter",
     "historyLimitHint": "As últimas N execuções (com as conversas que abriram) e os últimos N eventos recebidos. O mais antigo é apagado automaticamente — é a única parte de uma automação que cresce para sempre. Uma conversa a que respondeu é sua e nunca é apagada.",
+    "memoryEnabled": "Recordar execuções anteriores",
+    "memoryEnabledHint": "Cada execução vê o que as últimas 10 decidiram, e pede-se-lhe que deixe a sua própria nota de uma linha. Use quando a automação faz SEMPRE o mesmo juízo (uma estimativa, uma classificação) e o quer consistente. As notas são palavras do próprio agente e aparecem abaixo no histórico.",
     "tryPayload": "Testar com um payload de exemplo",
     "tryPayloadPlaceholder": "Cole um corpo de evento de exemplo em JSON",
     "tryPayloadHint": "A execução a seco constrói o prompt e avalia o filtro sem chamar o modelo.",

@@ -150,6 +150,8 @@ export default {
     "maxRunsPerHourHint": "Freno ante loops — si el agente escribe en el origen y eso vuelve a disparar este webhook. 0 = sin límite.",
     "historyLimit": "Historial a conservar",
     "historyLimitHint": "Las últimas N corridas (con los chats que abrieron) y los últimos N eventos recibidos. Lo más viejo se borra solo — es la única parte de una automatización que crece para siempre. Un chat al que le respondiste es tuyo y no se borra nunca.",
+    "memoryEnabled": "Recordar corridas anteriores",
+    "memoryEnabledHint": "Cada corrida ve qué decidieron las últimas 10 y se le pide que deje su propia nota de una línea. Usalo cuando la automatización hace SIEMPRE el mismo juicio (una estimación, una clasificación) y querés que sea consistente. Las notas son palabras del propio agente y se ven abajo en el historial.",
     "tryPayload": "Probar con un payload de ejemplo",
     "tryPayloadPlaceholder": "Pegá un cuerpo de evento de ejemplo en JSON",
     "tryPayloadHint": "La prueba en seco arma el prompt y evalúa el filtro sin llamar al modelo.",
