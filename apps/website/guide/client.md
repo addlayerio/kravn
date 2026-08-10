@@ -48,9 +48,9 @@ the gateway says no, the client says no.
 
 ## Automations: the same agent, started by something other than a person
 
-An **automation** is an agent, an instruction, and a trigger. Nothing else — there is no canvas, no nodes, no
-field mapping. You pick the agent (which carries its own instructions and its own filtered set of tools), write
-what you want done in a sentence, and choose what starts it:
+An **automation** is an agent, an instruction, a set of tools and a trigger. Nothing else — there is no canvas,
+no nodes, no field mapping. You write what you want done in a sentence, pick the tools it may use, and choose
+what starts it:
 
 - **By time** — a cron expression or a one-off date.
 - **By event** — an inbound webhook. Each automation gets its own URL (`/api/hooks/<token>`); you paste it into
@@ -60,6 +60,19 @@ The point is that the *authoring* is a sentence, not a flow. "When a record is c
 it relates to and fill in the missing field" is one automation with two tools behind it — the kind of thing that
 is a multi-step diagram anywhere else. Nothing about it is tied to a particular product: if it can send a
 webhook, it can start an automation, and whatever tools the agent holds are what it can act on.
+
+### Which tools it may use
+
+Pick them on the automation itself, from everything you already have access to. Leave the picker empty and it
+inherits — from the project it's attached to, then the agent, then the MCP endpoint, in that order. The editor
+always states which of those is supplying the tools, because with four possible sources that stops being
+guessable from the form.
+
+This is a **filter, never a grant**: ids you aren't entitled to are dropped when you save, and every tool is
+re-validated against your live entitlement on each turn. Revoke a team's access and the next run can't reach it.
+
+The set is snapshotted onto each run's conversation, so a conversation you adopt keeps the tools it ran with
+instead of quietly changing mid-thread.
 
 ### Shaping the event — starting from what actually arrived
 

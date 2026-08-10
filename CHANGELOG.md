@@ -53,6 +53,19 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   conversations already accumulated are filed retroactively from the run history, so the fix applies to the
   mess you already have, not just to new runs.
 
+- 📣 **Pick an automation's tools on the automation.** Scoping what an automation could call used to mean
+  creating an org **Agent** or an MCP **endpoint** — and both of those need admin permissions, so anyone
+  building a single-purpose automation had to file a ticket or abuse a chat project as a bag of tools. The
+  automation editor now has the same tool picker projects already had, over everything the user is already
+  entitled to.
+
+  Chosen tools win over the project's pinned set, the agent's filter and the endpoint — it is the most specific
+  choice, made on the thing being configured — and leaving the picker empty inherits in that order. Because
+  there are now four possible sources, the editor states which one is actually supplying the tools. It stays a
+  **filter, never a grant**: unentitled ids are dropped on save and every tool is re-validated live on each
+  turn. The set is snapshotted onto each run's conversation, so a conversation you adopt keeps the tools it ran
+  with rather than silently falling back mid-thread.
+
 - 📣 **Automations can remember what earlier runs decided.** A rule that makes the same judgement over and over
   — how many points is this ticket, which queue does this belong in — used to answer from nothing every time, so
   two near-identical inputs could get very different answers a day apart. Turn on **Remember previous runs** and

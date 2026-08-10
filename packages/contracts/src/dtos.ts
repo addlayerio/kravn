@@ -177,6 +177,8 @@ export const createAutomationSchema = z.object({
   historyLimit: z.number().int().min(1).max(100).optional(),
   /** Show each run what the previous ones decided, and ask it to leave a note of its own. */
   memoryEnabled: z.boolean().optional(),
+  /** Tools chosen on the automation itself; unentitled ids are dropped server-side. Empty = inherit. */
+  toolIds: z.array(z.string()).max(200).optional(),
   /** Mint a fresh URL token, revoking every sender configured against the old one. */
   rotateToken: z.boolean().optional(),
 });

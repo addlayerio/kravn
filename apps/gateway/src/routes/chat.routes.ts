@@ -282,6 +282,8 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       maxRunsPerHour: dto.maxRunsPerHour ?? 60,
       historyLimit: dto.historyLimit ?? 10,
       memoryEnabled: dto.memoryEnabled ?? false,
+      // A filter, not a grant: ids the caller isn't entitled to are dropped before they are ever stored.
+      toolIds: dto.toolIds ? await filterEntitledTools(s, u, dto.toolIds) : [],
     });
     return reply.code(201).send({ automation });
   });
@@ -308,6 +310,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
       return sendError(reply, 400, 'bad_request', 'A secret is required for this authentication mode.');
     }
     const patch: Record<string, unknown> = { ...dto, nextRunAt };
+    if (dto.toolIds !== undefined) patch.toolIds = await filterEntitledTools(s, u, dto.toolIds);
     // `eventSecret` is write-only: it never round-trips through a GET, so it's only written when explicitly sent.
     delete patch.eventSecret;
     delete patch.rotateToken;
@@ -426,7 +429,9 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
   app.get('/api/chat/agents', auth, async (req) => {
     const u = currentUser(req);
     const usable = (await s.repos.chat.listAgents()).filter((a) => canUseAgent(a, u));
-    return { agents: usable.map((a) => ({ id: a.id, name: a.name, description: a.description, providerId: a.providerId, model: a.model })) };
+    // toolCount, not the ids: the editor only needs to say "inherits N tools from this agent", and the
+    // composition of an agent is an operator concern the end-user list has no reason to carry.
+    return { agents: usable.map((a) => ({ id: a.id, name: a.name, description: a.description, providerId: a.providerId, model: a.model, toolCount: a.toolIds.length })) };
   });
 
   // Upload a file into a conversation → extract its text for context. Returns metadata only.

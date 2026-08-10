@@ -1289,8 +1289,39 @@ const chatAutomationMemory: Migration = {
   },
 };
 
+// Tools chosen ON the automation itself. Until now the only ways to scope an automation's tools were an org
+// Agent or an MCP endpoint — both of which only an ADMIN can create — so a user building a single-purpose
+// automation had to file a ticket, or abuse a chat project as a bag of tools. Projects already let a user pick
+// tools (filtered to their own entitlement); this puts the same primitive where it was actually needed.
+//
+// The chosen set is copied onto each run's conversation so it survives adoption: a conversation the user
+// replies to keeps the tools it ran with instead of silently falling back to the endpoint mid-thread.
+const chatAutomationTools: Migration = {
+  name: '044_chat_automation_tools',
+  async up(knex) {
+    if (await knex.schema.hasTable('chat_automations')) {
+      if (!(await knex.schema.hasColumn('chat_automations', 'tool_ids'))) {
+        await knex.schema.alterTable('chat_automations', (t) => t.text('tool_ids').nullable());
+      }
+    }
+    if (await knex.schema.hasTable('chat_conversations')) {
+      if (!(await knex.schema.hasColumn('chat_conversations', 'tool_ids'))) {
+        await knex.schema.alterTable('chat_conversations', (t) => t.text('tool_ids').nullable());
+      }
+    }
+  },
+  async down(knex) {
+    if ((await knex.schema.hasTable('chat_automations')) && (await knex.schema.hasColumn('chat_automations', 'tool_ids'))) {
+      await knex.schema.alterTable('chat_automations', (t) => t.dropColumn('tool_ids'));
+    }
+    if ((await knex.schema.hasTable('chat_conversations')) && (await knex.schema.hasColumn('chat_conversations', 'tool_ids'))) {
+      await knex.schema.alterTable('chat_conversations', (t) => t.dropColumn('tool_ids'));
+    }
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit, chatAutomationMemory];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit, chatAutomationMemory, chatAutomationTools];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

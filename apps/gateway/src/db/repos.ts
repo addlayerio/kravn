@@ -1206,12 +1206,14 @@ export class ChatRepo {
     id: string; projectId: string | null; title: string; providerId: string; model: string; vserverSlug: string; agentId?: string | null;
     /** Set by the automation runner: files the conversation under that rule instead of the user's Chats. */
     automationId?: string | null;
+    /** Tools this conversation is limited to (the automation's own selection), snapshotted at creation. */
+    toolIds?: string[];
   }): Promise<ChatConversation> {
     const ts = now();
     await this.store.run(
-      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, agent_id, automation_id, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?)`,
-      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.agentId ?? null, c.automationId ?? null, ts, ts],
+      `INSERT INTO chat_conversations (id, user_id, project_id, title, provider_id, model, vserver_slug, agent_id, automation_id, tool_ids, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?)`,
+      [c.id, userId, c.projectId, c.title, c.providerId, c.model, c.vserverSlug, c.agentId ?? null, c.automationId ?? null, JSON.stringify(c.toolIds ?? []), ts, ts],
     );
     return (await this.getConversation(userId, c.id))!;
   }
@@ -1553,6 +1555,7 @@ function mapConversation(r: any): ChatConversation {
     tags: parseTags(r.tags),
     agentId: r.agent_id ?? null,
     automationId: r.automation_id ?? null,
+    toolIds: JSON.parse(r.tool_ids || '[]'),
     pinned: bool(r.pinned),
     archived: bool(r.archived),
     webSearch: bool(r.web_search),
@@ -2251,6 +2254,7 @@ function mapAutomation(r: any): ChatAutomation {
     maxRunsPerHour: Number(r.max_runs_per_hour ?? 60),
     historyLimit: Number(r.history_limit ?? 10),
     memoryEnabled: bool(r.memory_enabled),
+    toolIds: JSON.parse(r.tool_ids || '[]'),
     nextRunAt: r.next_run_at ?? null, lastRunAt: r.last_run_at ?? null, lastStatus: r.last_status ?? null,
     lastError: r.last_error ?? null, lastConversationId: r.last_conversation_id ?? null,
     createdAt: r.created_at, updatedAt: r.updated_at,
@@ -2292,15 +2296,15 @@ export class AutomationsRepo {
     name: string; prompt: string; providerId: string; model: string; vserverSlug: string; projectId: string | null;
     agentId: string | null; kind: AutomationKind; cron: string; runAt: string; timezone: string; enabled: boolean; nextRunAt: string | null;
     eventToken: string; eventAuth: AutomationAuth; eventSecretEncrypted: string; payloadTemplate: string; eventFilter: string; maxRunsPerHour: number;
-    historyLimit: number; memoryEnabled: boolean;
+    historyLimit: number; memoryEnabled: boolean; toolIds: string[];
   }): Promise<ChatAutomation> {
     const ts = now();
     await this.store.run(
       `INSERT INTO chat_automations (id, user_id, name, prompt, provider_id, model, vserver_slug, project_id, agent_id, kind, cron, run_at, timezone, enabled, next_run_at,
-        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, history_limit, memory_enabled, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
+        event_token, event_auth, event_secret, payload_template, event_filter, max_runs_per_hour, history_limit, memory_enabled, tool_ids, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`,
       [id, userId, s.name, s.prompt, s.providerId, s.model, s.vserverSlug, s.projectId, s.agentId, s.kind, s.cron, s.runAt, s.timezone, intify(s.enabled), s.nextRunAt,
-       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, s.historyLimit, intify(s.memoryEnabled), ts, ts],
+       s.eventToken, s.eventAuth, s.eventSecretEncrypted, s.payloadTemplate, s.eventFilter, s.maxRunsPerHour, s.historyLimit, intify(s.memoryEnabled), JSON.stringify(s.toolIds ?? []), ts, ts],
     );
     return (await this.get(userId, id))!;
   }
@@ -2320,6 +2324,7 @@ export class AutomationsRepo {
       sets.push(`${col} = ?`);
       vals.push(k === 'enabled' || k === 'memoryEnabled' ? intify(patch[k] as boolean) : (patch[k] as unknown));
     }
+    if (patch.toolIds !== undefined) { sets.push('tool_ids = ?'); vals.push(JSON.stringify(patch.toolIds)); }
     if (!sets.length) return;
     sets.push('updated_at = ?');
     vals.push(now(), id, userId);

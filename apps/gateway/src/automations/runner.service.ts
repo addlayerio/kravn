@@ -252,6 +252,10 @@ export class AutomationRunner {
       agentId: automation.agentId || null,
       // Files this conversation under the automation rather than the user's Chats. Cleared if they reply in it.
       automationId: automation.id,
+      // Snapshot of the automation's own tool selection. Carried on the conversation (not looked up through the
+      // automation) so it survives adoption and so editing the automation later can't retroactively change what
+      // an old run was allowed to do.
+      toolIds: automation.toolIds ?? [],
     });
     return convId;
   }

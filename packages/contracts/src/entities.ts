@@ -312,6 +312,9 @@ export const chatConversationSchema = z.object({
    * and from then on it is an ordinary chat of theirs.
    */
   automationId: z.string().nullable().default(null),
+  /** Tools this conversation is limited to — copied from the automation that opened it, so the set survives
+   *  adoption instead of silently changing when the conversation stops being the automation's. */
+  toolIds: z.array(z.string()).default([]),
   /** Pinned chats sort to the top of the list. */
   pinned: z.boolean().default(false),
   /** Archived chats are hidden from the main list (shown under "Archived"). */
@@ -394,6 +397,14 @@ export const chatAutomationSchema = z.object({
    * The notes are the agent's own words, visible and deletable in the run history — never a hidden input.
    */
   memoryEnabled: z.boolean().default(false),
+  /**
+   * Tools this automation may use, chosen directly on it. Takes precedence over the project's pinned set, the
+   * agent's filter and the endpoint — it is the most specific choice, made on the thing being configured.
+   *
+   * Empty = inherit, in that same order. Always a FILTER over what the owner is already entitled to, never a
+   * grant: unentitled ids are dropped on save and re-validated live on every turn.
+   */
+  toolIds: z.array(z.string()).default([]),
 
   /** Next fire time (ISO); null = will never run again (bad cron, a past one-shot, or an event automation). */
   nextRunAt: z.string().nullable().default(null),

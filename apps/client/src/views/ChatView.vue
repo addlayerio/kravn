@@ -679,7 +679,7 @@ const sf = reactive({
   kind: 'cron' as 'cron' | 'once' | 'event', cron: '0 9 * * 1', runAt: '', timezone: 'UTC', enabled: true,
   // kind='event'. `eventSecret` is write-only: the server never returns it, so an empty box means "unchanged".
   eventAuth: 'none' as 'none' | 'secret' | 'hmac', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60,
-  historyLimit: 10, memoryEnabled: false,
+  historyLimit: 10, memoryEnabled: false, toolIds: [] as string[],
 });
 /**
  * Payload-template code samples. They live here rather than in the locale files or inline in the template for
@@ -689,6 +689,21 @@ const sf = reactive({
 const TEMPLATE_SAMPLE = 'New {{ event.type }}: {{ data.title }}';
 const TPL_FIELD_SAMPLE = '{{ data.title }}';
 const TPL_PAYLOAD_SAMPLE = '{{ payload }}';
+
+/**
+ * Which of the four sources will actually supply this automation's tools. Mirrors the precedence in
+ * chat.service.resolveTools — with four levels, "where do these tools come from" stops being answerable by
+ * looking at the form, and a silent wrong answer here means an automation that quietly can't do its job.
+ */
+const effectiveToolSource = computed(() => {
+  if (sf.toolIds.length) return { key: 'own', count: sf.toolIds.length, name: '' };
+  const proj = projects.value.find((p) => p.id === sf.projectId);
+  if (proj?.toolIds.length) return { key: 'project', count: proj.toolIds.length, name: proj.name };
+  const agent = agents.value.find((a) => a.id === sf.agentId);
+  if (agent?.toolCount) return { key: 'agent', count: agent.toolCount, name: agent.name };
+  if (sf.vserverSlug) return { key: 'endpoint', count: 0, name: vservers.value.find((v) => v.slug === sf.vserverSlug)?.name ?? sf.vserverSlug };
+  return { key: 'none', count: 0, name: '' };
+});
 
 /** Run history + the payload sandbox, both scoped to the automation currently open in the editor. */
 const automationRuns = ref<AutomationRun[]>([]);
@@ -717,6 +732,7 @@ function resetAutomationSandbox() {
   testPayload.value = '';
 }
 function openAutomationNew(projectId = '') {
+  void loadAvailableTools();
   current.value = null;
   project.value = null;
   editingAutomationId.value = null;
@@ -727,11 +743,12 @@ function openAutomationNew(projectId = '') {
     name: '', prompt: '', agentId: '', providerId: p?.id ?? '', model: p?.defaultModel ?? p?.models[0] ?? '',
     vserverSlug: '', projectId, kind: 'cron', cron: '0 9 * * 1', runAt: '',
     timezone: browserTimezone(), enabled: true,
-    eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60, historyLimit: 10, memoryEnabled: false,
+    eventAuth: 'none', eventSecret: '', payloadTemplate: '', eventFilter: '', maxRunsPerHour: 60, historyLimit: 10, memoryEnabled: false, toolIds: [],
   });
   automationView.value = true;
 }
 function openAutomation(s: ChatAutomation) {
+  void loadAvailableTools();
   current.value = null;
   project.value = null;
   editingAutomationId.value = s.id;
@@ -743,6 +760,7 @@ function openAutomation(s: ChatAutomation) {
     timezone: s.timezone || 'UTC', enabled: s.enabled,
     eventAuth: s.eventAuth, eventSecret: '', payloadTemplate: s.payloadTemplate, eventFilter: s.eventFilter,
     maxRunsPerHour: s.maxRunsPerHour, historyLimit: s.historyLimit, memoryEnabled: s.memoryEnabled,
+    toolIds: [...s.toolIds],
   });
   automationView.value = true;
   void loadAutomationRuns(s.id);
@@ -937,7 +955,7 @@ async function saveAutomation() {
       name: sf.name.trim(), prompt: sf.prompt, providerId: sf.providerId, model: sf.model,
       vserverSlug: sf.vserverSlug, kind: sf.kind, cron: sf.cron, runAt: sf.runAt, timezone: sf.timezone, enabled: sf.enabled,
       eventAuth: sf.eventAuth, payloadTemplate: sf.payloadTemplate, eventFilter: sf.eventFilter, maxRunsPerHour: sf.maxRunsPerHour,
-      historyLimit: sf.historyLimit, memoryEnabled: sf.memoryEnabled,
+      historyLimit: sf.historyLimit, memoryEnabled: sf.memoryEnabled, toolIds: sf.toolIds,
       // Only send the secret when the box was actually filled — an empty box means "leave what's stored alone".
       ...(sf.eventSecret ? { eventSecret: sf.eventSecret } : {}),
       ...(sf.projectId ? { projectId: sf.projectId } : {}),
@@ -949,6 +967,7 @@ async function saveAutomation() {
     await loadAutomations();
     editingAutomationId.value = res.automation.id;
     sf.eventSecret = '';
+    sf.toolIds = [...res.automation.toolIds]; // the server drops ids the user isn't entitled to
     // Saving is what turns "save first" into a live URL, so pull whatever has already arrived at it — an
     // automation switched back to event mode can have deliveries from an earlier stint.
     if (sf.kind === 'event') void loadAutomationDeliveries(res.automation.id);
@@ -1074,7 +1093,7 @@ async function deleteMemory(m: ChatMemory) {
 
 // ── Org Agents (read-only presets defined by an admin; the user starts a chat from one) ──────────
 // The client only sees a safe projection — the server never sends the sharing ACL or raw instructions.
-type ClientAgent = Pick<ChatAgent, 'id' | 'name' | 'description' | 'providerId' | 'model'>;
+type ClientAgent = Pick<ChatAgent, 'id' | 'name' | 'description' | 'providerId' | 'model'> & { toolCount: number };
 const agents = ref<ClientAgent[]>([]);
 const currentAgent = computed(() =>
   current.value?.agentId ? agents.value.find((a) => a.id === current.value!.agentId) : undefined,
@@ -1780,6 +1799,19 @@ async function logout() {
               <input v-else v-model="sf.model" :placeholder="t('chat.modelPlaceholder')" />
             </div>
           </div>
+          <div class="field">
+            <label>{{ t('chat.automationTools') }} <span class="muted" style="font-weight: 400">({{ sf.toolIds.length }})</span></label>
+            <small class="muted">{{ t('chat.automationToolsHint') }}</small>
+            <GroupedSelect
+              v-model="sf.toolIds"
+              :items="toolItems"
+              :groups="toolServerMeta"
+              :noun="t('grouped.nounTools')"
+              :empty-text="t('chat.noToolsAvailable')"
+            />
+            <small class="muted">{{ t(`chat.toolSource_${effectiveToolSource.key}`, { n: effectiveToolSource.count, name: effectiveToolSource.name }) }}</small>
+          </div>
+
           <div class="row" style="gap: 0.5rem; flex-wrap: wrap">
             <div class="field" style="flex: 1; min-width: 150px"><label>{{ t('chat.toolsMcpEndpoint') }}</label>
               <select v-model="sf.vserverSlug">

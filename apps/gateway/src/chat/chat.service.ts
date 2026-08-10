@@ -574,6 +574,11 @@ export class ChatService {
   }
 
   private async resolveTools(actor: AuthUser, conv: ChatConversation): Promise<{ tools: any[]; toolIndex: ToolIndex; mcpEndpointId: string | undefined }> {
+    // Tools chosen on the conversation itself win — for an automation's run that is the set picked on the
+    // automation, the most specific choice there is. Copied onto the conversation at creation rather than
+    // resolved through the automation, so an adopted conversation keeps the tools it ran with.
+    if (conv.toolIds?.length) return this.resolveProjectTools(actor, conv.toolIds);
+
     // A project that pins tools takes precedence: the chat offers EXACTLY the project's tools (re-validated
     // against the CALLER's live entitlement), possibly spanning several endpoints. Falls through to the chat's
     // own MCP-endpoint selection when the project pins nothing.
