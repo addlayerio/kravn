@@ -25,7 +25,7 @@ hero:
     # solid "Get Started" CTA, so it doesn't cannibalize the primary action.
     - theme: alt
       text: ☕ Buy me a coffee
-      link: https://buymeacoffee.com/kravn
+      link: https://buymeacoffee.com/addlayer
 
 features:
   - icon: 🏛️
