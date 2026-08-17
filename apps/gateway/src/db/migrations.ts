@@ -1320,8 +1320,32 @@ const chatAutomationTools: Migration = {
   },
 };
 
+// Deleting an agent left every automation and conversation still pointing at it, and deleting a project left
+// automations pointing at it — the delete paths now clear those references, but rows orphaned BEFORE that fix
+// are still out there. Nulls them once, so an automation stops showing a selection that cannot be explained
+// (and, until the companion client fix, could not be cleared from the form either).
+const chatOrphanedReferences: Migration = {
+  name: '045_chat_orphaned_references',
+  async up(knex) {
+    const clear = async (table: string, column: string, parent: string) => {
+      if (!(await knex.schema.hasTable(table)) || !(await knex.schema.hasTable(parent))) return;
+      if (!(await knex.schema.hasColumn(table, column))) return;
+      const alive = (await knex(parent).select('id')).map((r: { id: string }) => r.id);
+      // knex renders whereNotIn([]) as always-true, which is exactly right: with no parents left, every
+      // reference is an orphan.
+      await knex(table).whereNotNull(column).whereNotIn(column, alive).update({ [column]: null });
+    };
+    await clear('chat_automations', 'agent_id', 'chat_agents');
+    await clear('chat_conversations', 'agent_id', 'chat_agents');
+    await clear('chat_automations', 'project_id', 'chat_projects');
+  },
+  async down() {
+    // Nothing to restore: the rows these pointed at are gone.
+  },
+};
+
 /** Ordered list of migrations. Append new ones; never edit a shipped migration. */
-const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit, chatAutomationMemory, chatAutomationTools];
+const MIGRATIONS: Migration[] = [initial, projectDocs, attachments, oauth, teamServerTools, userDisabled, pipelineSteps, pipelineScope, pipelineOptIn, auditLog, appKeyring, serverOAuth, serverOAuthOperatorConfig, serverTls, sessions, toolFingerprints, toolApprovals, usageCounters, pluginInstanceConfig, chatModelContent, chatProjectMembers, chatSchedules, chatUserPrompts, chatConversationTags, chatMemory, chatAssistants, chatConversationAssistant, chatConversationFlags, chatConversationWebSearch, chatProjectTools, chatAgents, chatProjectDefaultModel, chatConversationAgent, auditFilterIndexes, a2aTasks, chatScheduleAgent, chatAutomationsRename, chatAutomationEvents, chatAutomationRuns, chatAutomationDeliveries, chatConversationAutomation, chatAutomationHistoryLimit, chatAutomationMemory, chatAutomationTools, chatOrphanedReferences];
 
 /**
  * An in-code Knex MigrationSource so migrations ship inside the compiled bundle

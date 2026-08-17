@@ -1142,6 +1142,8 @@ export class ChatRepo {
     const owned = await this.store.get<any>('SELECT 1 AS x FROM chat_projects WHERE id = ? AND user_id = ?', [id, userId]);
     if (!owned) return;
     await this.store.run('UPDATE chat_conversations SET project_id = NULL WHERE project_id = ?', [id]);
+    // Automations reference a project too, and were being left pointing at a row that no longer exists.
+    await this.store.run('UPDATE chat_automations SET project_id = NULL WHERE project_id = ?', [id]);
     await this.store.run('DELETE FROM chat_project_documents WHERE project_id = ?', [id]);
     await this.store.run('DELETE FROM chat_project_members WHERE project_id = ?', [id]);
     await this.store.run('DELETE FROM chat_projects WHERE id = ?', [id]);
@@ -1430,6 +1432,11 @@ export class ChatRepo {
     await this.store.run(`UPDATE chat_agents SET ${sets.join(', ')} WHERE id = ?`, vals);
   }
   async deleteAgent(id: string): Promise<void> {
+    // Clear every reference first. A dangling agent_id is harmless at run time (both the system prompt and the
+    // tool resolution skip an agent that no longer resolves) but it is NOT harmless in the editor: the form
+    // keeps showing a selection that can't be explained, and the row can't be cleaned up from the UI.
+    await this.store.run('UPDATE chat_automations SET agent_id = NULL WHERE agent_id = ?', [id]);
+    await this.store.run('UPDATE chat_conversations SET agent_id = NULL WHERE agent_id = ?', [id]);
     await this.store.run('DELETE FROM chat_agents WHERE id = ?', [id]);
   }
 

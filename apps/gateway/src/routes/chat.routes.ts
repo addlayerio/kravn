@@ -273,7 +273,7 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     if (enabled && dto.kind === 'cron' && nextRunAt === null) return sendError(reply, 400, 'bad_request', 'Invalid cron expression.');
     const automation = await s.repos.automations.create(u.id, newId(), {
       name: dto.name, prompt: dto.prompt, providerId: dto.providerId, model: dto.model,
-      vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId ?? null, agentId: dto.agentId ?? null,
+      vserverSlug: dto.vserverSlug ?? '', projectId: dto.projectId || null, agentId: dto.agentId || null,
       kind: dto.kind, cron, runAt, timezone, enabled, nextRunAt,
       // Every automation gets a token, so switching an existing one to 'event' later needs no extra step.
       eventToken: newHookToken(), eventAuth,
@@ -311,6 +311,9 @@ export function chatRoutes(app: FastifyInstance, s: Services): void {
     }
     const patch: Record<string, unknown> = { ...dto, nextRunAt };
     if (dto.toolIds !== undefined) patch.toolIds = await filterEntitledTools(s, u, dto.toolIds);
+    // '' means "none": store NULL so the column never holds an empty string that reads as a set reference.
+    if (dto.projectId !== undefined) patch.projectId = dto.projectId || null;
+    if (dto.agentId !== undefined) patch.agentId = dto.agentId || null;
     // `eventSecret` is write-only: it never round-trips through a GET, so it's only written when explicitly sent.
     delete patch.eventSecret;
     delete patch.rotateToken;

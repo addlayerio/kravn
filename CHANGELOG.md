@@ -53,6 +53,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/). Versions
   conversations already accumulated are filed retroactively from the run history, so the fix applies to the
   mess you already have, not just to new runs.
 
+- 🐛 **Deleting an agent no longer orphans what pointed at it — and "no agent" can actually be selected.** Two
+  bugs that compounded. Deleting an agent removed only the agent, leaving every automation and conversation
+  still referencing it; deleting a project did clear its conversations but not its automations. Harmless at run
+  time (a reference that no longer resolves is skipped) but not in the editor, which kept showing a selection
+  that couldn't be explained. Both delete paths now clear their references.
+
+  And it couldn't be fixed by hand either: the client omitted `agentId`/`projectId` from the request entirely
+  when they were empty, so the server never touched those columns — you could select "No agent", save
+  successfully, reopen, and find the dead agent still there. Both fields are now always sent, and an empty
+  value is stored as NULL rather than an empty string. **References orphaned before this fix are cleared on
+  upgrade**, so an instance already in that state is repaired rather than only newly-created ones.
+
 - 🐛 **A run in progress can be opened.** The conversation id was written to the run row only when the run
   *finished*, and an automation's conversations are deliberately absent from the Chats list — so for the whole
   time a run was working there was no way in, by either route. Exactly the run you want to watch. The link is

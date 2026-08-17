@@ -958,8 +958,10 @@ async function saveAutomation() {
       historyLimit: sf.historyLimit, memoryEnabled: sf.memoryEnabled, toolIds: sf.toolIds,
       // Only send the secret when the box was actually filled — an empty box means "leave what's stored alone".
       ...(sf.eventSecret ? { eventSecret: sf.eventSecret } : {}),
-      ...(sf.projectId ? { projectId: sf.projectId } : {}),
-      ...(sf.agentId ? { agentId: sf.agentId } : {}),
+      // Always sent, including when empty: omitting the key leaves the column untouched, so "no agent" and
+      // "no project" could be selected and saved but never actually stored. The server maps '' to null.
+      projectId: sf.projectId,
+      agentId: sf.agentId,
     };
     const res = editingAutomationId.value
       ? await api.put<{ automation: ChatAutomation }>(`/api/chat/automations/${editingAutomationId.value}`, body)
